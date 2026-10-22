@@ -8,8 +8,6 @@ Verifies:
 """
 import os
 import sys
-import json
-import queue
 from pathlib import Path
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
@@ -19,10 +17,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from PyQt6.QtWidgets import QApplication
+
 app = QApplication.instance() or QApplication(["pytest", "-platform", "offscreen"])
 
+from core.sse_stream import SSEBroadcaster
 from voice.tts_engine import VoiceProsodyEngine
-from core.sse_stream import SSEBroadcaster, SSEMessage
 
 
 def test_voice_prosody_cadence_modulation():
@@ -77,7 +76,7 @@ def test_arc_reactor_60fps_configuration():
     from ui.floating_icon import FloatingIcon
     icon = FloatingIcon()
     assert icon.anim_timer.interval() == 16  # 16ms = 60 FPS
-    
+
     # Verify cybernetic states
     icon.set_state("REFLEX")
     assert icon.state == "REFLEX"

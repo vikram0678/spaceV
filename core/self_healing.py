@@ -5,11 +5,10 @@ and automatically retries without troubling the user.
 """
 from __future__ import annotations
 
-import re
-import time
 import logging
-from typing import Dict, Any, Tuple, Optional
+import time
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger("SpaceV.SelfHealing")
 
@@ -23,7 +22,7 @@ class SelfHealingEngine:
     MAX_HEALING_ATTEMPTS = 2
 
     @staticmethod
-    def diagnose_failure(tool_name: str, args: Dict[str, Any], error_str: str) -> Dict[str, Any]:
+    def diagnose_failure(tool_name: str, args: dict[str, Any], error_str: str) -> dict[str, Any]:
         """Categorizes failure modes based on OS return codes and traceback signatures."""
         err_lower = error_str.lower()
 
@@ -84,9 +83,9 @@ class SelfHealingEngine:
     @classmethod
     def attempt_remediation(
         cls,
-        diagnosis: Dict[str, Any],
+        diagnosis: dict[str, Any],
         attempt_number: int
-    ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]], str]:
+    ) -> tuple[bool, str | None, dict[str, Any] | None, str]:
         """
         Calculates and applies the healing strategy.
         Returns:

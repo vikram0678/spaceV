@@ -15,10 +15,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core.task_queue import TaskLedger, STATUS_PENDING, STATUS_DEAD_LETTER, STATUS_COMPLETED
-from core.security_guard import SecurityGuard
-from core.vector_memory import VectorMemoryManager
 from core.graph_engine import SpaceVGraphEngine
+from core.security_guard import SecurityGuard
+from core.task_queue import STATUS_DEAD_LETTER, STATUS_PENDING, TaskLedger
+from core.vector_memory import VectorMemoryManager
 
 
 def test_task_ledger_and_dead_letter_queue():

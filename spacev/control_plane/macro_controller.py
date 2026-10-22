@@ -6,16 +6,16 @@ Engineered from Browser-Use Controller for atomic, single-turn multi-step UI exe
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
 
 
 @dataclass
 class MacroAction:
     action_type: str  # 'click', 'type', 'key', 'wait', 'scroll'
-    target: Optional[str] = None
-    value: Optional[str] = None
-    key: Optional[str] = None
+    target: str | None = None
+    value: str | None = None
+    key: str | None = None
     duration_ms: int = 50
 
 
@@ -25,7 +25,7 @@ class StepResult:
     action_type: str
     success: bool
     latency_ms: float
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
@@ -34,7 +34,7 @@ class MacroExecutionResult:
     successful_steps: int
     failed_steps: int
     total_duration_ms: float
-    step_results: List[StepResult] = field(default_factory=list)
+    step_results: list[StepResult] = field(default_factory=list)
 
     @property
     def all_success(self) -> bool:
@@ -47,7 +47,7 @@ class MacroController:
     eliminating multi-roundtrip LLM latency.
     """
 
-    def __init__(self, action_executor: Optional[Callable[[MacroAction], bool]] = None):
+    def __init__(self, action_executor: Callable[[MacroAction], bool] | None = None):
         self.action_executor = action_executor or self._default_executor
 
     def _default_executor(self, action: MacroAction) -> bool:
@@ -55,9 +55,9 @@ class MacroController:
         time.sleep(action.duration_ms / 1000.0)
         return True
 
-    def execute_batch(self, actions: List[MacroAction]) -> MacroExecutionResult:
+    def execute_batch(self, actions: list[MacroAction]) -> MacroExecutionResult:
         start_time = time.perf_counter()
-        step_results: List[StepResult] = []
+        step_results: list[StepResult] = []
         successful = 0
         failed = 0
 

@@ -5,9 +5,9 @@ while dynamically adjusting neural VAD thresholds to allow intentional conversat
 """
 from __future__ import annotations
 
-import time
 import logging
-from typing import Optional, Callable, Tuple
+import time
+from collections.abc import Callable
 
 logger = logging.getLogger("SpaceV.AEC")
 
@@ -18,11 +18,11 @@ class AECReferenceGuard:
     for full-duplex conversational interaction.
     """
 
-    _instance: Optional["AECReferenceGuard"] = None
+    _instance: AECReferenceGuard | None = None
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(AECReferenceGuard, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             cls._instance._init_guard()
         return cls._instance
 
@@ -30,7 +30,7 @@ class AECReferenceGuard:
         self._is_speaker_active = False
         self._speaker_start_time = 0.0
         self._last_barge_in_time = 0.0
-        self._on_barge_in_callback: Optional[Callable[[], None]] = None
+        self._on_barge_in_callback: Callable[[], None] | None = None
 
     def set_speaker_active(self, active: bool) -> None:
         """Sets outgoing TTS speaker status."""
@@ -49,7 +49,7 @@ class AECReferenceGuard:
         """Registers callback to stop TTS immediately upon intentional user barge-in."""
         self._on_barge_in_callback = callback
 
-    def evaluate_frame(self, is_speech: bool, prob: float, rms: float) -> Tuple[bool, float]:
+    def evaluate_frame(self, is_speech: bool, prob: float, rms: float) -> tuple[bool, float]:
         """
         Applies AEC reference filtering to real-time audio frames:
         1. When SpaceV is silent: Normal VAD threshold passes through untouched.

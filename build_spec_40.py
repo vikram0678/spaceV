@@ -1,4 +1,3 @@
-import os
 
 cohorts = [
     ('General Everyday Users', [

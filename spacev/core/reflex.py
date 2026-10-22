@@ -7,18 +7,18 @@ from __future__ import annotations
 
 import inspect
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Any, Dict, List, Optional, Tuple
-from pydantic import BaseModel, Field as PydanticField
+from typing import Any
 
 
 @dataclass
 class ReflexMatch:
     tool_name: str
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
     confidence: float = 1.0
     reply_template: str = "{res}"
-    fn: Optional[Callable] = None
+    fn: Callable | None = None
 
 
 class Field:
@@ -27,10 +27,10 @@ class Field:
         self,
         default: Any = ...,
         *,
-        description: Optional[str] = None,
-        pattern: Optional[str] = None,
-        ge: Optional[float] = None,
-        le: Optional[float] = None
+        description: str | None = None,
+        pattern: str | None = None,
+        ge: float | None = None,
+        le: float | None = None
     ):
         self.default = default
         self.description = description
@@ -45,7 +45,7 @@ class ToolDefinition:
         fn: Callable,
         name: str,
         description: str,
-        triggers: List[str],
+        triggers: list[str],
         confidence_threshold: float = 0.85
     ):
         self.fn = fn
@@ -55,7 +55,7 @@ class ToolDefinition:
         self.confidence_threshold = confidence_threshold
         self.schema = self._build_schema()
 
-    def _build_schema(self) -> Dict[str, Any]:
+    def _build_schema(self) -> dict[str, Any]:
         sig = inspect.signature(self.fn)
         properties = {}
         required = []
@@ -63,7 +63,7 @@ class ToolDefinition:
         for param_name, param in sig.parameters.items():
             if param_name in ("self", "cls"):
                 continue
-            
+
             p_type = "string"
             if param.annotation == int:
                 p_type = "integer"
@@ -94,13 +94,13 @@ class ToolDefinition:
         return any(trig.search(text) for trig in self.triggers)
 
 
-_TOOL_REGISTRY: Dict[str, ToolDefinition] = {}
+_TOOL_REGISTRY: dict[str, ToolDefinition] = {}
 
 
 def spacev_tool(
-    name: Optional[str] = None,
-    description: Optional[str] = None,
-    triggers: Optional[List[str]] = None,
+    name: str | None = None,
+    description: str | None = None,
+    triggers: list[str] | None = None,
     confidence_threshold: float = 0.85
 ) -> Callable:
     """Decorator to register a deterministic SpaceV reflex tool."""
@@ -130,7 +130,7 @@ class SpaceVReflexEngine:
     """
     def __init__(self):
         self.registry = _TOOL_REGISTRY
-        self._compiled_reflex_routes: List[Dict[str, Any]] = []
+        self._compiled_reflex_routes: list[dict[str, Any]] = []
         self._init_native_reflexes()
 
     def _init_native_reflexes(self):
@@ -299,7 +299,7 @@ class SpaceVReflexEngine:
                     "reply": item.get("reply", "{res}")
                 })
 
-    def match_command(self, user_prompt: str) -> Optional[ReflexMatch]:
+    def match_command(self, user_prompt: str) -> ReflexMatch | None:
         """
         Sub-0.2ms deterministic regex matcher and parameter extractor.
         """
@@ -350,7 +350,7 @@ class SpaceVReflexEngine:
                     )
         return None
 
-    def match_and_execute(self, user_prompt: str) -> Optional[Tuple[str, str, str]]:
+    def match_and_execute(self, user_prompt: str) -> tuple[str, str, str] | None:
         """
         Executes deterministic grammar matching and parameter extraction in <0.2ms.
         Returns Tuple[tool_name, tool_result, reply_text] or None.
@@ -368,7 +368,7 @@ class SpaceVReflexEngine:
                 reply_text = f"Right away, Sir. {res_str}"
             return (match.tool_name, res_str, reply_text)
         except Exception as e:
-            return (match.tool_name, str(e), f"Encountered an issue running {match.tool_name}, Sir: {str(e)}")
+            return (match.tool_name, str(e), f"Encountered an issue running {match.tool_name}, Sir: {e!s}")
 
 
 reflex_engine = SpaceVReflexEngine()

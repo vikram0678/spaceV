@@ -5,9 +5,8 @@ Strictly validates sandbox naming regex, allowed states, and execution_target: '
 from __future__ import annotations
 
 import re
-from typing import Literal
-from pydantic import BaseModel, field_validator
 
+from pydantic import BaseModel, field_validator
 
 ALLOWED_STATES = {"created", "ready", "running", "succeeded", "failed", "deleted"}
 

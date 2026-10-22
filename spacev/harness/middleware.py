@@ -5,9 +5,6 @@ Engineered from Harness² (Google LLC 2026) plugin & middleware architecture.
 
 from __future__ import annotations
 
-import re
-from typing import Any, Dict, Optional, Tuple
-
 
 class ObservationSanitizerMiddleware:
     """
@@ -19,7 +16,7 @@ class ObservationSanitizerMiddleware:
         self.max_chars = max_chars
         self.max_lines = max_lines
 
-    def sanitize(self, tool_name: str, raw_output: str) -> Tuple[str, bool]:
+    def sanitize(self, tool_name: str, raw_output: str) -> tuple[str, bool]:
         """
         Returns (sanitized_output, was_truncated).
         """

@@ -3,6 +3,7 @@ Verification script for SpaceV Modern Voice Pipeline:
 Silero VAD, Audio Ring Buffering, FastRouter Dictation, and Faster-Whisper.
 """
 import sys
+
 try:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -10,10 +11,12 @@ except Exception:
     pass
 
 import numpy as np
-from voice.vad_detector import SileroVADDetector
+
+from core.fast_router import FastRouter
 from voice.audio_stream import AudioStreamRecorder
 from voice.dictation_manager import dictation_manager
-from core.fast_router import FastRouter
+from voice.vad_detector import SileroVADDetector
+
 
 def run_tests():
     print("[TEST 1] Testing Silero VAD ONNX...")

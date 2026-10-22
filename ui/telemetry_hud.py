@@ -5,11 +5,8 @@ reflex routing latencies (<0.5ms), active model role, and perception state.
 """
 from __future__ import annotations
 
-import time
-from typing import Optional
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
-from PyQt6.QtGui import QFont, QColor, QPalette
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 try:
     import psutil

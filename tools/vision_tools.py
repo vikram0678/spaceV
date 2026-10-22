@@ -2,9 +2,8 @@
 Screen Vision and Active Window Inspector for SpaceV.
 Allows SpaceV to perceive what is on your screen and read the clipboard.
 """
-import os
 import ctypes
-from pathlib import Path
+
 from config import USER_DESKTOP_DIR
 
 try:
@@ -39,7 +38,7 @@ def get_active_window_info() -> str:
             return f"Active Window: '{title}' (Screen Resolution: {screen_w}x{screen_h})"
         return f"Desktop / Windows Shell (Resolution: {screen_w}x{screen_h})"
     except Exception as e:
-        return f"Failed to get active window: {str(e)}"
+        return f"Failed to get active window: {e!s}"
 
 def take_screen_snapshot(filename: str = "spacev_snapshot.png") -> str:
     """
@@ -55,7 +54,7 @@ def take_screen_snapshot(filename: str = "spacev_snapshot.png") -> str:
         tier = get_active_capture_tier()
         return f"Captured full screen snapshot via {tier} and saved to: {target_path}"
     except Exception as e:
-        return f"Failed to capture screen: {str(e)}"
+        return f"Failed to capture screen: {e!s}"
 
 def read_clipboard_text() -> str:
     """
@@ -86,5 +85,5 @@ def write_clipboard_text(text: str) -> str:
         except Exception as e:
             last_err = e
             time.sleep(0.05 * (attempt + 1))
-    return f"Failed to copy to clipboard: {str(last_err)}"
+    return f"Failed to copy to clipboard: {last_err!s}"
 

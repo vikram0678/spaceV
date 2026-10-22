@@ -6,16 +6,15 @@ Enforces 400 Bad Request on schema/target/state violations.
 from __future__ import annotations
 
 import logging
-from typing import List, Dict, Any
+from typing import Any
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from pydantic import ValidationError
+from fastapi.responses import JSONResponse
 
 from spacev.config import settings
-from spacev.control_plane.models import RunCreateRequest
 from spacev.control_plane.database import db
+from spacev.control_plane.models import RunCreateRequest
 
 logger = logging.getLogger("SpaceV.API")
 
@@ -47,19 +46,19 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 @app.get("/health", status_code=status.HTTP_200_OK)
-def get_health() -> Dict[str, str]:
+def get_health() -> dict[str, str]:
     """Healthcheck endpoint (Contract #1 & #11)."""
     return {"status": "ok"}
 
 
 @app.get("/api/runs", status_code=status.HTTP_200_OK)
-def list_runs() -> List[Dict[str, Any]]:
+def list_runs() -> list[dict[str, Any]]:
     """Returns list of all runs recorded in the ledger."""
     return db.list_runs()
 
 
 @app.post("/api/runs", status_code=status.HTTP_201_CREATED)
-def create_run(payload: RunCreateRequest) -> Dict[str, Any]:
+def create_run(payload: RunCreateRequest) -> dict[str, Any]:
     """Records a new sandbox run row into the ledger."""
     row = db.insert_run(
         run_id=payload.run_id,

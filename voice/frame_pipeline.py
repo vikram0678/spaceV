@@ -8,11 +8,10 @@ Architected for enterprise-grade low-latency multimodal voice interactions:
 """
 from __future__ import annotations
 
-import time
-import queue
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import Optional, List, Callable, Any, Dict
+from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -25,16 +24,16 @@ logger = logging.getLogger("SpaceV.PipecatFrameGraph")
 try:
     import pipecat
     from pipecat.frames.frames import (
-        Frame as PipecatFrame,
-        SystemFrame as PipecatSystemFrame,
+        AudioRawFrame as PipecatAudioRawFrame,
+        CancelFrame as PipecatCancelFrame,
         ControlFrame as PipecatControlFrame,
         DataFrame as PipecatDataFrame,
-        AudioRawFrame as PipecatAudioRawFrame,
+        EndFrame as PipecatEndFrame,
+        Frame as PipecatFrame,
+        InterruptionFrame as PipecatInterruptionFrame,
+        SystemFrame as PipecatSystemFrame,
         UserStartedSpeakingFrame as PipecatUserStartedSpeakingFrame,
         UserStoppedSpeakingFrame as PipecatUserStoppedSpeakingFrame,
-        InterruptionFrame as PipecatInterruptionFrame,
-        CancelFrame as PipecatCancelFrame,
-        EndFrame as PipecatEndFrame
     )
     _HAS_PIPECAT = True
 except ImportError:
@@ -56,7 +55,7 @@ if _HAS_PIPECAT:
             audio: bytes = b"",
             sample_rate: int = 16000,
             num_channels: int = 1,
-            pcm_bytes: Optional[bytes] = None,
+            pcm_bytes: bytes | None = None,
             is_speech: bool = False,
             vad_probability: float = 0.0
         ):
@@ -185,8 +184,8 @@ class FrameProcessor:
     """
     def __init__(self, name: str = ""):
         self.name = name or self.__class__.__name__
-        self._next_processor: Optional[FrameProcessor] = None
-        self._prev_processor: Optional[FrameProcessor] = None
+        self._next_processor: FrameProcessor | None = None
+        self._prev_processor: FrameProcessor | None = None
 
     def set_next(self, processor: FrameProcessor) -> FrameProcessor:
         self._next_processor = processor
@@ -230,7 +229,7 @@ class VADFrameProcessor(FrameProcessor):
         self._speech_started = False
         self._silence_counter = 0
         self._speech_chunk_counter = 0
-        self._recorded_frames: List[bytes] = []
+        self._recorded_frames: list[bytes] = []
 
     def reset(self):
         self._pre_buffer.clear()
@@ -543,7 +542,7 @@ class SpaceVFramePipeline(QObject):
         self.aggregator.process_frame(EndFrame())
         self.turn_completed.emit()
 
-    def flush_microsecond(self, reason: str = "conversational_turn_taking") -> Dict[str, Any]:
+    def flush_microsecond(self, reason: str = "conversational_turn_taking") -> dict[str, Any]:
         """
         Executes sub-50μs audio buffer purging across all nodes in the Pipecat Frame Graph:
         1. Emits 0ms cancellation to audio output sinks.
@@ -590,7 +589,7 @@ class SpaceVFramePipeline(QObject):
         self.vad_processor.process_frame(frame)
         self.pipeline_interrupted.emit(reason)
 
-    def get_telemetry(self) -> Dict[str, Any]:
+    def get_telemetry(self) -> dict[str, Any]:
         """Returns operational metrics of the Pipecat Frame Graph."""
         return {
             "pipecat_native": _HAS_PIPECAT,

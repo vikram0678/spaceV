@@ -6,12 +6,11 @@ detecting both text buttons and non-text interactive icons (⚙️ Settings, ▶
 """
 from __future__ import annotations
 
-import time
-import math
 import difflib
 import logging
+import math
+import time
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -28,8 +27,8 @@ class UIElement:
     element_id: int
     element_type: str  # 'icon', 'button', 'text_control', 'input'
     label: str         # 'play', 'settings', 'close', 'search', or text content
-    bbox: Tuple[int, int, int, int]  # (x1, y1, x2, y2)
-    center: Tuple[int, int]          # (cx, cy)
+    bbox: tuple[int, int, int, int]  # (x1, y1, x2, y2)
+    center: tuple[int, int]          # (cx, cy)
     confidence: float
 
 
@@ -44,7 +43,7 @@ class OmniParserEngine:
         self.min_size = min_size
         self.max_size = max_size
 
-    def parse_screen(self, image: Optional[Image.Image] = None) -> List[UIElement]:
+    def parse_screen(self, image: Image.Image | None = None) -> list[UIElement]:
         """
         Parses desktop frame into structured interactive UI elements and icons.
         """
@@ -61,7 +60,7 @@ class OmniParserEngine:
         else:
             gray = cv_img
 
-        parsed_elements: List[UIElement] = []
+        parsed_elements: list[UIElement] = []
         element_id = 1
 
         # 1. Edge & Contour Discovery for Interactive Widgets
@@ -133,7 +132,7 @@ class OmniParserEngine:
         w: int,
         h: int,
         roi: np.ndarray
-    ) -> Tuple[str, float]:
+    ) -> tuple[str, float]:
         """
         Classifies geometric features into standard UI icon categories:
         play, close, settings, search, hamburger_menu, profile, download, plus.
@@ -190,9 +189,9 @@ class OmniParserEngine:
     def find_icon_or_element(
         self,
         target_description: str,
-        image: Optional[Image.Image] = None,
+        image: Image.Image | None = None,
         min_similarity: float = 0.65
-    ) -> Optional[Tuple[int, int, str, float]]:
+    ) -> tuple[int, int, str, float] | None:
         """
         Locates any UI button, icon, or text element matching target_description.
         Returns:
@@ -227,7 +226,7 @@ class OmniParserEngine:
         if "add" in clean_target or "plus" in clean_target or "new" in clean_target:
             target_aliases.extend(["add", "plus"])
 
-        best_match: Optional[UIElement] = None
+        best_match: UIElement | None = None
         best_score: float = 0.0
 
         for elem in elements:
@@ -284,7 +283,7 @@ class OmniParserEngine:
             return f"OmniParser visually located '{label}' at ({cx}, {cy}) and clicked successfully!"
 
         except Exception as e:
-            return f"OmniParser visual click failed: {str(e)}"
+            return f"OmniParser visual click failed: {e!s}"
 
 
 # Global singleton instance

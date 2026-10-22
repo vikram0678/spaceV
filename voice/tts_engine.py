@@ -5,16 +5,19 @@ Runs on a dedicated QThread with thread-safe Qt signal emission, eliminating
 cross-thread QWidget painting collisions and segmentation faults.
 Features low-latency sentence-by-sentence streaming for instant response.
 """
+import asyncio
+import io
 import os
-import sys
 import queue
 import re
+import sys
 import time
-import io
-import asyncio
-from typing import Optional, Callable
+from collections.abc import Callable
+from typing import Optional
+
 from PyQt6.QtCore import QThread, pyqtSignal
-from config import USE_NEURAL_TTS, TTS_NEURAL_VOICE
+
+from config import TTS_NEURAL_VOICE, USE_NEURAL_TTS
 
 # In WSL2/WSLg, route SDL audio directly to the PulseAudio bridge
 if sys.platform != "win32" and os.path.exists("/mnt/wslg/PulseServer"):
@@ -62,7 +65,7 @@ class SentenceStreamBuffer:
     Buffers incoming tokens from LLM streaming and yields complete sentences
     the moment terminal punctuation is reached, enabling zero-latency voice playback.
     """
-    def __init__(self, on_sentence_ready: Callable[[str], None], on_stream_finished: Optional[Callable[[], None]] = None):
+    def __init__(self, on_sentence_ready: Callable[[str], None], on_stream_finished: Callable[[], None] | None = None):
         self.on_sentence_ready = on_sentence_ready
         self.on_stream_finished = on_stream_finished
         self.buffer = ""

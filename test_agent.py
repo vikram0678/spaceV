@@ -2,6 +2,7 @@
 Unit and integration test script for SpaceV Tools and Fast-Path Dispatcher.
 """
 import sys
+
 try:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -9,23 +10,28 @@ except Exception:
     pass
 
 try:
-    import onnxruntime
+    pass
 except Exception:
     pass
 
 import unittest
-import os
-from pathlib import Path
-from tools.file_tools import create_folder, create_file, read_file_content, resolve_path
-from tools.system_tools import (
-    get_current_time, get_system_stats, get_network_info,
-    list_running_apps, optimize_system_memory, media_control,
-    set_timer, list_active_timers
-)
-from tools.vision_tools import write_clipboard_text, read_clipboard_text
-from tools.registry import execute_tool, TOOL_FUNCTIONS, OLLAMA_TOOLS_SCHEMA
+
 from core.fast_router import FastRouter
 from core.scheduler import scheduler
+from tools.file_tools import create_file, create_folder, read_file_content, resolve_path
+from tools.registry import OLLAMA_TOOLS_SCHEMA, TOOL_FUNCTIONS, execute_tool
+from tools.system_tools import (
+    get_current_time,
+    get_network_info,
+    get_system_stats,
+    list_active_timers,
+    list_running_apps,
+    media_control,
+    optimize_system_memory,
+    set_timer,
+)
+from tools.vision_tools import read_clipboard_text, write_clipboard_text
+
 
 class TestSpaceVAgent(unittest.TestCase):
     def test_file_tools(self):
@@ -53,7 +59,7 @@ class TestSpaceVAgent(unittest.TestCase):
     def test_system_tools(self):
         time_res = get_current_time()
         self.assertIn("The current time is", time_res)
-        
+
         stats_res = get_system_stats()
         self.assertIn("CPU Usage", stats_res)
         self.assertIn("RAM", stats_res)
@@ -91,9 +97,9 @@ class TestSpaceVAgent(unittest.TestCase):
     def test_tool_registry_integrity(self):
         schema_names = {s["function"]["name"] for s in OLLAMA_TOOLS_SCHEMA}
         registered_names = set(TOOL_FUNCTIONS.keys())
-        
+
         self.assertTrue(schema_names.issubset(registered_names), f"Missing functions: {schema_names - registered_names}")
-        
+
         res = execute_tool("get_current_time", {})
         self.assertIn("The current time is", res)
 
@@ -195,8 +201,8 @@ class TestSpaceVAgent(unittest.TestCase):
         self.assertEqual(match_yt3[0], "play_youtube")
 
     def test_pydantic_schema_validation_and_coercion(self):
-        from tools.schemas import SetTimerInput, CreateFolderInput, ScrapeJobsInput
-        
+        from tools.schemas import CreateFolderInput, SetTimerInput
+
         # Test string-to-float coercion
         timer_input = SetTimerInput(minutes="10", label="Focus Session")
         self.assertEqual(timer_input.minutes, 10.0)
@@ -214,7 +220,7 @@ class TestSpaceVAgent(unittest.TestCase):
     def test_langgraph_engine_compilation_and_fast_path(self):
         from core.graph_engine import SpaceVGraphEngine
         engine = SpaceVGraphEngine()
-        
+
         # Verify LangGraph compiled app exists
         self.assertIsNotNone(engine.app)
 
@@ -284,7 +290,7 @@ class TestSpaceVAgent(unittest.TestCase):
         self.assertTrue(companion_engine.last_activity > 0)
 
     def test_multimodel_router_and_ram_optimization(self):
-        from core.model_router import MultiModelRouter, ROLE_FAST_CHAT, ROLE_CODER_TOOLS, ROLE_VISION
+        from core.model_router import ROLE_CODER_TOOLS, ROLE_FAST_CHAT, ROLE_VISION, MultiModelRouter
         router = MultiModelRouter()
 
         # Test Intent Classification
@@ -311,10 +317,10 @@ class TestSpaceVAgent(unittest.TestCase):
 
     def test_neural_vad_and_modern_voice_pipeline(self):
         import numpy as np
-        from voice.vad_detector import SileroVADDetector
-        from voice.audio_stream import AudioStreamRecorder
-        from voice.dictation_manager import DictationManager
+
         from core.fast_router import FastRouter
+        from voice.audio_stream import AudioStreamRecorder
+        from voice.vad_detector import SileroVADDetector
 
         # 1. Test Silero VAD initialization and inference
         vad = SileroVADDetector()
@@ -344,7 +350,7 @@ class TestSpaceVAgent(unittest.TestCase):
         dictation_manager.stop_dictation()
 
     def test_cursor_speed_profiles(self):
-        from tools.gui_tools import safety, CURSOR_SPEED_PRESETS
+        from tools.gui_tools import CURSOR_SPEED_PRESETS, safety
 
         expected_profiles = ["Hyper", "Fast", "Normal", "Steady", "Precision"]
         for p in expected_profiles:
@@ -420,9 +426,8 @@ class TestSpaceVAgent(unittest.TestCase):
         self.assertTrue(len(tokens) > 0)
 
     def test_universal_modal_interceptor_and_memory(self):
-        from core.modal_interceptor import modal_interceptor, GatekeeperModal
-        from core.memory import memory
         from core.fast_router import FastRouter
+        from core.memory import memory
 
         # 1. Test Hierarchical Preference Matrix
         memory.set_preference("vscode", "trust_workspace", "always_trust")
@@ -486,9 +491,10 @@ class TestSpaceVAgent(unittest.TestCase):
         self.assertFalse(res_state["stuck_detected"])
 
     def test_vision_grounding_and_vector_rag(self):
+        from PIL import Image, ImageDraw
+
         from core.vector_memory import vector_memory
         from tools.registry import TOOL_FUNCTIONS, execute_tool
-        from PIL import Image, ImageDraw
 
         # 1. Test Semantic Vector / FTS5 Memory Storage & Search
         vector_memory.store("doc_1", "Cosmic deployment instructions for SpaceV agent", domain="docs")
@@ -522,7 +528,7 @@ class TestSpaceVAgent(unittest.TestCase):
         self.assertIn("search_memory", TOOL_FUNCTIONS)
 
     def test_windows_uia_and_dual_tier_grounding(self):
-        from core.uia_grounding import list_interactive_controls, find_control_by_name
+        from core.uia_grounding import find_control_by_name, list_interactive_controls
         from tools.registry import TOOL_FUNCTIONS
 
         # 1. Test listing controls (runs safely in any desktop/console session)
@@ -539,8 +545,8 @@ class TestSpaceVAgent(unittest.TestCase):
         self.assertIn("get_activity_timeline", TOOL_FUNCTIONS)
 
     def test_temporal_timeline_memory_and_privacy(self):
-        from core.temporal_memory import temporal_memory, sanitize_text
         from core.fast_router import FastRouter
+        from core.temporal_memory import sanitize_text, temporal_memory
 
         # 1. Test automated privacy redaction
         raw_secret = "Confidential: api_key = sk-1234567890123456789012 and password = 'mySecretPassword99'"
@@ -572,8 +578,8 @@ class TestSpaceVAgent(unittest.TestCase):
         self.assertIn("Clipboard", res[2])
 
     def test_langgraph_self_healing_node(self):
-        from core.self_healing import self_healing_engine
         from core.graph_engine import SpaceVGraphEngine
+        from core.self_healing import self_healing_engine
 
         # 1. Test failure diagnosis
         diag_locked = self_healing_engine.diagnose_failure("read_file_content", {"filename": "data.bin"}, "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process")
@@ -615,8 +621,9 @@ class TestSpaceVAgent(unittest.TestCase):
 
     def test_ghost_mode_manager_and_process_isolation(self):
         import sys
-        from core.ghost_mode import ghost_manager
+
         from core.fast_router import FastRouter
+        from core.ghost_mode import ghost_manager
 
         # 1. Test enable & disable
         msg_enable = ghost_manager.enable()
@@ -673,7 +680,7 @@ class TestSpaceVAgent(unittest.TestCase):
         aec_guard.set_speaker_active(False)
 
     def test_screen_capture_multi_tier_engine(self):
-        from core.screen_capture import capture_desktop_pil, capture_desktop_cv2, get_active_capture_tier
+        from core.screen_capture import capture_desktop_cv2, capture_desktop_pil, get_active_capture_tier
 
         # 1. Test tier discovery
         tier = get_active_capture_tier()
@@ -692,6 +699,7 @@ class TestSpaceVAgent(unittest.TestCase):
         import cv2
         import numpy as np
         from PIL import Image
+
         from core.omniparser import omniparser
         from tools.registry import TOOL_FUNCTIONS
 
@@ -734,8 +742,8 @@ class TestSpaceVAgent(unittest.TestCase):
         self.assertIn("parse_screen_elements", TOOL_FUNCTIONS)
 
     def test_sqlite_vec_dense_knn_and_hybrid_rag(self):
-        from core.vector_memory import vector_memory, generate_embedding
-        import time
+
+        from core.vector_memory import generate_embedding, vector_memory
 
         # 1. Verify C extension is actively loaded
         self.assertTrue(vector_memory.is_vec_available)
@@ -771,8 +779,8 @@ class TestSpaceVAgent(unittest.TestCase):
         vector_memory.delete(doc_b)
 
     def test_semantic_router_fuzzy_intent_matching_and_latency(self):
-        from core.semantic_router_engine import semantic_router_engine
         from core.fast_router import FastRouter
+        from core.semantic_router_engine import semantic_router_engine
 
         # 1. Verify router initialization
         self.assertIsNotNone(semantic_router_engine.router)
@@ -806,11 +814,12 @@ class TestSpaceVAgent(unittest.TestCase):
 
     def test_pipecat_frame_graph_and_microsecond_audio_flush(self):
         from voice.frame_pipeline import (
-            frame_pipeline, pipecat_frame_graph,
-            AudioRawFrame, UserStartedSpeakingFrame,
-            UserStoppedSpeakingFrame, InterruptionFrame
+            AudioRawFrame,
+            UserStartedSpeakingFrame,
+            UserStoppedSpeakingFrame,
+            frame_pipeline,
+            pipecat_frame_graph,
         )
-        from voice.aec_guard import aec_guard
 
         # 1. Verify Frame Graph singleton integrity
         self.assertIs(frame_pipeline, pipecat_frame_graph)
@@ -848,7 +857,8 @@ class TestSpaceVAgent(unittest.TestCase):
         import cv2
         import numpy as np
         from PIL import Image
-        from core.ui_tars import ui_tars_engine, UITARSEngine, UITARSAction
+
+        from core.ui_tars import UITARSEngine, ui_tars_engine
         from tools.registry import TOOL_FUNCTIONS, execute_tool
 
         # 1. Test UI-TARS action syntax parser with OSWorld [0, 1000] normalization

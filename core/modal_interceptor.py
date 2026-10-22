@@ -4,20 +4,19 @@ Provides OS-level detection of Gatekeeper Modals (profile selectors, trust promp
 file conflict dialogs, and confirmation popups) across all Windows applications.
 Follows the 4-layer Universal Decoupled Architecture.
 """
-import time
-import re
 import ctypes
-from dataclasses import dataclass, field
-from typing import List, Tuple, Optional, Dict, Any
+import re
+import time
+from dataclasses import dataclass
 
-from tools.vision_tools import get_active_window_info
 from core.memory import memory
+from tools.vision_tools import get_active_window_info
 
 try:
+    import psutil
+    import win32con
     import win32gui
     import win32process
-    import win32con
-    import psutil
     HAS_WIN32 = True
 except ImportError:
     HAS_WIN32 = False
@@ -30,8 +29,8 @@ class GatekeeperModal:
     dialog_title: str               # e.g., "Who's using Chrome?", "Confirm File Replace", "Trust Authors"
     property_key: str               # e.g., "profile", "overwrite_policy", "trust_mode"
     question: str                   # Clean Jarvis-grade question to ask the user
-    options: List[Tuple[str, str]]  # [("👤 n. vikram", "vikram"), ("👤 Vicky Space", "vicky")]
-    default_option: Optional[str] = None
+    options: list[tuple[str, str]]  # [("👤 n. vikram", "vikram"), ("👤 Vicky Space", "vicky")]
+    default_option: str | None = None
     raw_window_info: str = ""
 
 
@@ -44,7 +43,7 @@ class UniversalModalInterceptor:
     def __init__(self):
         pass
 
-    def inspect_active_window(self) -> Tuple[str, str, str]:
+    def inspect_active_window(self) -> tuple[str, str, str]:
         """
         Returns (window_title, process_name, class_name) for the currently focused window.
         """
@@ -90,7 +89,7 @@ class UniversalModalInterceptor:
 
         return title, proc_name, cls_name
 
-    def detect(self) -> Optional[GatekeeperModal]:
+    def detect(self) -> GatekeeperModal | None:
         """
         Inspects the desktop to detect any blocking gatekeeper modal across all applications.
         """
@@ -187,7 +186,7 @@ class UniversalModalInterceptor:
 
         return None
 
-    def _get_dialog_buttons(self) -> List[str]:
+    def _get_dialog_buttons(self) -> list[str]:
         """Extracts text of child push buttons in a Win32 dialog."""
         buttons = []
         if not HAS_WIN32:
@@ -213,7 +212,7 @@ class UniversalModalInterceptor:
 
         return buttons
 
-    def resolve_or_intercept(self, pending_task: Optional[str] = None) -> Tuple[bool, Optional[GatekeeperModal], str]:
+    def resolve_or_intercept(self, pending_task: str | None = None) -> tuple[bool, GatekeeperModal | None, str]:
         """
         Universal closed-loop gatekeeper handler:
         1. Checks if any gatekeeper modal is active.

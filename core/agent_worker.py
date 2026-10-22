@@ -2,9 +2,11 @@
 Background Worker Thread with Real-Time Word Streaming & 0ms Fast-Path Dispatcher.
 """
 from PyQt6.QtCore import QThread, pyqtSignal
-from core.ollama_client import OllamaAgent
+
 from core.graph_engine import SpaceVGraphEngine
+from core.ollama_client import OllamaAgent
 from voice.tts_engine import tts
+
 
 class AgentWorker(QThread):
     started_processing = pyqtSignal()

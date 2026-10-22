@@ -3,17 +3,17 @@ Persistent Memory Manager for SpaceV Cybernetic Desktop AI Agent.
 Stores user preferences, custom shortcuts, and long-term context in a local JSON file.
 """
 import json
-import os
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
+
 from config import MEMORY_FILE
+
 
 class MemoryManager:
     _instance = None
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(MemoryManager, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             cls._instance.data = {}
             cls._instance.load()
         return cls._instance
@@ -22,7 +22,7 @@ class MemoryManager:
         """Loads persistent data from JSON file."""
         if MEMORY_FILE.exists():
             try:
-                with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+                with open(MEMORY_FILE, encoding="utf-8") as f:
                     self.data = json.load(f)
             except Exception:
                 self.data = {}
@@ -81,12 +81,12 @@ class MemoryManager:
         self.data["preferences"][domain][key] = value
         self.save()
 
-    def set_suspended_disambiguation(self, data: Dict[str, Any]):
+    def set_suspended_disambiguation(self, data: dict[str, Any]):
         """Stores a suspended interactive task awaiting user clarification."""
         self.data["suspended_disambiguation"] = data
         self.save()
 
-    def get_suspended_disambiguation(self) -> Optional[Dict[str, Any]]:
+    def get_suspended_disambiguation(self) -> dict[str, Any] | None:
         """Retrieves currently suspended task awaiting user input."""
         return self.data.get("suspended_disambiguation")
 

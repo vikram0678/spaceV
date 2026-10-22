@@ -1,11 +1,10 @@
 """
 System and OS automation tools for Windows.
 """
-import os
-import subprocess
+import ctypes
 import datetime
 import socket
-import ctypes
+import subprocess
 
 try:
     import psutil
@@ -61,7 +60,7 @@ def open_application(app_name: str) -> str:
     """
     Launches an application by name across Windows, WSL, macOS, and Linux.
     """
-    from tools.gui_tools import safety, gui_open_and_search_app
+    from tools.gui_tools import gui_open_and_search_app, safety
     if safety.autonomous_mode_enabled:
         return gui_open_and_search_app(app_name)
 
@@ -85,13 +84,13 @@ def get_system_stats() -> str:
         mem = psutil.virtual_memory()
         mem_used_gb = round((mem.total - mem.available) / (1024 ** 3), 1)
         mem_total_gb = round(mem.total / (1024 ** 3), 1)
-        
+
         battery = psutil.sensors_battery()
         battery_str = "No battery detected (Desktop/Plugged in)"
         if battery:
             plugged = "Plugged in" if battery.power_plugged else "On battery"
             battery_str = f"{battery.percent}% ({plugged})"
-            
+
         return (
             f"System Status:\n"
             f"• CPU Usage: {cpu}%\n"
@@ -99,7 +98,7 @@ def get_system_stats() -> str:
             f"• Battery: {battery_str}"
         )
     except Exception as e:
-        return f"Failed to retrieve system statistics: {str(e)}"
+        return f"Failed to retrieve system statistics: {e!s}"
 
 def activate_workspace_mode(mode: str) -> str:
     """
@@ -107,21 +106,21 @@ def activate_workspace_mode(mode: str) -> str:
     """
     import webbrowser
     clean = mode.strip().lower()
-    
+
     if "code" in clean or "dev" in clean:
         subprocess.Popen("code", shell=True)
         webbrowser.open("https://www.youtube.com/results?search_query=lofi+hip+hop+radio")
         return "Activated **Coding Mode**: Launched VS Code and queued up Lofi beats on YouTube, Sir."
-    
+
     elif "research" in clean or "study" in clean:
         webbrowser.open("https://en.wikipedia.org")
         subprocess.Popen("notepad", shell=True)
         return "Activated **Research Mode**: Opened encyclopedia portal and initialized Notepad."
-        
+
     elif "focus" in clean or "quiet" in clean:
         subprocess.Popen("notepad", shell=True)
         return "Activated **Focus Mode**: Closed distractions and initialized scratchpad, Sir."
-        
+
     else:
         return f"Recognized workspace mode request: '{mode}'. Workspace configured."
 
@@ -137,7 +136,7 @@ def optimize_system_memory() -> str:
             return f"System Memory Optimization Complete, Sir. Reclaimed {collected} memory handles. Free RAM: {round(mem.available / (1024**3), 1)} GB."
         return f"System Memory Optimization Complete, Sir. Reclaimed {collected} memory handles."
     except Exception as e:
-        return f"Failed to optimize memory: {str(e)}"
+        return f"Failed to optimize memory: {e!s}"
 
 def _send_vk_key(vk_code: int):
     """Sends a virtual key press and release event to Windows."""
@@ -179,7 +178,7 @@ def media_control(action: str) -> str:
         else:
             return f"Unrecognized media action: '{action}'. (Options: play, pause, next, previous, mute, volume_up, volume_down)"
     except Exception as e:
-        return f"Failed to execute media control: {str(e)}"
+        return f"Failed to execute media control: {e!s}"
 
 def lock_workstation() -> str:
     """
@@ -191,7 +190,7 @@ def lock_workstation() -> str:
             return "Workstation locked successfully, Sir."
         return "Workstation lock requested (simulated), Sir."
     except Exception as e:
-        return f"Failed to lock workstation: {str(e)}"
+        return f"Failed to lock workstation: {e!s}"
 
 def empty_recycle_bin() -> str:
     """
@@ -205,7 +204,7 @@ def empty_recycle_bin() -> str:
             return "Recycle Bin cleaned, Sir."
         return "Recycle Bin emptied, Sir."
     except Exception as e:
-        return f"Failed to empty Recycle Bin: {str(e)}"
+        return f"Failed to empty Recycle Bin: {e!s}"
 
 def get_network_info() -> str:
     """
@@ -214,7 +213,7 @@ def get_network_info() -> str:
     try:
         hostname = socket.gethostname()
         local_ip = socket.gethostbyname(hostname)
-        
+
         internet_status = "Connected 🌐"
         try:
             s = socket.create_connection(("8.8.8.8", 53), timeout=2)
@@ -237,7 +236,7 @@ def get_network_info() -> str:
             f"{io_str}"
         )
     except Exception as e:
-        return f"Failed to retrieve network info: {str(e)}"
+        return f"Failed to retrieve network info: {e!s}"
 
 def list_running_apps() -> str:
     """
@@ -273,16 +272,16 @@ def list_running_apps() -> str:
         # Sort by memory usage
         apps.sort(key=lambda x: x[1], reverse=True)
         top_apps = apps[:8]
-        
+
         if not top_apps:
             return active_prefix + "No prominent active applications detected."
-            
+
         summary = [f"{active_prefix}Top Active Applications & Memory Usage, Sir:"]
         for idx, (name, mem_mb) in enumerate(top_apps, 1):
             summary.append(f"{idx}. **{name}** — {mem_mb} MB RAM")
         return "\n".join(summary)
     except Exception as e:
-        return f"Failed to list running apps: {str(e)}"
+        return f"Failed to list running apps: {e!s}"
 
 def kill_process_by_name(process_name: str) -> str:
     """
@@ -299,12 +298,12 @@ def kill_process_by_name(process_name: str) -> str:
                     killed_count += 1
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
-                
+
         if killed_count > 0:
             return f"Successfully terminated {killed_count} instance(s) of '{process_name}', Sir."
         return f"No active process matching '{process_name}' was found."
     except Exception as e:
-        return f"Failed to terminate process: {str(e)}"
+        return f"Failed to terminate process: {e!s}"
 
 def set_timer(minutes: float, label: str = "Timer") -> str:
     """
@@ -315,7 +314,7 @@ def set_timer(minutes: float, label: str = "Timer") -> str:
         total_seconds = float(minutes) * 60.0
         return scheduler.set_timer(total_seconds, label=label)
     except Exception as e:
-        return f"Failed to set timer: {str(e)}"
+        return f"Failed to set timer: {e!s}"
 
 def list_active_timers() -> str:
     """
@@ -331,6 +330,6 @@ def list_active_timers() -> str:
             summary.append(f"• **{t['label']}** ({t['id']}): {t['remaining']} remaining")
         return "\n".join(summary)
     except Exception as e:
-        return f"Failed to list timers: {str(e)}"
+        return f"Failed to list timers: {e!s}"
 
 

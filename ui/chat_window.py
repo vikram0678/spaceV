@@ -2,32 +2,30 @@
 Modern Glassmorphic Chat Popup Window with Word Streaming, Voice Support,
 and Proactive Companion Engine with Dynamic Follow-up Action Chips.
 """
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QEvent, QTimer
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
-    QPushButton, QScrollArea, QFrame, QSizePolicy, QMenu
+from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QFont, QKeyEvent, QTextDocument, QWheelEvent
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget
+
+from config import (
+    APP_NAME,
+    AUTO_LISTEN_FOLLOWUP,
+    CHAT_HEIGHT,
+    CHAT_WIDTH,
+    DEFAULT_CURSOR_SPEED,
+    WAKE_WORD_ENABLED_BY_DEFAULT,
 )
-from PyQt6.QtGui import QFont, QKeyEvent, QWheelEvent, QTextDocument
-from config import CHAT_WIDTH, CHAT_HEIGHT, APP_NAME, THEME, AUTO_LISTEN_FOLLOWUP, WAKE_WORD_ENABLED_BY_DEFAULT, DEFAULT_CURSOR_SPEED
-from ui.styles import (
-    MAIN_WINDOW_STYLE, get_user_bubble_style,
-    get_agent_bubble_style, get_tool_card_style
-)
-from core.ollama_client import OllamaAgent
 from core.agent_worker import AgentWorker
-from tools.gui_tools import safety, CURSOR_SPEED_PRESETS
-from voice.tts_engine import tts
+from core.ollama_client import OllamaAgent
+from core.proactive_companion import ProactiveCompanion, companion_engine
+from core.scheduler import scheduler
+from tools.gui_tools import CURSOR_SPEED_PRESETS, safety
+from ui.audio_effects import play_action_sound, play_emergency_sound, play_listening_sound
+from ui.styles import MAIN_WINDOW_STYLE, get_agent_bubble_style, get_tool_card_style, get_user_bubble_style
+from voice.dictation_manager import dictation_manager
 from voice.frame_pipeline import frame_pipeline
 from voice.stt_engine import VoiceListener
+from voice.tts_engine import tts
 from voice.wake_word import WakeWordDetector
-from voice.dictation_manager import dictation_manager
-from core.scheduler import scheduler
-from core.memory import memory
-from core.proactive_companion import companion_engine, ProactiveCompanion
-from ui.audio_effects import (
-    play_startup_sound, play_listening_sound,
-    play_action_sound, play_emergency_sound
-)
 
 
 class HorizontalWheelScrollArea(QScrollArea):
@@ -165,7 +163,7 @@ class ChatWindow(QWidget):
 
         title = QLabel(f"⚡ {APP_NAME}")
         title.setObjectName("AppTitle")
-        
+
         # Model Badge
         model_name = self.agent.model.split(":")[0]
         self.badge = QLabel(model_name.upper())
@@ -590,7 +588,7 @@ class ChatWindow(QWidget):
             self.btn_cursor_toggle.setProperty("active", "false")
             self.btn_cursor_speed.setProperty("active", "false")
             self.add_agent_message("🤖 Autonomous Cursor Mode Disabled. Reverted to standard background automation.")
-        
+
         self.btn_cursor_toggle.style().unpolish(self.btn_cursor_toggle)
         self.btn_cursor_toggle.style().polish(self.btn_cursor_toggle)
         self.btn_cursor_speed.style().unpolish(self.btn_cursor_speed)
@@ -777,7 +775,7 @@ class ChatWindow(QWidget):
         self.btn_mic.setProperty("listening", "false")
         self.btn_mic.style().unpolish(self.btn_mic)
         self.btn_mic.style().polish(self.btn_mic)
-        
+
         # Resume background wake-word listener
         if self.wake_detector and hasattr(self.wake_detector, "resume"):
             self.wake_detector.resume()

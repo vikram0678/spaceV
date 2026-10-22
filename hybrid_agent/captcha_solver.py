@@ -5,11 +5,10 @@ Requires $0.00 in paid solver APIs. 100% local and private.
 """
 from __future__ import annotations
 
-import io
 import logging
 import re
 import time
-from typing import Optional, Tuple, Any
+from typing import Any
 
 import requests
 
@@ -28,7 +27,7 @@ class LocalAudioCaptchaSolver:
         pass  # Whisper is lazily loaded upon first audio challenge invocation
 
     @staticmethod
-    def detect_captcha(page: Any) -> Tuple[bool, str]:
+    def detect_captcha(page: Any) -> tuple[bool, str]:
         """
         Scans active page DOM for known CAPTCHA and anti-bot signatures.
         Returns: (detected: bool, captcha_type: str)
@@ -114,7 +113,7 @@ class LocalAudioCaptchaSolver:
                 print("[CaptchaSolver] Failed to extract audio URL.")
                 return False
 
-            print(f"[CaptchaSolver] 📥 Downloading audio challenge stream...")
+            print("[CaptchaSolver] 📥 Downloading audio challenge stream...")
             resp = requests.get(audio_url, timeout=10)
             if resp.status_code != 200:
                 print(f"[CaptchaSolver] Failed to download audio (HTTP {resp.status_code})")
@@ -184,8 +183,9 @@ class LocalAudioCaptchaSolver:
 
         try:
             import io
-            import numpy as np
+
             import av
+            import numpy as np
 
             # Use PyAV (installed with faster-whisper) to decode mp3 stream in memory
             container = av.open(io.BytesIO(audio_bytes))

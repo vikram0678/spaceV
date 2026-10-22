@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Optional, Callable
+from collections.abc import Callable
 
 try:
     import pyautogui
@@ -31,10 +31,12 @@ except Exception:
         def paste(): return ""
     pyperclip = MockPyperclip()
 
+import sys
+
 from PyQt6.QtCore import QObject, pyqtSignal
+
 from voice.stt_engine import VoiceListener
 
-import sys
 try:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -55,10 +57,10 @@ class DictationManager(QObject):
 
     def __init__(self):
         super().__init__()
-        self._listener: Optional[VoiceListener] = None
+        self._listener: VoiceListener | None = None
         self._is_active = False
 
-    def toggle_dictation(self, on_complete: Optional[Callable[[str], None]] = None) -> bool:
+    def toggle_dictation(self, on_complete: Callable[[str], None] | None = None) -> bool:
         """Toggles dictation mode on or off."""
         if self._is_active:
             self.stop_dictation()
@@ -67,7 +69,7 @@ class DictationManager(QObject):
             self.start_dictation(on_complete=on_complete)
             return True
 
-    def start_dictation(self, on_complete: Optional[Callable[[str], None]] = None, auto_start_listener: bool = True) -> None:
+    def start_dictation(self, on_complete: Callable[[str], None] | None = None, auto_start_listener: bool = True) -> None:
         """Starts listening for dictation."""
         if self._is_active:
             return
@@ -90,7 +92,7 @@ class DictationManager(QObject):
             self._listener = None
         self._is_active = False
 
-    def _on_transcribed(self, text: str, callback: Optional[Callable[[str], None]]) -> None:
+    def _on_transcribed(self, text: str, callback: Callable[[str], None] | None) -> None:
         if not text:
             return
 

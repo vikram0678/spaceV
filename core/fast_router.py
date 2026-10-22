@@ -3,20 +3,26 @@ Fast-Path Intent Dispatcher for Zero-Latency Instant Responses (0ms).
 Bypasses LLM inference for trivial system commands with authentic SpaceV personality.
 """
 import re
-from typing import Optional, Tuple
-from tools.system_tools import (
-    get_current_time, get_system_stats, open_application,
-    media_control, lock_workstation, empty_recycle_bin,
-    get_network_info, optimize_system_memory, activate_workspace_mode,
-    list_running_apps
-)
+
 from tools.file_tools import list_desktop_files
-from tools.vision_tools import get_active_window_info, take_screen_snapshot, read_clipboard_text, write_clipboard_text
-from tools.scraper_tools import get_weather, fetch_news_headlines
+from tools.system_tools import (
+    activate_workspace_mode,
+    empty_recycle_bin,
+    get_current_time,
+    get_network_info,
+    get_system_stats,
+    list_running_apps,
+    lock_workstation,
+    media_control,
+    open_application,
+    optimize_system_memory,
+)
+from tools.vision_tools import get_active_window_info, read_clipboard_text, take_screen_snapshot
+
 
 class FastRouter:
     @staticmethod
-    def match(user_prompt: str) -> Optional[Tuple[str, str, str]]:
+    def match(user_prompt: str) -> tuple[str, str, str] | None:
         """
         Attempts to match common trivial intents.
         Returns Tuple[tool_name, tool_result, reply_text] or None if LLM is required.
@@ -131,7 +137,7 @@ class FastRouter:
         # 6. Take Screenshot
         if re.search(r"^(take screenshot|screenshot|take a screenshot|capture screen)$", text):
             snap = take_screen_snapshot()
-            return ("take_screen_snapshot", snap, f"Captured full screen snapshot for you, Sir. Saved safely to your Desktop.")
+            return ("take_screen_snapshot", snap, "Captured full screen snapshot for you, Sir. Saved safely to your Desktop.")
 
         # 7. Media & Volume Controls (Instant Physical Keys)
         if re.search(r"^(pause|pause music|resume|resume music|play music|play pause|toggle music)$", text):
@@ -337,7 +343,7 @@ class FastRouter:
         return None
 
     @staticmethod
-    def match_semantic(user_prompt: str) -> Optional[Tuple[str, float, float]]:
+    def match_semantic(user_prompt: str) -> tuple[str, float, float] | None:
         """Direct access to Aurelio semantic-router intent matching."""
         try:
             from core.semantic_router_engine import semantic_router_engine

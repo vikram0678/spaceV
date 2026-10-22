@@ -3,10 +3,10 @@ Production Working Memory & Task Scratchpad for SpaceV Agent.
 Enables high-fidelity multi-step desktop task decomposition, dynamic checklist tracking,
 intermediate variable caching (URLs, file paths, coordinates), and self-healing context.
 """
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field, asdict
 import datetime
 import json
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
 
 class StepStatus:
@@ -22,15 +22,15 @@ class ScratchpadStep:
     id: int
     description: str
     status: str = StepStatus.PENDING
-    action_tool: Optional[str] = None
-    result_summary: Optional[str] = None
+    action_tool: str | None = None
+    result_summary: str | None = None
     updated_at: str = field(default_factory=lambda: datetime.datetime.now().strftime("%H:%M:%S"))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ScratchpadStep":
+    def from_dict(cls, data: dict[str, Any]) -> "ScratchpadStep":
         return cls(**data)
 
 
@@ -41,9 +41,9 @@ class SpaceVScratchpad:
     """
     def __init__(self, goal: str = ""):
         self.goal: str = goal
-        self.plan: List[ScratchpadStep] = []
-        self.notes: Dict[str, Any] = {}
-        self.execution_log: List[str] = []
+        self.plan: list[ScratchpadStep] = []
+        self.notes: dict[str, Any] = {}
+        self.execution_log: list[str] = []
         self.current_step_index: int = 0
         self.is_active: bool = bool(goal)
         self.max_steps: int = 10
@@ -53,7 +53,7 @@ class SpaceVScratchpad:
         self.goal = goal
         self.is_active = bool(goal)
 
-    def create_plan(self, steps: List[str]):
+    def create_plan(self, steps: list[str]):
         """
         Initializes an ordered plan checklist.
         The first step is automatically placed in progress.
@@ -66,7 +66,7 @@ class SpaceVScratchpad:
         self.is_active = len(self.plan) > 0
         self._log(f"Plan created with {len(self.plan)} steps for goal: '{self.goal}'")
 
-    def get_current_step(self) -> Optional[ScratchpadStep]:
+    def get_current_step(self) -> ScratchpadStep | None:
         """Returns the step currently in progress."""
         if 0 <= self.current_step_index < len(self.plan):
             return self.plan[self.current_step_index]
@@ -99,7 +99,7 @@ class SpaceVScratchpad:
             next_step.updated_at = ts
             self._log(f"Step {next_step.id} ACTIVATED: {next_step.description}")
 
-    def record_tool_action(self, tool_name: str, args: Dict[str, Any], result: str):
+    def record_tool_action(self, tool_name: str, args: dict[str, Any], result: str):
         """
         Records tool execution telemetry into scratchpad working memory.
         Auto-extracts intermediate variables into notes.
@@ -165,7 +165,7 @@ class SpaceVScratchpad:
                     icon = "↷"
                 else:
                     icon = " "
-                
+
                 note_str = f" -> {s.result_summary}" if s.result_summary and s.status == StepStatus.COMPLETED else ""
                 lines.append(f"  [{icon}] Step {s.id}: {s.description}{note_str}")
 
@@ -182,7 +182,7 @@ class SpaceVScratchpad:
         if len(self.execution_log) > 50:
             self.execution_log = self.execution_log[-50:]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serializes scratchpad for LangGraph state persistence."""
         return {
             "goal": self.goal,
@@ -195,7 +195,7 @@ class SpaceVScratchpad:
         }
 
     @classmethod
-    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "SpaceVScratchpad":
+    def from_dict(cls, data: dict[str, Any] | None) -> "SpaceVScratchpad":
         """Reconstitutes scratchpad from LangGraph state."""
         instance = cls()
         if not data or not isinstance(data, dict):
@@ -217,7 +217,7 @@ class SpaceVScratchpad:
 active_scratchpad = SpaceVScratchpad()
 
 
-def scratchpad_set_plan(steps: List[str]) -> str:
+def scratchpad_set_plan(steps: list[str]) -> str:
     """Initializes or resets the agent scratchpad plan checklist."""
     if isinstance(steps, str):
         try:

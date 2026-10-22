@@ -8,16 +8,16 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 import requests
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 
 from config import OLLAMA_BASE_URL, PRIMARY_MODEL
-from hybrid_agent.state import HybridAgentState, BrowserAction, DOMElement
-from hybrid_agent.stealth_browser import StealthBrowserController
 from hybrid_agent.captcha_solver import local_captcha_solver
 from hybrid_agent.cua_bridge import cua_bridge
+from hybrid_agent.state import BrowserAction, HybridAgentState
+from hybrid_agent.stealth_browser import StealthBrowserController
 
 logger = logging.getLogger("SpaceV.HybridAgentGraph")
 
@@ -113,7 +113,7 @@ class HybridBrowserAgent:
 
     # --- Node Implementations ---
 
-    def _init_browser_node(self, state: HybridAgentState) -> Dict[str, Any]:
+    def _init_browser_node(self, state: HybridAgentState) -> dict[str, Any]:
         print(f"\n[HybridAgent] 🚀 Initializing stealth browser for task: '{state['task']}'")
         self.browser.start()
 
@@ -148,7 +148,7 @@ class HybridBrowserAgent:
             "plan": []
         }
 
-    def _inspect_page_node(self, state: HybridAgentState) -> Dict[str, Any]:
+    def _inspect_page_node(self, state: HybridAgentState) -> dict[str, Any]:
         page = self.browser.page
         url = page.url
         title = page.title()
@@ -178,7 +178,7 @@ class HybridBrowserAgent:
             return "solve_captcha"
         return "reason_and_plan"
 
-    def _solve_captcha_node(self, state: HybridAgentState) -> Dict[str, Any]:
+    def _solve_captcha_node(self, state: HybridAgentState) -> dict[str, Any]:
         c_type = state.get("captcha_type", "")
         page = self.browser.page
         print(f"[HybridAgent] ⚡ Launching automated zero-cost solver for {c_type}...")
@@ -196,7 +196,7 @@ class HybridBrowserAgent:
             print("[HybridAgent] ⚠️ Automatic bypass incomplete. Resuming navigation.")
             return {"captcha_detected": False, "captcha_solved": False}
 
-    def _reason_and_plan_node(self, state: HybridAgentState) -> Dict[str, Any]:
+    def _reason_and_plan_node(self, state: HybridAgentState) -> dict[str, Any]:
         prompt = (
             f"GOAL: {state['task']}\n\n"
             f"CURRENT PAGE: {state['page_title']} ({state['current_url']})\n\n"
@@ -219,7 +219,7 @@ class HybridBrowserAgent:
             resp = requests.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload, timeout=30)
             if resp.status_code == 200:
                 raw_reply = resp.json().get("message", {}).get("content", "")
-                
+
                 # Parse JSON action
                 clean_json = re.search(r"\{.*\}", raw_reply, re.DOTALL)
                 if clean_json:
@@ -256,7 +256,7 @@ class HybridBrowserAgent:
             return "finish"
         return "execute_action"
 
-    def _execute_action_node(self, state: HybridAgentState) -> Dict[str, Any]:
+    def _execute_action_node(self, state: HybridAgentState) -> dict[str, Any]:
         action = state.get("last_action", {})
         a_type = action.get("action_type")
         target_idx = action.get("target_index")
@@ -277,7 +277,7 @@ class HybridBrowserAgent:
         step = state.get("step_count", 0) + 1
         return {"actions_history": history, "step_count": step}
 
-    def _verify_completion_node(self, state: HybridAgentState) -> Dict[str, Any]:
+    def _verify_completion_node(self, state: HybridAgentState) -> dict[str, Any]:
         step = state.get("step_count", 0)
         if step >= self.max_steps:
             print(f"[HybridAgent] 🛑 Max step limit ({self.max_steps}) reached. Finalizing.")

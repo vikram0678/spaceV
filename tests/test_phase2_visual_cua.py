@@ -8,19 +8,19 @@ Verifies:
 """
 import sys
 from pathlib import Path
+
 from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from core.screen_capture import get_active_capture_tier
 from core.vision_grounding import (
-    normalize_coordinates,
     denormalize_coordinates,
     generate_set_of_marks,
+    normalize_coordinates,
 )
-from core.screen_capture import get_active_capture_tier
-from hybrid_agent.dom_extractor import DOMExtractor
 from hybrid_agent.state import DOMElement
 
 

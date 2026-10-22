@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 
 @dataclass
@@ -56,7 +55,7 @@ class ContentExtractor:
             if not rows:
                 return ""
 
-            md_rows: List[str] = []
+            md_rows: list[str] = []
             for r_idx, row in enumerate(rows):
                 cells = re.findall(r"<(th|td)[^>]*>(.*?)</\1>", row, re.IGNORECASE | re.DOTALL)
                 clean_cells = [re.sub(r"<[^>]+>", "", c[1]).strip() for c in cells]

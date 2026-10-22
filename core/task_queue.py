@@ -5,13 +5,14 @@ Guarantees zero lost tasks, crash recovery, exponential backoff, and dead-letter
 """
 from __future__ import annotations
 
-import os
-import time
 import json
-import sqlite3
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+import os
+import sqlite3
+import time
 from dataclasses import dataclass
+from typing import Any
+
 from config import BASE_DIR
 
 logger = logging.getLogger("SpaceV.TaskLedger")
@@ -29,11 +30,11 @@ STATUS_DEAD_LETTER = "DEAD_LETTER"
 class TaskRecord:
     task_id: str
     task_name: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     status: str
     retry_count: int
     max_retries: int
-    error_message: Optional[str]
+    error_message: str | None
     trust_score: int
     created_at: float
     updated_at: float
@@ -43,7 +44,7 @@ class TaskLedger:
     """
     Transactional SQLite Task Queue with Dead-Letter Vault and Crash-Resilience.
     """
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: str | None = None):
         self.db_path = db_path or str(LEDGER_DB_PATH)
         self._init_db()
 
@@ -90,9 +91,9 @@ class TaskLedger:
     def enqueue(
         self,
         task_name: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         max_retries: int = 3,
-        task_id: Optional[str] = None
+        task_id: str | None = None
     ) -> str:
         """Enqueues a new transactional task into the ledger."""
         now = time.time()
@@ -110,7 +111,7 @@ class TaskLedger:
         logger.debug(f"[TaskLedger] Enqueued task '{task_name}' [{tid}].")
         return tid
 
-    def fetch_next_pending(self) -> Optional[TaskRecord]:
+    def fetch_next_pending(self) -> TaskRecord | None:
         """Atomically fetches the oldest pending task."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -205,7 +206,7 @@ class TaskLedger:
             conn.commit()
             return new_status
 
-    def list_dead_letters(self) -> List[Dict[str, Any]]:
+    def list_dead_letters(self) -> list[dict[str, Any]]:
         """Returns all unrecovered tasks vaulted in the Dead-Letter Queue."""
         with self._get_connection() as conn:
             cursor = conn.cursor()

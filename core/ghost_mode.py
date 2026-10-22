@@ -5,10 +5,10 @@ in isolated background sessions without stealing the user's physical mouse and k
 """
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
-import logging
-from typing import Dict, Any, Tuple, Optional, List
+
 from core.memory import memory
 
 logger = logging.getLogger("SpaceV.GhostMode")
@@ -51,10 +51,10 @@ class GhostModeManager:
 
     def execute_silent_process(
         self,
-        command: List[str] | str,
-        cwd: Optional[str] = None,
+        command: list[str] | str,
+        cwd: str | None = None,
         timeout_sec: int = 60
-    ) -> Tuple[int, str]:
+    ) -> tuple[int, str]:
         """
         Executes a background OS command or automation script with hidden window flags.
         Never flashes a console window or steals OS window focus.
@@ -83,7 +83,7 @@ class GhostModeManager:
             proc.kill()
             return -1, "Background execution timed out."
         except Exception as e:
-            return -1, f"Failed to spawn ghost process: {str(e)}"
+            return -1, f"Failed to spawn ghost process: {e!s}"
 
 
 ghost_manager = GhostModeManager()

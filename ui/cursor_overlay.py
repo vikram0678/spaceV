@@ -3,9 +3,10 @@ Cybernetic Visual Laser Spotlight & Real-Time Cursor HUD Overlay.
 Draws a buttery-smooth glowing neon reticle, rotating cybernetic ring,
 and dynamic HUD badge tracking the mouse pointer at 60 FPS during autonomous actions.
 """
-from PyQt6.QtCore import Qt, QRectF, QTimer, QPoint, QMetaObject, Q_ARG, pyqtSlot
-from PyQt6.QtWidgets import QWidget, QApplication
-from PyQt6.QtGui import QPainter, QColor, QRadialGradient, QPen, QFont, QCursor
+from PyQt6.QtCore import Q_ARG, QMetaObject, QRectF, Qt, QTimer, pyqtSlot
+from PyQt6.QtGui import QColor, QCursor, QFont, QPainter, QPen, QRadialGradient
+from PyQt6.QtWidgets import QApplication, QWidget
+
 
 class CursorOverlay(QWidget):
     _instance = None
@@ -27,9 +28,9 @@ class CursorOverlay(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        
+
         self.setFixedSize(160, 160)
-        
+
         # Animation states
         self.pulse_phase = 0.0
         self.rot_angle = 0.0
@@ -53,7 +54,7 @@ class CursorOverlay(QWidget):
         self.hud_label = label
         self.hud_mode = mode
         self.is_active = True
-        
+
         # Initialize position to current mouse pointer
         pos = QCursor.pos()
         self.target_x = pos.x()
@@ -61,7 +62,7 @@ class CursorOverlay(QWidget):
         self.current_x = pos.x()
         self.current_y = pos.y()
         self.move(int(self.current_x - self.width() // 2), int(self.current_y - self.height() // 2))
-        
+
         if not self.isVisible():
             self.show()
             self.raise_()
@@ -106,7 +107,7 @@ class CursorOverlay(QWidget):
 
         # Move widget center directly onto cursor
         self.move(int(self.current_x - self.width() // 2), int(self.current_y - self.height() // 2))
-        
+
         if self.isVisible():
             self.update()
 
@@ -153,7 +154,7 @@ class CursorOverlay(QWidget):
         painter.save()
         painter.translate(cx, cy)
         painter.rotate(self.rot_angle)
-        
+
         pen_ring = QPen(primary_col, 2.0, Qt.PenStyle.DashLine)
         pen_ring.setDashPattern([6, 4])
         painter.setPen(pen_ring)

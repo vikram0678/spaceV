@@ -3,11 +3,11 @@ Aurelio Semantic Router Fast-Path Engine for SpaceV.
 Performs fuzzy natural language intent classification and tool dispatching in <4ms
 without consuming LLM tokens, cloud APIs, or GPU inference compute.
 """
-import time
-import math
 import logging
+import math
+import time
 from dataclasses import dataclass
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Any
 
 logger = logging.getLogger("SpaceV.SemanticRouter")
 
@@ -18,7 +18,7 @@ except ImportError:
     _HAS_NUMPY = False
 
 try:
-    from semantic_router import Route as ExternalRoute, IndexedRouter
+    from semantic_router import IndexedRouter, Route as ExternalRoute
     from semantic_router.encoders.base import DenseEncoder
     _HAS_SEMANTIC_ROUTER = True
 except ImportError:
@@ -29,7 +29,7 @@ except ImportError:
 @dataclass
 class NativeRoute:
     name: str
-    utterances: List[str]
+    utterances: list[str]
 
 
 Route = ExternalRoute if _HAS_SEMANTIC_ROUTER else NativeRoute
@@ -51,10 +51,10 @@ DOMAIN_KEYWORD_WEIGHTS = {
 }
 
 
-def encode_sparse_text(text: str, dim: int = 384) -> Dict[int, float]:
+def encode_sparse_text(text: str, dim: int = 384) -> dict[int, float]:
     """Pure-Python sub-millisecond sparse semantic encoder (FNV-1a + n-grams + L2 norm)."""
     text = text.lower().strip()
-    vec: Dict[int, float] = {}
+    vec: dict[int, float] = {}
     words = text.split()
     for w in words:
         h = _fnv1a(w) % dim
@@ -82,7 +82,7 @@ if _HAS_SEMANTIC_ROUTER and _HAS_NUMPY:
         name: str = "spacev-semantic-fast-384"
         type: str = "dense"
 
-        def __call__(self, docs: List[Any]) -> List[List[float]]:
+        def __call__(self, docs: list[Any]) -> list[list[float]]:
             dim = 384
             results = []
             for d in docs:
@@ -93,7 +93,7 @@ if _HAS_SEMANTIC_ROUTER and _HAS_NUMPY:
                 results.append(vec.tolist())
             return results
 
-        async def acall(self, docs: List[Any]) -> List[List[float]]:
+        async def acall(self, docs: list[Any]) -> list[list[float]]:
             return self(docs)
 else:
     class SemanticFastEncoder:  # type: ignore
@@ -109,8 +109,8 @@ class SemanticRouterEngine:
 
     def __init__(self, confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD):
         self.confidence_threshold = confidence_threshold
-        self.router: Optional[Any] = None
-        self.native_routes: List[Tuple[str, Dict[int, float]]] = []
+        self.router: Any | None = None
+        self.native_routes: list[tuple[str, dict[int, float]]] = []
         self._init_routes()
 
     def _init_routes(self):
@@ -228,13 +228,13 @@ class SemanticRouterEngine:
                 self.router = None
 
         # Always prepare high-speed pure-Python sparse vectors for instant fallback (<0.1ms)
-        self.native_routes: List[Tuple[str, Dict[int, float]]] = []
+        self.native_routes: list[tuple[str, dict[int, float]]] = []
         for r in routes:
             for u in r.utterances:
                 self.native_routes.append((r.name, encode_sparse_text(u)))
         logger.info(f"[SemanticRouter] Native pure-Python sparse engine initialized with {len(self.native_routes)} intent vectors.")
 
-    def route(self, user_prompt: str) -> Optional[Tuple[str, float, float]]:
+    def route(self, user_prompt: str) -> tuple[str, float, float] | None:
         """
         Classifies intent using Aurelio semantic-router or native pure-Python sparse cosine matching (<0.1ms).
         Returns Tuple[intent_name, confidence, latency_ms] or None if confidence is below threshold.
@@ -263,7 +263,7 @@ class SemanticRouterEngine:
         # Tier 2: SpaceV Native Pure-Python Sparse Cosine Matcher (<0.1ms)
         if self.native_routes:
             q_vec = encode_sparse_text(user_prompt)
-            best_name: Optional[str] = None
+            best_name: str | None = None
             best_score = 0.0
 
             for route_name, u_vec in self.native_routes:
@@ -278,19 +278,24 @@ class SemanticRouterEngine:
 
         return None
 
-    def dispatch(self, intent_name: str) -> Optional[Tuple[str, str, str]]:
+    def dispatch(self, intent_name: str) -> tuple[str, str, str] | None:
         """
         Executes the mapped SpaceV tool for the recognized semantic intent
         and formats an authentic, Jarvis-style response.
         Returns Tuple[tool_name, tool_result, reply_text] or None.
         """
-        from tools.system_tools import (
-            get_current_time, get_system_stats, media_control,
-            lock_workstation, empty_recycle_bin, get_network_info,
-            optimize_system_memory, list_running_apps
-        )
         from tools.file_tools import list_desktop_files
-        from tools.vision_tools import get_active_window_info, take_screen_snapshot, read_clipboard_text
+        from tools.system_tools import (
+            empty_recycle_bin,
+            get_current_time,
+            get_network_info,
+            get_system_stats,
+            list_running_apps,
+            lock_workstation,
+            media_control,
+            optimize_system_memory,
+        )
+        from tools.vision_tools import get_active_window_info, read_clipboard_text, take_screen_snapshot
 
         if intent_name == "greeting":
             msg = "SpaceV online and operational, Sir. All cybernetic systems green. How may I assist your workflow today?"

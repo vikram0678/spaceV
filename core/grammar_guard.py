@@ -8,10 +8,11 @@ Guarantees 0% JSON hallucinations and deterministic tool calling validation:
 """
 from __future__ import annotations
 
-import re
 import json
 import logging
-from typing import Dict, Any, Optional, Tuple, List, Type
+import re
+from typing import Any
+
 from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger("SpaceV.GrammarGuard")
@@ -58,9 +59,9 @@ class WebBrowseSchema(BaseModel):
     extract_text: bool = Field(True, description="Whether to extract parsed readable text.")
 
 class GuiClickSchema(BaseModel):
-    element_index: Optional[int] = Field(None, description="DOM integer index [ID] or SoM marker.")
-    x: Optional[int] = Field(None, description="Screen X coordinate.")
-    y: Optional[int] = Field(None, description="Screen Y coordinate.")
+    element_index: int | None = Field(None, description="DOM integer index [ID] or SoM marker.")
+    x: int | None = Field(None, description="Screen X coordinate.")
+    y: int | None = Field(None, description="Screen Y coordinate.")
 
 class SystemMonitorSchema(BaseModel):
     detailed: bool = Field(False, description="Whether to return detailed CPU/RAM metrics.")
@@ -70,7 +71,7 @@ class EmptySchema(BaseModel):
 
 
 # Map of SpaceV registered tools to Pydantic schemas
-TOOL_INPUT_SCHEMAS: Dict[str, Type[BaseModel]] = {
+TOOL_INPUT_SCHEMAS: dict[str, type[BaseModel]] = {
     "open_application": OpenApplicationSchema,
     "search_google": SearchGoogleSchema,
     "search_memory": SearchMemorySchema,
@@ -152,9 +153,9 @@ class GrammarGuard:
     def recover_tool_arguments(
         cls,
         tool_name: str,
-        raw_args: Dict[str, Any],
+        raw_args: dict[str, Any],
         user_prompt: str = ""
-    ) -> Tuple[bool, Dict[str, Any], Optional[str]]:
+    ) -> tuple[bool, dict[str, Any], str | None]:
         """
         Validates raw_args against TOOL_INPUT_SCHEMAS[tool_name].
         Applies type-coercion and missing field recovery if validation fails.
@@ -228,14 +229,14 @@ class GrammarGuard:
 
         except Exception as e:
             logger.warning(f"[GrammarGuard] Recovery failed for {tool_name}: {e}")
-            return False, raw_args, f"recovery_failed: {str(e)}"
+            return False, raw_args, f"recovery_failed: {e!s}"
 
     @classmethod
     def parse_tool_call(
         cls,
         raw_text: str,
         user_prompt: str = ""
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Parses JSON or markdown tool call, applies syntax repair and Pydantic validation.
         """

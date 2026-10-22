@@ -8,7 +8,7 @@ from .telemetry import WorkflowEvent, WorkflowTelemetry
 __all__ = [
     "AdapterRegistry",
     "ServiceType",
-    "register_adapter",
     "WorkflowEvent",
     "WorkflowTelemetry",
+    "register_adapter",
 ]

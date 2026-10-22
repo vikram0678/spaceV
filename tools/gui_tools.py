@@ -3,11 +3,9 @@ Autonomous GUI and Human-Like Cursor Automation with 4-Layer Safety Shield.
 Features smooth 60 FPS HUD tracking, autonomous Start Menu navigation,
 and vector-stroke canvas drawing in MS Paint using pure cursor manipulation.
 """
-import time
 import math
 import subprocess
-import threading
-from typing import Optional, List, Tuple
+import time
 
 try:
     import pyautogui
@@ -87,7 +85,7 @@ class SafetyController:
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(SafetyController, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             cls._instance.is_aborted = False
             cls._instance.autonomous_mode_enabled = False
             cls._instance.current_speed = "Normal"
@@ -180,27 +178,27 @@ def human_type(text: str, interval: float = 0.04, label: str = "⌨️ SPACEV TY
 # Vector Stroke Shapes Library for MS Paint Drawing
 # =========================================================================
 
-def _generate_circle_points(cx: float, cy: float, radius: float, num_points: int = 30) -> List[Tuple[float, float]]:
+def _generate_circle_points(cx: float, cy: float, radius: float, num_points: int = 30) -> list[tuple[float, float]]:
     pts = []
     for i in range(num_points + 1):
         angle = (2 * math.pi * i) / num_points
         pts.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
     return pts
 
-def _generate_arc_points(cx: float, cy: float, radius_x: float, radius_y: float, start_angle: float, end_angle: float, num_points: int = 16) -> List[Tuple[float, float]]:
+def _generate_arc_points(cx: float, cy: float, radius_x: float, radius_y: float, start_angle: float, end_angle: float, num_points: int = 16) -> list[tuple[float, float]]:
     pts = []
     for i in range(num_points + 1):
         angle = start_angle + (end_angle - start_angle) * (i / num_points)
         pts.append((cx + radius_x * math.cos(angle), cy + radius_y * math.sin(angle)))
     return pts
 
-def get_shape_strokes(shape_name: str) -> Tuple[str, List[List[Tuple[float, float]]]]:
+def get_shape_strokes(shape_name: str) -> tuple[str, list[list[tuple[float, float]]]]:
     """
     Returns a normalized shape name and list of coordinate strokes.
     Each stroke is a list of relative (dx, dy) tuples from the canvas center.
     """
     name = shape_name.lower().strip()
-    
+
     if any(k in name for k in ["house", "home", "building", "hut"]):
         label = "House"
         strokes = [
@@ -409,7 +407,7 @@ def gui_draw_in_paint(shape_or_prompt: str = "house") -> str:
         label, strokes = get_shape_strokes(shape_or_prompt)
 
         print(f"\n  [GUI] 🎨 Initializing MS Paint for autonomous drawing: '{label}'...")
-        
+
         # 1. Launch MS Paint directly via subprocess for lightning-fast execution
         try:
             subprocess.Popen("mspaint.exe")
@@ -434,11 +432,11 @@ def gui_draw_in_paint(shape_or_prompt: str = "house") -> str:
         canvas_cy = (screen_h // 2) + 40
 
         # 4. Activate glowing Cybernetic HUD Overlay in DRAWING mode
-        from ui.cursor_overlay import show_cursor_hud, hide_cursor_hud
+        from ui.cursor_overlay import hide_cursor_hud, show_cursor_hud
         show_cursor_hud(label=f"🎨 PAINTING: {label.upper()}", mode="drawing", x=canvas_cx, y=canvas_cy)
 
         print(f"  [GUI] ✍️ Executing {len(strokes)} continuous vector stroke paths with mouse cursor...")
-        
+
         multiplier = safety.get_speed_settings()["multiplier"]
 
         # 5. Draw each stroke path smoothly
@@ -450,7 +448,7 @@ def gui_draw_in_paint(shape_or_prompt: str = "house") -> str:
             # Move cursor to the start of this stroke
             start_x = int(canvas_cx + stroke[0][0])
             start_y = int(canvas_cy + stroke[0][1])
-            
+
             pyautogui.moveTo(start_x, start_y, duration=max(0.04, 0.25 * multiplier), tween=pyautogui.easeInOutQuad)
             time.sleep(max(0.01, 0.04 * multiplier))
             safety.check()
@@ -471,7 +469,7 @@ def gui_draw_in_paint(shape_or_prompt: str = "house") -> str:
             time.sleep(max(0.01, 0.06 * multiplier))
 
         # 6. Smoothly glide cursor away from the finished artwork
-        print(f"  [GUI] ✨ Artwork complete! Gliding cursor away...")
+        print("  [GUI] ✨ Artwork complete! Gliding cursor away...")
         pyautogui.moveTo(canvas_cx + 170, canvas_cy + 170, duration=max(0.08, 0.4 * multiplier), tween=pyautogui.easeOutQuad)
         time.sleep(max(0.05, 0.3 * multiplier))
         hide_cursor_hud()
@@ -492,14 +490,14 @@ def gui_draw_in_paint(shape_or_prompt: str = "house") -> str:
             hide_cursor_hud()
         except Exception:
             pass
-        return f"⚠️ EMERGENCY STOP: {str(e)}"
+        return f"⚠️ EMERGENCY STOP: {e!s}"
     except Exception as e:
         try:
             from ui.cursor_overlay import hide_cursor_hud
             hide_cursor_hud()
         except Exception:
             pass
-        return f"Autonomous drawing stopped: {str(e)}"
+        return f"Autonomous drawing stopped: {e!s}"
 
 
 def gui_open_and_search_app(app_name: str, text_to_type: str = "") -> str:
@@ -510,13 +508,13 @@ def gui_open_and_search_app(app_name: str, text_to_type: str = "") -> str:
     safety.reset()
     try:
         screen_w, screen_h = pyautogui.size()
-        
+
         print(f"  [GUI] 🖱️ Gliding cursor to Start Menu (20, {screen_h - 20})...")
         # 1. Smoothly glide cursor towards Windows Start area (bottom-left)
         human_move_to(20, screen_h - 20, duration=0.4, label="🖱️ OPENING START", mode="moving")
         safety.check()
 
-        print(f"  [GUI] 🪟 Pressing Windows Start key...")
+        print("  [GUI] 🪟 Pressing Windows Start key...")
         pyautogui.press("win")
         time.sleep(0.3)
         safety.check()
@@ -548,18 +546,18 @@ def gui_open_and_search_app(app_name: str, text_to_type: str = "") -> str:
         except Exception:
             pass
 
-        return f"Successfully opened '{app_name}' via autonomous cursor movement" + (f" and typed text into it." if text_to_type else ".")
+        return f"Successfully opened '{app_name}' via autonomous cursor movement" + (" and typed text into it." if text_to_type else ".")
 
     except pyautogui.FailSafeException:
         safety.abort()
         return "⚠️ EMERGENCY STOP: PyAutoGUI Fail-Safe triggered (Cursor shoved to corner)."
     except InterruptedError as e:
-        return f"⚠️ EMERGENCY STOP: {str(e)}"
+        return f"⚠️ EMERGENCY STOP: {e!s}"
     except Exception as e:
-        return f"Autonomous action stopped: {str(e)}"
+        return f"Autonomous action stopped: {e!s}"
 
 
-def resolve_gatekeeper_modal_guard(pending_query: Optional[str] = None) -> Optional[str]:
+def resolve_gatekeeper_modal_guard(pending_query: str | None = None) -> str | None:
     """
     Universal Closed-Loop Gatekeeper Perception Guard.
     Delegates to core.modal_interceptor to detect and resolve any modal dialog across Windows.
@@ -572,7 +570,7 @@ def resolve_gatekeeper_modal_guard(pending_query: Optional[str] = None) -> Optio
     return None
 
 
-def resolve_chrome_profile_guard(pending_query: Optional[str] = None) -> Optional[str]:
+def resolve_chrome_profile_guard(pending_query: str | None = None) -> str | None:
     """
     Closed-loop perception guard for Chrome. Delegates to universal resolve_gatekeeper_modal_guard.
     """
@@ -587,14 +585,14 @@ def gui_search_google_browser(query: str) -> str:
     try:
         screen_w, screen_h = pyautogui.size()
 
-        print(f"  [GUI] 🖱️ Opening Start Menu to launch browser...")
+        print("  [GUI] 🖱️ Opening Start Menu to launch browser...")
         human_move_to(20, screen_h - 20, duration=0.4, label="🌐 LAUNCHING CHROME", mode="moving")
         safety.check()
         pyautogui.press("win")
         time.sleep(0.3)
         safety.check()
 
-        print(f"  [GUI] ⌨️ Typing 'chrome'...")
+        print("  [GUI] ⌨️ Typing 'chrome'...")
         human_type("chrome", interval=0.05, label="🔍 SEARCHING CHROME")
         time.sleep(0.3)
         pyautogui.press("enter")
@@ -627,9 +625,9 @@ def gui_search_google_browser(query: str) -> str:
         safety.abort()
         return "⚠️ EMERGENCY STOP: PyAutoGUI Fail-Safe triggered."
     except InterruptedError as e:
-        return f"⚠️ EMERGENCY STOP: {str(e)}"
+        return f"⚠️ EMERGENCY STOP: {e!s}"
     except Exception as e:
-        return f"Autonomous action stopped: {str(e)}"
+        return f"Autonomous action stopped: {e!s}"
 
 
 def gui_play_youtube(video_query: str) -> str:
@@ -649,7 +647,7 @@ def gui_play_youtube(video_query: str) -> str:
         time.sleep(0.3)
         safety.check()
 
-        print(f"  [GUI] ⌨️ Typing 'chrome'...")
+        print("  [GUI] ⌨️ Typing 'chrome'...")
         human_type("chrome", interval=0.04, label="🔍 OPENING BROWSER")
         time.sleep(0.3)
         pyautogui.press("enter")
@@ -695,9 +693,9 @@ def gui_play_youtube(video_query: str) -> str:
         safety.abort()
         return "⚠️ EMERGENCY STOP: PyAutoGUI Fail-Safe triggered."
     except InterruptedError as e:
-        return f"⚠️ EMERGENCY STOP: {str(e)}"
+        return f"⚠️ EMERGENCY STOP: {e!s}"
     except Exception as e:
-        return f"Autonomous action stopped: {str(e)}"
+        return f"Autonomous action stopped: {e!s}"
 
 
 def gui_type_text(text: str) -> str:
@@ -714,4 +712,4 @@ def gui_type_text(text: str) -> str:
             pass
         return f"Typed text ({len(text)} chars) at cursor."
     except Exception as e:
-        return f"Typing aborted: {str(e)}"
+        return f"Typing aborted: {e!s}"

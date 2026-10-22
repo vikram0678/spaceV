@@ -6,9 +6,8 @@ and dual-backend transcription (Local Faster-Whisper + SpeechRecognition fallbac
 from __future__ import annotations
 
 import io
-import sys
 import logging
-from typing import Optional
+import sys
 
 try:
     if hasattr(sys.stdout, "reconfigure"):
@@ -40,10 +39,10 @@ except ImportError:
 
 class OfflineWhisperSingleton:
     """Singleton to keep a lightweight local Whisper model in memory for instant responses."""
-    _model: Optional[WhisperModel] = None
+    _model: WhisperModel | None = None
 
     @classmethod
-    def get_model(cls, model_size: str = "tiny.en") -> Optional[WhisperModel]:
+    def get_model(cls, model_size: str = "tiny.en") -> WhisperModel | None:
         if not HAS_FASTER_WHISPER:
             return None
 
@@ -111,7 +110,7 @@ class VoiceListener(QThread):
         self.listening_started.emit()
         try:
             print("[STT] [MIC] Neural Silero VAD listening (Speak clearly)...")
-            
+
             # Record complete phrase using Silero VAD turn boundaries
             pcm_data = self.recorder.record_utterance(
                 timeout=self.timeout,
@@ -139,7 +138,7 @@ class VoiceListener(QThread):
 
         except Exception as e:
             logger.error(f"[STT] Unexpected error during listening: {e}")
-            self.error_occurred.emit(f"Microphone notice: {str(e)}")
+            self.error_occurred.emit(f"Microphone notice: {e!s}")
         finally:
             self.listening_finished.emit()
 

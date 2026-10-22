@@ -4,9 +4,9 @@ Validates that malicious commands (credential theft, host file breakout,
 and trojan payloads) detonated inside guest Celesto microVMs are 100% contained,
 leaving host integrity cryptographically pristine.
 """
+import json
 import sys
 from pathlib import Path
-import json
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -15,8 +15,8 @@ if str(REPO_ROOT) not in sys.path:
 from tools.sandbox_tools import (
     HostIntegrityMonitor,
     PromptInjectionContainmentHarness,
-    generate_containment_contract_report,
     audit_sandbox_containment,
+    generate_containment_contract_report,
 )
 
 

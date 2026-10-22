@@ -5,15 +5,15 @@ transactional SQLite FTS5 database with automatic privacy redaction of passwords
 """
 from __future__ import annotations
 
-import re
-import time
 import json
-import sqlite3
 import logging
+import re
+import sqlite3
 import threading
-from pathlib import Path
+import time
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from pathlib import Path
+from typing import Any
 
 import pyperclip
 
@@ -48,7 +48,7 @@ class TemporalMemoryEngine:
     def __init__(self, db_path: Path = DB_PATH):
         self.db_path = db_path
         self._lock = threading.Lock()
-        self._tracker_thread: Optional[threading.Thread] = None
+        self._tracker_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._last_clipboard = ""
         self._last_window = ""
@@ -91,7 +91,7 @@ class TemporalMemoryEngine:
         event_type: str,
         title: str,
         content: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: dict[str, Any] | None = None
     ) -> int:
         """Stores a workflow event with automatic secret sanitization."""
         clean_content = sanitize_text(content)
@@ -129,9 +129,9 @@ class TemporalMemoryEngine:
     def search_events(
         self,
         query: str,
-        event_type: Optional[str] = None,
+        event_type: str | None = None,
         limit: int = 5
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         clean_q = re.sub(r"[^\w\s]", "", query).strip()
         words = [w for w in clean_q.split() if w]
         if not words:
@@ -195,7 +195,7 @@ class TemporalMemoryEngine:
 
         return results
 
-    def get_recent_clipboard(self, limit: int = 5) -> List[Dict[str, Any]]:
+    def get_recent_clipboard(self, limit: int = 5) -> list[dict[str, Any]]:
         """Retrieves most recent clipboard history entries."""
         with self._lock:
             conn = sqlite3.connect(str(self.db_path), timeout=15.0)
@@ -215,7 +215,7 @@ class TemporalMemoryEngine:
 
         return [{"id": r[0], "time": r[1], "content": r[2], "title": r[3]} for r in rows]
 
-    def get_timeline(self, minutes: int = 60, limit: int = 20) -> List[Dict[str, Any]]:
+    def get_timeline(self, minutes: int = 60, limit: int = 20) -> list[dict[str, Any]]:
         """Retrieves activity timeline for the past N minutes."""
         min_ts = time.time() - (minutes * 60)
         with self._lock:

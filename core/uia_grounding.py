@@ -6,9 +6,9 @@ fallback to Windows Native OCR visual grounding.
 """
 from __future__ import annotations
 
-import time
 import logging
-from typing import Optional, Tuple, List, Dict, Any
+import time
+from typing import Any
 
 try:
     import comtypes.client
@@ -17,6 +17,7 @@ except ImportError:
     HAS_COMTYPES = False
 
 import pyautogui
+
 from tools.gui_tools import human_move_to, safety
 
 logger = logging.getLogger("SpaceV.UIA")
@@ -50,9 +51,9 @@ def _get_uia_client():
 
 def find_control_by_name(
     target_name: str,
-    hwnd: Optional[int] = None,
+    hwnd: int | None = None,
     max_depth: int = 4
-) -> Optional[Tuple[int, int, str, str]]:
+) -> tuple[int, int, str, str] | None:
     """
     Searches the Windows UI Automation tree for a control matching target_name.
     Returns:
@@ -112,7 +113,7 @@ def find_control_by_name(
     return None
 
 
-def list_interactive_controls(hwnd: Optional[int] = None, limit: int = 15) -> List[Dict[str, Any]]:
+def list_interactive_controls(hwnd: int | None = None, limit: int = 15) -> list[dict[str, Any]]:
     """
     Lists interactive buttons, menus, and controls in the active or specified window.
     """
@@ -185,6 +186,6 @@ def gui_click_control(target_name: str) -> str:
         safety.abort()
         return "⚠️ EMERGENCY STOP: PyAutoGUI Fail-Safe triggered."
     except InterruptedError as e:
-        return f"⚠️ EMERGENCY STOP: {str(e)}"
+        return f"⚠️ EMERGENCY STOP: {e!s}"
     except Exception as e:
-        return f"Control click failed: {str(e)}"
+        return f"Control click failed: {e!s}"

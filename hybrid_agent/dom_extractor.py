@@ -5,8 +5,8 @@ to all interactive DOM nodes so local LLMs can execute actions with minimal toke
 """
 from __future__ import annotations
 
-import json
-from typing import List, Dict, Any, Tuple
+from typing import Any
+
 from hybrid_agent.state import DOMElement
 
 EXTRACT_SCRIPT = """
@@ -88,13 +88,13 @@ class DOMExtractor:
     """
 
     @staticmethod
-    def extract_interactive_elements(page: Any) -> Tuple[List[DOMElement], str]:
+    def extract_interactive_elements(page: Any) -> tuple[list[DOMElement], str]:
         """
         Executes in-page JS crawler and formats a high-density, low-token summary.
         """
         try:
             raw_elements = page.evaluate(EXTRACT_SCRIPT)
-            elements: List[DOMElement] = []
+            elements: list[DOMElement] = []
             summary_lines = []
 
             for item in raw_elements[:60]:  # Cap at top 60 elements for LLM context limits

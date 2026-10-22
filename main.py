@@ -1,18 +1,20 @@
 """
 Main Entry Point for SpaceV Cybernetic Desktop AI Agent.
 """
-import sys
 import os
-from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
+import sys
+
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from config import APP_NAME, PRIMARY_MODEL
-from core.ollama_client import OllamaAgent
 from core.hotkey_listener import GlobalHotkeyListener
-from ui.floating_icon import FloatingIcon
-from ui.chat_window import ChatWindow
+from core.ollama_client import OllamaAgent
 from ui.audio_effects import play_startup_sound
+from ui.chat_window import ChatWindow
+from ui.floating_icon import FloatingIcon
+
 
 def create_tray_pixmap():
     """Generates a neat circular tray icon."""
@@ -20,11 +22,11 @@ def create_tray_pixmap():
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    
+
     painter.setBrush(QColor("#0d1117"))
     painter.setPen(QColor("#00f0ff"))
     painter.drawEllipse(2, 2, 28, 28)
-    
+
     painter.setPen(QColor("#00f0ff"))
     font = QFont("Segoe UI", 12, QFont.Weight.Bold)
     painter.setFont(font)
@@ -76,7 +78,7 @@ def main():
             return
         _is_exiting = True
 
-        print(f"\n[SpaceV] Shutting down cleanly... (No background tasks lingering)")
+        print("\n[SpaceV] Shutting down cleanly... (No background tasks lingering)")
         try:
             hotkey_listener.stop()
         except Exception:
@@ -109,7 +111,7 @@ def main():
     # Windows System Tray
     tray_icon = QSystemTrayIcon(QIcon(create_tray_pixmap()), app)
     tray_menu = QMenu()
-    
+
     action_toggle = tray_menu.addAction(f"💬 Toggle {APP_NAME}")
     action_toggle.triggered.connect(toggle_chat)
 
@@ -141,6 +143,7 @@ def main():
 
     # Handle Ctrl + C and termination signals cleanly in PyQt6
     import signal
+
     from PyQt6.QtCore import QTimer
     QTimer.singleShot(1200, _proactive_startup)
 

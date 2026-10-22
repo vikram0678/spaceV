@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 
 from spacev.config import settings
 
@@ -50,7 +50,7 @@ class SafetyPolicyEngine:
 class CommandAuditor:
     """Thread-safe append-only logger for logs/commands.jsonl."""
 
-    def __init__(self, log_path: Optional[Path] = None):
+    def __init__(self, log_path: Path | None = None):
         self.log_path = log_path or settings.command_audit_log
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.policy = SafetyPolicyEngine()
@@ -59,8 +59,8 @@ class CommandAuditor:
         self,
         sandbox_name: str,
         command: str,
-        executor_fn: Optional[Any] = None
-    ) -> Dict[str, Any]:
+        executor_fn: Any | None = None
+    ) -> dict[str, Any]:
         """
         Intercepts command, records decision to logs/commands.jsonl,
         and enforces execution isolation inside celesto_sandbox.
@@ -70,7 +70,7 @@ class CommandAuditor:
             raise ValueError(f"Invalid sandbox name format: {sandbox_name}")
 
         decision = self.policy.evaluate(command)
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.now(UTC).isoformat()
 
         # Audit entry matching exact Hackathon Contract #4
         log_entry = {

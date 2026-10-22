@@ -6,7 +6,7 @@ direct GPU VRAM capture, with automatic fallback to Windows GDI Host capture.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Tuple
+
 import numpy as np
 from PIL import Image
 
@@ -49,7 +49,7 @@ def _init_bettercam():
         return None
 
 
-def capture_desktop_cv2() -> Optional[np.ndarray]:
+def capture_desktop_cv2() -> np.ndarray | None:
     """
     Captures the interactive desktop display as a NumPy RGB array.
     Uses DXGI direct VRAM duplication if available, with transparent GDI fallback.
@@ -74,7 +74,7 @@ def capture_desktop_cv2() -> Optional[np.ndarray]:
     return None
 
 
-def capture_desktop_pil() -> Optional[Image.Image]:
+def capture_desktop_pil() -> Image.Image | None:
     """
     Captures the interactive desktop display as a PIL Image.
     Uses DXGI direct VRAM duplication (<1.5ms) if available, with transparent GDI fallback.
@@ -97,7 +97,7 @@ def capture_desktop_pil() -> Optional[Image.Image]:
     return img
 
 
-def _gdi_capture_fallback() -> Optional[Image.Image]:
+def _gdi_capture_fallback() -> Image.Image | None:
     """Fallback capture using PIL ImageGrab or PyAutoGUI GDI screenshot."""
     try:
         from PIL import ImageGrab

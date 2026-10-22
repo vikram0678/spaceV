@@ -2,9 +2,10 @@
 File and folder management tools for Windows.
 """
 import os
-import subprocess
 from pathlib import Path
+
 from config import USER_DESKTOP_DIR
+
 
 def resolve_path(path_str: str) -> Path:
     """Helper to resolve friendly paths like 'Desktop', 'Downloads', or full paths."""
@@ -14,7 +15,7 @@ def resolve_path(path_str: str) -> Path:
         return Path(os.path.expanduser("~")) / "Downloads"
     elif path_str.lower() in ["documents", "the documents", "~/documents"]:
         return Path(os.path.expanduser("~")) / "Documents"
-    
+
     p = Path(os.path.expanduser(path_str))
     if not p.is_absolute():
         p = USER_DESKTOP_DIR / p
@@ -27,11 +28,11 @@ def create_folder(folder_name: str, location: str = "Desktop") -> str:
     try:
         base_dir = resolve_path(location)
         target_path = base_dir / folder_name
-        
+
         target_path.mkdir(parents=True, exist_ok=True)
         return f"Successfully created folder '{folder_name}' at: {target_path}"
     except Exception as e:
-        return f"Failed to create folder '{folder_name}': {str(e)}"
+        return f"Failed to create folder '{folder_name}': {e!s}"
 
 def open_folder(folder_path: str = "Desktop") -> str:
     """
@@ -41,12 +42,12 @@ def open_folder(folder_path: str = "Desktop") -> str:
         target = resolve_path(folder_path)
         if not target.exists():
             return f"Folder does not exist: {target}"
-        
+
         # Open in Windows Explorer
         os.startfile(str(target))
         return f"Opened folder in Windows Explorer: {target}"
     except Exception as e:
-        return f"Failed to open folder: {str(e)}"
+        return f"Failed to open folder: {e!s}"
 
 def create_file(file_name: str, content: str = "", location: str = "Desktop") -> str:
     """
@@ -55,13 +56,13 @@ def create_file(file_name: str, content: str = "", location: str = "Desktop") ->
     try:
         base_dir = resolve_path(location)
         target_path = base_dir / file_name
-        
+
         base_dir.mkdir(parents=True, exist_ok=True)
         with open(target_path, "w", encoding="utf-8") as f:
             f.write(content)
         return f"Successfully created file '{file_name}' at: {target_path}"
     except Exception as e:
-        return f"Failed to create file '{file_name}': {str(e)}"
+        return f"Failed to create file '{file_name}': {e!s}"
 
 def list_desktop_files() -> str:
     """
@@ -73,7 +74,7 @@ def list_desktop_files() -> str:
             return "Desktop is currently empty."
         return f"Items on Desktop: {', '.join(items[:20])}" + ("..." if len(items) > 20 else "")
     except Exception as e:
-        return f"Failed to list desktop items: {str(e)}"
+        return f"Failed to list desktop items: {e!s}"
 
 def read_file_content(file_name_or_path: str, location: str = "Desktop", max_lines: int = 40) -> str:
     """
@@ -84,18 +85,18 @@ def read_file_content(file_name_or_path: str, location: str = "Desktop", max_lin
         if not target.exists():
             base_dir = resolve_path(location)
             target = base_dir / file_name_or_path
-            
+
         if not target.exists():
             return f"File '{file_name_or_path}' could not be found at {target}."
-            
-        with open(target, "r", encoding="utf-8", errors="replace") as f:
+
+        with open(target, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
-            
+
         total_lines = len(lines)
         snippet = "".join(lines[:max_lines])
-        
+
         truncated_note = f"\n\n... [Showing first {max_lines} of {total_lines} lines]" if total_lines > max_lines else ""
         return f"Content of '{target.name}' ({total_lines} lines):\n\n```\n{snippet}\n```{truncated_note}"
     except Exception as e:
-        return f"Failed to read file '{file_name_or_path}': {str(e)}"
+        return f"Failed to read file '{file_name_or_path}': {e!s}"
 

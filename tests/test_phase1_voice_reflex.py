@@ -5,7 +5,6 @@ Verifies:
 - Pipecat Microsecond Barge-In (<50us buffer flushing)
 - Deterministic Tool & Fast Routing
 """
-import time
 import sys
 from pathlib import Path
 
@@ -13,17 +12,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from voice.frame_pipeline import (
-    SpaceVFramePipeline,
-    DraftTranscriptionFrame,
-    TranscriptionFrame,
-    SpeechProgressFrame,
-    AudioRawFrame,
-    UserStartedSpeakingFrame,
-    UserStoppedSpeakingFrame,
-    InterruptionFrame,
-)
 from spacev.core.reflex import SpaceVReflexEngine
+from voice.frame_pipeline import (
+    DraftTranscriptionFrame,
+    SpaceVFramePipeline,
+    SpeechProgressFrame,
+    TranscriptionFrame,
+)
 
 
 def test_dual_pass_frames():
@@ -50,7 +45,7 @@ def test_pipecat_microsecond_flush():
 
 def test_reflex_engine_instant_match():
     reflex = SpaceVReflexEngine()
-    
+
     # 1. App launch
     match = reflex.match_command("launch calculator")
     assert match is not None

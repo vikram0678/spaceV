@@ -11,6 +11,7 @@ except ImportError:
 import threading
 import time
 
+
 def _play_async(fn):
     if not winsound:
         return

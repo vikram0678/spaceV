@@ -8,10 +8,10 @@ from __future__ import annotations
 import logging
 import random
 import time
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Any
 
 try:
-    from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, Playwright
+    from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
     HAS_PLAYWRIGHT = True
 except ImportError:
     HAS_PLAYWRIGHT = False
@@ -40,13 +40,13 @@ class StealthBrowserController:
 
     def __init__(self, headless: bool = False):
         self.headless = headless
-        self._playwright: Optional[Playwright] = None
-        self._browser: Optional[Browser] = None
-        self._context: Optional[BrowserContext] = None
-        self._page: Optional[Page] = None
-        self._current_elements: List[DOMElement] = []
+        self._playwright: Playwright | None = None
+        self._browser: Browser | None = None
+        self._context: BrowserContext | None = None
+        self._page: Page | None = None
+        self._current_elements: list[DOMElement] = []
 
-    def start(self) -> Optional[Page]:
+    def start(self) -> Page | None:
         """Launches the stealth browser session."""
         if not HAS_PLAYWRIGHT:
             logger.info("[StealthBrowser] Playwright not installed. Operating in lightweight mode.")
@@ -172,7 +172,7 @@ class StealthBrowserController:
             return self.start()
         return self._page
 
-    def navigate(self, url: str) -> Tuple[str, str]:
+    def navigate(self, url: str) -> tuple[str, str]:
         """Navigates to URL and waits for network idle."""
         page = self.page
         if not url.startswith("http"):
@@ -183,7 +183,7 @@ class StealthBrowserController:
         time.sleep(1.0)
         return page.url, page.title()
 
-    def get_dom_state(self) -> Tuple[List[DOMElement], str]:
+    def get_dom_state(self) -> tuple[list[DOMElement], str]:
         """Crawls interactive elements and assigns indices."""
         elements, summary = DOMExtractor.extract_interactive_elements(self.page)
         self._current_elements = elements

@@ -6,13 +6,14 @@ Supports UI-TARS 2B and 7B architectures with normalized [0, 1000] coordinate gr
 """
 from __future__ import annotations
 
-import re
-import io
-import time
 import base64
+import io
 import logging
+import re
+import time
 from dataclasses import dataclass
-from typing import Optional, Tuple, Dict, Any, List
+from typing import Any
+
 from PIL import Image
 
 try:
@@ -23,7 +24,7 @@ except Exception:
 import requests
 
 from config import OLLAMA_BASE_URL, UI_TARS_MODEL, UI_TARS_MODEL_2B
-from tools.gui_tools import human_move_to, safety
+from tools.gui_tools import human_move_to
 
 logger = logging.getLogger("SpaceV.UITARS")
 
@@ -33,11 +34,11 @@ class UITARSAction:
     """Represents a discrete grounded GUI action output by UI-TARS."""
     thought: str
     action_type: str  # 'click', 'double_click', 'right_click', 'drag', 'type', 'press_key', 'hotkey', 'wait', 'finished'
-    point: Optional[Tuple[int, int]] = None
-    start_box: Optional[Tuple[int, int, int, int]] = None
-    end_box: Optional[Tuple[int, int]] = None
-    content: Optional[str] = None
-    key: Optional[str] = None
+    point: tuple[int, int] | None = None
+    start_box: tuple[int, int, int, int] | None = None
+    end_box: tuple[int, int] | None = None
+    content: str | None = None
+    key: str | None = None
     raw_text: str = ""
 
     def __str__(self):
@@ -138,7 +139,7 @@ class UITARSEngine:
             raw_text=text
         )
 
-    def predict_action(self, instruction: str, image: Optional[Image.Image] = None) -> UITARSAction:
+    def predict_action(self, instruction: str, image: Image.Image | None = None) -> UITARSAction:
         """
         Runs visual perception and VLA action reasoning for desktop navigation.
         Connects to Ollama UI-TARS model when available, with automatic closed-loop
@@ -253,7 +254,7 @@ class UITARSEngine:
 
         return f"UI-TARS Action '{action.action_type}' processed."
 
-    def navigate_and_execute(self, instruction: str) -> Dict[str, Any]:
+    def navigate_and_execute(self, instruction: str) -> dict[str, Any]:
         """
         End-to-end perception -> VLA action reasoning -> OS actuation execution.
         """

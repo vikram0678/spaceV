@@ -2,8 +2,9 @@
 Web and media automation tools for Windows.
 """
 import urllib.parse
-import webbrowser
-from tools.gui_tools import safety, gui_play_youtube, gui_search_google_browser
+
+from tools.gui_tools import gui_play_youtube, gui_search_google_browser, safety
+
 
 def search_google(query: str) -> str:
     """
@@ -11,7 +12,7 @@ def search_google(query: str) -> str:
     """
     if safety.autonomous_mode_enabled:
         return gui_search_google_browser(query)
-        
+
     from core.platform_adapter import PlatformAdapter
     try:
         encoded_query = urllib.parse.quote_plus(query)
@@ -49,6 +50,35 @@ def open_url(url: str) -> str:
         return f"Opened website: {url}"
     except Exception as e:
         return f"Failed to open website: {e!s}"
+
+
+def read_web_page(url: str) -> str:
+    """
+    Fetches and reads content of any web page, automatically stripping HTML/CSS clutter
+    and returning distilled, LLM-ready semantic Markdown (Crawl4AI pattern).
+    """
+    import urllib.request
+
+    from tools.semantic_distiller import distill_html_to_markdown
+    try:
+        if not url.startswith("http://") and not url.startswith("https://"):
+            url = "https://" + url
+
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=15) as response:
+            html = response.read().decode("utf-8", errors="replace")
+
+        markdown_content = distill_html_to_markdown(html)
+        if not markdown_content:
+            return f"Web page at {url} was fetched but contained no readable text."
+        return f"=== Distilled Content from {url} ===\n\n{markdown_content}"
+    except Exception as e:
+        return f"Failed to read web page at {url}: {e!s}"
 
 
 # ============================================================================
@@ -102,7 +132,7 @@ def click_dom_element(index: int) -> str:
         success = controller.click_element_by_index(index)
         return f"Successfully clicked DOM element [{index}]." if success else f"Could not find or click DOM element [{index}]."
     except Exception as e:
-        return f"Error clicking DOM element [{index}]: {str(e)}"
+        return f"Error clicking DOM element [{index}]: {e!s}"
 
 
 def type_dom_element(index: int, text: str) -> str:
@@ -116,4 +146,4 @@ def type_dom_element(index: int, text: str) -> str:
         success = controller.type_into_element(index, text)
         return f"Successfully typed text into DOM element [{index}]." if success else f"Could not type into DOM element [{index}]."
     except Exception as e:
-        return f"Error typing into DOM element [{index}]: {str(e)}"
+        return f"Error typing into DOM element [{index}]: {e!s}"

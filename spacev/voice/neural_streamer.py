@@ -6,7 +6,7 @@ Implements low-latency streaming audio perception and direct Audio-In -> Tool-Ou
 from __future__ import annotations
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 logger = logging.getLogger("SpaceV.Voice")
 
@@ -16,10 +16,10 @@ class SpaceVNeuralStreamer:
 
     DEFAULT_KEYWORDS = ["SpaceV", "detonate", "rollback", "quarantine", "sandbox", "celesto", "status"]
 
-    def __init__(self, keywords: Optional[List[str]] = None):
+    def __init__(self, keywords: list[str] | None = None):
         self.keywords = keywords or self.DEFAULT_KEYWORDS
 
-    def process_audio_frame(self, audio_data: bytes) -> Dict[str, Any]:
+    def process_audio_frame(self, audio_data: bytes) -> dict[str, Any]:
         """
         Processes audio frame through Silero VAD and Whistle consensus.
         Emits fast-path tool call intent directly from audio frames.

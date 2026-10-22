@@ -3,10 +3,12 @@ Visual Grounding & Text-Anchored Navigation Engine for SpaceV.
 Powered by Windows Native OCR (Windows.Media.Ocr / winocr) with high-res bounding-box discovery
 and sub-pixel human-like cursor gliding to any on-screen text, button, or link.
 """
-import time
 import difflib
-from typing import Optional, Tuple, Dict, Any, List
+import time
+from typing import Any
+
 from PIL import Image
+
 
 def _get_winocr():
     """
@@ -26,7 +28,7 @@ except Exception:
 from tools.gui_tools import human_move_to, safety
 
 
-def capture_screen_pil() -> Optional[Image.Image]:
+def capture_screen_pil() -> Image.Image | None:
     """
     Captures the interactive desktop display using hardware-accelerated DXGI (via bettercam)
     with automatic fallback to Windows GDI host capture.
@@ -37,9 +39,9 @@ def capture_screen_pil() -> Optional[Image.Image]:
 
 def find_text_coordinates(
     target_text: str,
-    image: Optional[Image.Image] = None,
+    image: Image.Image | None = None,
     min_similarity: float = 0.72
-) -> Optional[Tuple[int, int, str, float]]:
+) -> tuple[int, int, str, float] | None:
     """
     Locates specified text anywhere on screen using Windows Native OCR.
     Returns (center_x, center_y, matched_text, confidence_score) or None if not found.
@@ -98,7 +100,7 @@ def find_text_coordinates(
     return None
 
 
-def read_screen_text(image: Optional[Image.Image] = None) -> str:
+def read_screen_text(image: Image.Image | None = None) -> str:
     """
     Performs full-screen OCR transcription, returning all visible on-screen text.
     """
@@ -115,7 +117,7 @@ def read_screen_text(image: Optional[Image.Image] = None) -> str:
         text = res.get("text", "").strip()
         return text if text else "No legible text detected on screen."
     except Exception as e:
-        return f"OCR inspection failed: {str(e)}"
+        return f"OCR inspection failed: {e!s}"
 
 
 def gui_click_text(target_text: str) -> str:
@@ -150,16 +152,16 @@ def gui_click_text(target_text: str) -> str:
         safety.abort()
         return "⚠️ EMERGENCY STOP: PyAutoGUI Fail-Safe triggered."
     except InterruptedError as e:
-        return f"⚠️ EMERGENCY STOP: {str(e)}"
+        return f"⚠️ EMERGENCY STOP: {e!s}"
     except Exception as e:
-        return f"Visual click failed: {str(e)}"
+        return f"Visual click failed: {e!s}"
 
 
 # ============================================================================
 # SET-OF-MARK (SoM) COORDINATE NORMALIZATION & VISUAL GROUNDING (Upgrade #15)
 # ============================================================================
 
-def normalize_coordinates(x: int, y: int, screen_w: int, screen_h: int) -> Tuple[int, int]:
+def normalize_coordinates(x: int, y: int, screen_w: int, screen_h: int) -> tuple[int, int]:
     """
     Normalizes physical screen pixel coordinates onto standard [0, 1000] scale.
     """
@@ -170,7 +172,7 @@ def normalize_coordinates(x: int, y: int, screen_w: int, screen_h: int) -> Tuple
     return (max(0, min(1000, norm_x)), max(0, min(1000, norm_y)))
 
 
-def denormalize_coordinates(norm_x: int, norm_y: int, screen_w: int, screen_h: int) -> Tuple[int, int]:
+def denormalize_coordinates(norm_x: int, norm_y: int, screen_w: int, screen_h: int) -> tuple[int, int]:
     """
     De-normalizes [0, 1000] model coordinate space into physical screen pixels.
     """
@@ -179,17 +181,18 @@ def denormalize_coordinates(norm_x: int, norm_y: int, screen_w: int, screen_h: i
     return (max(0, min(screen_w - 1, x)), max(0, min(screen_h - 1, y)))
 
 
-_CACHED_SOM_ELEMENTS: List[Dict[str, Any]] = []
+_CACHED_SOM_ELEMENTS: list[dict[str, Any]] = []
 
 
-def generate_set_of_marks(image: Optional[Image.Image] = None) -> Tuple[Optional[Image.Image], List[Dict[str, Any]]]:
+def generate_set_of_marks(image: Image.Image | None = None) -> tuple[Image.Image | None, list[dict[str, Any]]]:
     """
     Discovers interactive desktop elements using OmniParser and renders
     Set-of-Mark (SoM) labeled bounding boxes with numeric badges [1], [2], [3].
     Returns (annotated_som_image, elements_metadata).
     """
     global _CACHED_SOM_ELEMENTS
-    from PIL import ImageDraw, ImageFont
+    from PIL import ImageDraw
+
     from core.omniparser import OmniParserEngine
 
     img = image or capture_screen_pil()
@@ -202,7 +205,7 @@ def generate_set_of_marks(image: Optional[Image.Image] = None) -> Tuple[Optional
 
     annotated = img.copy()
     draw = ImageDraw.Draw(annotated, "RGBA")
-    elements_metadata: List[Dict[str, Any]] = []
+    elements_metadata: list[dict[str, Any]] = []
 
     # Palette for SoM bounding boxes
     colors = [
@@ -243,7 +246,7 @@ def generate_set_of_marks(image: Optional[Image.Image] = None) -> Tuple[Optional
     return annotated, elements_metadata
 
 
-def gui_click_som_index(element_index: int, som_elements: Optional[List[Dict[str, Any]]] = None) -> str:
+def gui_click_som_index(element_index: int, som_elements: list[dict[str, Any]] | None = None) -> str:
     """
     Clicks the on-screen element corresponding to Set-of-Mark integer index [element_index].
     """
@@ -268,4 +271,4 @@ def gui_click_som_index(element_index: int, som_elements: Optional[List[Dict[str
         pyautogui.click()
         return f"Autonomously clicked Set-of-Mark [{element_index}] ('{label}') at ({cx}, {cy})."
     except Exception as e:
-        return f"Failed clicking mark [{element_index}]: {str(e)}"
+        return f"Failed clicking mark [{element_index}]: {e!s}"

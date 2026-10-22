@@ -3,14 +3,14 @@ SpaceV Harnessing Layer: Recursive Agent Harnessing, Experience Libraries, and P
 """
 
 from .experience_library import ExperienceLibrary, OperationalLesson
-from .propose_probe_compose import ComposedHealingPlan, ProbeCandidate, ProposeProbeComposeEngine
 from .middleware import ObservationSanitizerMiddleware
+from .propose_probe_compose import ComposedHealingPlan, ProbeCandidate, ProposeProbeComposeEngine
 
 __all__ = [
+    "ComposedHealingPlan",
     "ExperienceLibrary",
+    "ObservationSanitizerMiddleware",
     "OperationalLesson",
     "ProbeCandidate",
     "ProposeProbeComposeEngine",
-    "ComposedHealingPlan",
-    "ObservationSanitizerMiddleware",
 ]

@@ -19,10 +19,12 @@ except Exception:
     pass
 
 import pyaudio
-from voice.vad_detector import SileroVADDetector
+
 from voice.audio_stream import AudioStreamRecorder
-from voice.stt_engine import VoiceListener, OfflineWhisperSingleton
 from voice.dictation_manager import DictationManager
+from voice.stt_engine import OfflineWhisperSingleton, VoiceListener
+from voice.vad_detector import SileroVADDetector
+
 
 def main():
     print("=" * 65)

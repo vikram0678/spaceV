@@ -9,7 +9,7 @@ import json
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -18,7 +18,7 @@ class BrowserTarget:
     title: str
     url: str
     type: str
-    ws_debugger_url: Optional[str] = None
+    ws_debugger_url: str | None = None
 
 
 class CDPBridge:
@@ -41,7 +41,7 @@ class CDPBridge:
         except Exception:
             return False
 
-    def get_version(self) -> Optional[Dict[str, Any]]:
+    def get_version(self) -> dict[str, Any] | None:
         try:
             req = urllib.request.Request(f"{self.base_url}/json/version", method="GET")
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
@@ -51,7 +51,7 @@ class CDPBridge:
             return None
         return None
 
-    def list_targets(self) -> List[BrowserTarget]:
+    def list_targets(self) -> list[BrowserTarget]:
         try:
             req = urllib.request.Request(f"{self.base_url}/json/list", method="GET")
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
@@ -73,7 +73,7 @@ class CDPBridge:
             return []
         return []
 
-    def get_active_page(self) -> Optional[BrowserTarget]:
+    def get_active_page(self) -> BrowserTarget | None:
         targets = self.list_targets()
         for t in targets:
             if t.type == "page" and not t.url.startswith("chrome-extension://"):

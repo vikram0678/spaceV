@@ -3,8 +3,8 @@
 Ralph Loop Runner for SpaceV.
 Executes automated test verification and lint evaluation loops.
 """
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

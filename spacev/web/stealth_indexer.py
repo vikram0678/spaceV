@@ -6,8 +6,8 @@ cutting prompt token consumption by 80% for local LLMs, and masks automation fla
 """
 from __future__ import annotations
 
-import re
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -48,7 +48,7 @@ class SpaceVStealthWebIndexer:
     """Manages token-efficient element extraction and stealth flags."""
 
     @staticmethod
-    def get_stealth_args() -> List[str]:
+    def get_stealth_args() -> list[str]:
         """Anti-bot evasion browser arguments."""
         return [
             "--disable-blink-features=AutomationControlled",
@@ -60,11 +60,11 @@ class SpaceVStealthWebIndexer:
         ]
 
     @staticmethod
-    def parse_elements(raw_items: List[Dict[str, Any]]) -> List[IndexedElement]:
+    def parse_elements(raw_items: list[dict[str, Any]]) -> list[IndexedElement]:
         return [IndexedElement(**item) for item in raw_items]
 
     @staticmethod
-    def format_for_llm(elements: List[IndexedElement]) -> str:
+    def format_for_llm(elements: list[IndexedElement]) -> str:
         """Formats indexed elements into compact representation for the LLM."""
         lines = []
         for el in elements:

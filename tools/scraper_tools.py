@@ -2,12 +2,13 @@
 Web Scraping & Live Intelligence Tools for SpaceV.
 Scrapes jobs, news headlines, weather, and encyclopedia summaries.
 """
-import os
 import csv
-import json
-import requests
 import urllib.parse
+
+import requests
+
 from config import USER_DESKTOP_DIR
+
 
 def scrape_jobs(role: str = "python", location: str = "remote", save_to_desktop: bool = True) -> str:
     """
@@ -80,7 +81,7 @@ def scrape_jobs(role: str = "python", location: str = "remote", save_to_desktop:
         return "\n".join(summary) + csv_msg
 
     except Exception as e:
-        return f"Failed to scrape jobs: {str(e)}"
+        return f"Failed to scrape jobs: {e!s}"
 
 def fetch_news_headlines(topic: str = "technology") -> str:
     """
@@ -90,7 +91,7 @@ def fetch_news_headlines(topic: str = "technology") -> str:
         # Fetching tech news RSS feed via public aggregator
         query = urllib.parse.quote_plus(topic)
         url = f"https://hn.algolia.com/api/v1/search?query={query}&tags=story&hitsPerPage=5"
-        
+
         res = requests.get(url, timeout=8)
         if res.status_code != 200:
             return "Could not retrieve news at this time."
@@ -109,7 +110,7 @@ def fetch_news_headlines(topic: str = "technology") -> str:
 
         return "\n".join(headlines)
     except Exception as e:
-        return f"Failed to fetch news: {str(e)}"
+        return f"Failed to fetch news: {e!s}"
 
 def get_weather(city: str = "") -> str:
     """
@@ -118,10 +119,10 @@ def get_weather(city: str = "") -> str:
     try:
         city_query = urllib.parse.quote_plus(city) if city else ""
         url = f"https://wttr.in/{city_query}?format=j1"
-        
+
         headers = {"User-Agent": "curl/7.68.0"}
         res = requests.get(url, headers=headers, timeout=8)
-        
+
         if res.status_code != 200:
             # Fallback text format
             text_res = requests.get(f"https://wttr.in/{city_query}?format=%l:+%c+%t,+%w+wind,+%h+humidity", timeout=8)
@@ -130,7 +131,7 @@ def get_weather(city: str = "") -> str:
         data = res.json()
         current = data.get("current_condition", [{}])[0]
         area = data.get("nearest_area", [{}])[0]
-        
+
         city_name = area.get("areaName", [{}])[0].get("value", city or "Local")
         country = area.get("country", [{}])[0].get("value", "")
         temp_c = current.get("temp_C", "N/A")
@@ -147,7 +148,7 @@ def get_weather(city: str = "") -> str:
             f"• Wind Speed: {wind} km/h"
         )
     except Exception as e:
-        return f"Failed to get weather: {str(e)}"
+        return f"Failed to get weather: {e!s}"
 
 def get_wikipedia_summary(query: str) -> str:
     """
@@ -157,7 +158,7 @@ def get_wikipedia_summary(query: str) -> str:
         encoded = urllib.parse.quote_plus(query)
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{encoded}"
         headers = {"User-Agent": "SpaceVDesktopAgent/1.0 (personal-assistant)"}
-        
+
         res = requests.get(url, headers=headers, timeout=8)
         if res.status_code == 200:
             data = res.json()
@@ -168,4 +169,4 @@ def get_wikipedia_summary(query: str) -> str:
         else:
             return f"No Wikipedia article found for '{query}'."
     except Exception as e:
-        return f"Failed to search Wikipedia: {str(e)}"
+        return f"Failed to search Wikipedia: {e!s}"

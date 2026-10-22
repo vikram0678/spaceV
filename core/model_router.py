@@ -3,14 +3,20 @@ Low-RAM Multi-LLM Dynamic Routing Engine for SpaceV.
 Automatically classifies user intent and routes tasks to the lightest,
 most capable specialized model available while enforcing RAM/VRAM auto-unloading.
 """
-import re
+
 import requests
-from typing import List, Dict, Tuple, Optional
+
 from config import (
-    OLLAMA_BASE_URL, FAST_CHAT_MODEL, PRIMARY_MODEL,
-    CODER_MODEL, VISION_MODEL, FALLBACK_MODEL,
-    UI_TARS_MODEL, UI_TARS_MODEL_2B,
-    OLLAMA_KEEP_ALIVE, LOW_RAM_MODE
+    CODER_MODEL,
+    FALLBACK_MODEL,
+    FAST_CHAT_MODEL,
+    LOW_RAM_MODE,
+    OLLAMA_BASE_URL,
+    OLLAMA_KEEP_ALIVE,
+    PRIMARY_MODEL,
+    UI_TARS_MODEL,
+    UI_TARS_MODEL_2B,
+    VISION_MODEL,
 )
 
 # Role Constants
@@ -30,12 +36,12 @@ class MultiModelRouter:
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(MultiModelRouter, cls).__new__(cls)
-            cls._instance.installed_models: List[str] = []
+            cls._instance = super().__new__(cls)
+            cls._instance.installed_models: list[str] = []
             cls._instance.refresh_installed_models()
         return cls._instance
 
-    def refresh_installed_models(self) -> List[str]:
+    def refresh_installed_models(self) -> list[str]:
         """Probes the local Ollama API to detect which models are installed."""
         try:
             res = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2)
@@ -45,7 +51,7 @@ class MultiModelRouter:
             self.installed_models = []
         return self.installed_models
 
-    def is_model_installed(self, model_tag: str) -> Optional[str]:
+    def is_model_installed(self, model_tag: str) -> str | None:
         """Checks if a model tag or prefix exists in local Ollama installation."""
         if not self.installed_models:
             return None
@@ -100,7 +106,7 @@ class MultiModelRouter:
         # 3. Fast Conversational, Summarization, Greetings, Q&A
         return ROLE_FAST_CHAT
 
-    def select_model(self, prompt: str, requires_tools: bool = False, requires_vision: bool = False) -> Tuple[str, str]:
+    def select_model(self, prompt: str, requires_tools: bool = False, requires_vision: bool = False) -> tuple[str, str]:
         """
         Resolves the optimal local model and role tag for the request.
         Returns: (model_name, role_name)

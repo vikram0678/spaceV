@@ -2,13 +2,14 @@
 Autonomous Timers and Reminders Scheduler Engine for SpaceV.
 Manages background countdown timers, alarms, and voice notifications.
 """
-import time
 import threading
-import datetime
-from typing import List, Dict, Any, Callable, Optional
+import time
+from collections.abc import Callable
+from typing import Any
+
 
 class TimerItem:
-    def __init__(self, timer_id: str, total_seconds: float, label: str, callback: Optional[Callable] = None):
+    def __init__(self, timer_id: str, total_seconds: float, label: str, callback: Callable | None = None):
         self.timer_id = timer_id
         self.total_seconds = total_seconds
         self.label = label
@@ -43,13 +44,13 @@ class SchedulerEngine:
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(SchedulerEngine, cls).__new__(cls)
-            cls._instance._timers: Dict[str, TimerItem] = {}
+            cls._instance = super().__new__(cls)
+            cls._instance._timers: dict[str, TimerItem] = {}
             cls._instance._counter = 1
             cls._instance.on_timer_expired = None # Global callback for UI
         return cls._instance
 
-    def set_timer(self, seconds: float, label: str = "Timer", callback: Optional[Callable] = None) -> str:
+    def set_timer(self, seconds: float, label: str = "Timer", callback: Callable | None = None) -> str:
         """
         Creates and starts a new countdown timer.
         """
@@ -71,12 +72,12 @@ class SchedulerEngine:
 
         item = TimerItem(timer_id, seconds, label, callback=_handle_expired)
         self._timers[timer_id] = item
-        
+
         mins = round(seconds / 60, 1)
         dur_str = f"{int(seconds)} seconds" if seconds < 60 else f"{mins} minute(s)"
         return f"Timer '{label}' set for {dur_str}, Sir."
 
-    def list_timers(self) -> List[Dict[str, Any]]:
+    def list_timers(self) -> list[dict[str, Any]]:
         """Returns list of currently active countdown timers."""
         active = []
         for tid, t in list(self._timers.items()):

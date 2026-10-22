@@ -11,7 +11,6 @@ import logging
 import threading
 import time
 import wave
-from typing import Optional, Generator, Tuple
 
 from voice.vad_detector import SileroVADDetector
 
@@ -36,7 +35,7 @@ class AudioStreamRecorder:
         chunk_size: int = 512,  # 32 ms at 16kHz (Standard Silero VAD frame)
         pre_speech_chunks: int = 10,  # ~320 ms of pre-speech ring buffer (preserves initial consonants)
         silence_debounce_chunks: int = 13,  # ~416 ms of post-speech silence for rapid conversational turn-taking
-        vad: Optional[SileroVADDetector] = None,
+        vad: SileroVADDetector | None = None,
     ):
         self.sample_rate = sample_rate
         self.chunk_size = chunk_size
@@ -45,8 +44,8 @@ class AudioStreamRecorder:
         self.silence_debounce_chunks = silence_debounce_chunks
 
         self.vad = vad or SileroVADDetector(sample_rate=sample_rate)
-        self._pa: Optional[pyaudio.PyAudio] = None
-        self._stream: Optional[pyaudio.Stream] = None
+        self._pa: pyaudio.PyAudio | None = None
+        self._stream: pyaudio.Stream | None = None
         self._is_recording = False
         self._lock = threading.Lock()
 
@@ -115,7 +114,7 @@ class AudioStreamRecorder:
                 pass
             self._pa = None
 
-    def read_chunk(self) -> Optional[bytes]:
+    def read_chunk(self) -> bytes | None:
         """Reads a single raw PCM frame from the audio stream (thread-safe)."""
         with self._lock:
             if not self._is_recording or not self._stream:
@@ -131,7 +130,7 @@ class AudioStreamRecorder:
         timeout: float = 6.0,
         phrase_limit: float = 12.0,
         stop_check=None,
-    ) -> Optional[bytes]:
+    ) -> bytes | None:
         """
         Records a complete spoken phrase bounded by Silero VAD turn detection.
         Returns:

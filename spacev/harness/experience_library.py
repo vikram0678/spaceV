@@ -5,11 +5,9 @@ Engineered from Harness² (Google LLC 2026) for persistent, cross-session operat
 
 from __future__ import annotations
 
-import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -63,7 +61,7 @@ class ExperienceLibrary:
         index_file = dom_dir / "INDEX.md"
         harnesses_dir = dom_dir / "harnesses"
 
-        entries: List[str] = []
+        entries: list[str] = []
         if harnesses_dir.is_dir():
             for task_folder in sorted(harnesses_dir.iterdir()):
                 exp_file = task_folder / "EXPERIENCE.md"
@@ -82,10 +80,10 @@ class ExperienceLibrary:
         index_file.write_text(body, encoding="utf-8")
         return index_file
 
-    def retrieve_relevant_lessons(self, domain: str, context_query: str) -> List[OperationalLesson]:
+    def retrieve_relevant_lessons(self, domain: str, context_query: str) -> list[OperationalLesson]:
         dom_dir = self._domain_dir(domain)
         harnesses_dir = dom_dir / "harnesses"
-        results: List[OperationalLesson] = []
+        results: list[OperationalLesson] = []
 
         if not harnesses_dir.is_dir():
             return results

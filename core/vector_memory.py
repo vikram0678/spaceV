@@ -4,13 +4,15 @@ Powered by transactional SQLite with native `sqlite-vec` C Extension for dense K
 and SQLite FTS5 for BM25 lexical keyword ranking, providing instant (<2ms) hybrid retrieval
 over past conversations, notes, commands, and documents in a single zero-dependency database.
 """
-import sqlite3
-import time
 import json
 import logging
-import numpy as np
+import sqlite3
+import time
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
+
+import numpy as np
+
 from config import BASE_DIR
 
 logger = logging.getLogger("SpaceV.VectorMemory")
@@ -26,7 +28,7 @@ except ImportError:
     logger.warning("[VectorMemory] 'sqlite-vec' module not detected; falling back to pure FTS5 BM25 retrieval.")
 
 
-def generate_embedding(text: str, dim: int = DEFAULT_EMBED_DIM) -> List[float]:
+def generate_embedding(text: str, dim: int = DEFAULT_EMBED_DIM) -> list[float]:
     """
     Generates a deterministic normalized float32 semantic vector embedding for text.
     Combines subword n-grams and token hash projections onto the unit hypersphere S^(dim-1),
@@ -154,7 +156,7 @@ class VectorMemoryManager:
         """Returns True if native sqlite-vec C Extension is active and operational."""
         return self._vec_available
 
-    def generate_embedding(self, text: str) -> List[float]:
+    def generate_embedding(self, text: str) -> list[float]:
         """Generates a normalized dense vector embedding for text."""
         return generate_embedding(text, dim=self.dimension)
 
@@ -163,8 +165,8 @@ class VectorMemoryManager:
         doc_id: str,
         content: str,
         domain: str = "general",
-        metadata: Optional[Dict[str, Any]] = None,
-        embedding: Optional[List[float]] = None
+        metadata: dict[str, Any] | None = None,
+        embedding: list[float] | None = None
     ):
         """
         Stores a document or memory item with dual dense vector and FTS5 indexing.
@@ -214,7 +216,7 @@ class VectorMemoryManager:
 
     add = store
 
-    def search_vector(self, query_vector: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_vector(self, query_vector: list[float], top_k: int = 5) -> list[dict[str, Any]]:
         """
         Performs dense vector KNN similarity search using sqlite-vec C Extension.
         """
@@ -251,7 +253,7 @@ class VectorMemoryManager:
 
         return results
 
-    def search_fts(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_fts(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """
         Performs lexical full-text search with BM25 relevance ranking using SQLite FTS5.
         """
@@ -315,9 +317,9 @@ class VectorMemoryManager:
         self,
         query: str,
         top_k: int = 5,
-        query_vector: Optional[List[float]] = None,
+        query_vector: list[float] | None = None,
         alpha: float = 0.5
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Performs state-of-the-art Hybrid Semantic Retrieval:
         Combines dense KNN vector search (sqlite-vec) with lexical BM25 ranking (FTS5).
@@ -340,7 +342,7 @@ class VectorMemoryManager:
 
         # 4. Reciprocal Rank Fusion (RRF) Ranking with k=60 (Upgrade #35)
         RRF_K = 60
-        merged: Dict[str, Dict[str, Any]] = {}
+        merged: dict[str, dict[str, Any]] = {}
 
         # Track 1-based rank positions for each modality
         for rank, item in enumerate(vec_results, 1):
@@ -412,7 +414,7 @@ class VectorMemoryManager:
             conn.commit()
             return cursor.rowcount > 0
 
-    def list_recent(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def list_recent(self, limit: int = 10) -> list[dict[str, Any]]:
         """Retrieves the most recent memory items."""
         results = []
         with self._get_connection() as conn:

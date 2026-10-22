@@ -4,6 +4,7 @@ Tests LangGraph StateGraph Compilation, DOM Extraction,
 Local Audio CAPTCHA Detection & Faster-Whisper Solver, and Cua Bridge.
 """
 import sys
+
 try:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -11,11 +12,11 @@ except Exception:
     pass
 
 import unittest
-from hybrid_agent.state import HybridAgentState
-from hybrid_agent.captcha_solver import LocalAudioCaptchaSolver, local_captcha_solver
-from hybrid_agent.dom_extractor import DOMExtractor
+
+from hybrid_agent.captcha_solver import LocalAudioCaptchaSolver
 from hybrid_agent.cua_bridge import cua_bridge
 from hybrid_agent.graph import HybridBrowserAgent
+from hybrid_agent.state import HybridAgentState
 
 
 class TestHybridAgent(unittest.TestCase):

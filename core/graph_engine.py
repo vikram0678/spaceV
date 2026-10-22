@@ -3,15 +3,17 @@ LangGraph Production Multi-Step Cyclic State Machine for SpaceV.
 Coordinates Fast-Path dispatching, closed-loop Perception Guards, Ollama model reasoning,
 Pydantic tool execution, roadblock clarification, and real-time streaming response synthesis.
 """
-from typing import Dict, Any, List, Optional, Callable, TypedDict
-import json
 import datetime
+import json
+from collections.abc import Callable
+from typing import Any, TypedDict
+
 import requests
 
 END = "__end__"
 
 try:
-    from langgraph.graph import StateGraph, END
+    from langgraph.graph import END, StateGraph
     _HAS_LANGGRAPH = True
 except ImportError:
     _HAS_LANGGRAPH = False
@@ -24,7 +26,7 @@ except ImportError:
             self.conditional_edges = conditional_edges
             self.direct_edges = direct_edges
 
-        def invoke(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        def invoke(self, state: dict[str, Any]) -> dict[str, Any]:
             current = self.entry_point
             current_state = dict(state)
             step = 0
@@ -65,7 +67,7 @@ except ImportError:
         def set_entry_point(self, name: str):
             self.entry_point = name
 
-        def add_conditional_edges(self, source: str, route_fn: Callable, mapping: Dict[str, str]):
+        def add_conditional_edges(self, source: str, route_fn: Callable, mapping: dict[str, str]):
             self.conditional_edges[source] = (route_fn, mapping)
 
         def add_edge(self, source: str, target: str):
@@ -75,29 +77,29 @@ except ImportError:
             return CompiledNativeApp(self.entry_point, self.nodes, self.conditional_edges, self.direct_edges)
 from config import OLLAMA_BASE_URL
 from core.fast_router import FastRouter
-from core.ollama_client import OllamaAgent, SYSTEM_PROMPT, parse_fallback_tool_calls
 from core.model_router import model_router
+from core.ollama_client import SYSTEM_PROMPT, OllamaAgent, parse_fallback_tool_calls
 from core.proactive_companion import ProactiveCompanion
+from core.scratchpad import SpaceVScratchpad, active_scratchpad
 from tools.registry import OLLAMA_TOOLS_SCHEMA, execute_tool
 from tools.vision_tools import get_active_window_info
-from core.scratchpad import SpaceVScratchpad, active_scratchpad
 
 
 class SpaceVState(TypedDict):
     user_prompt: str
-    messages: List[Dict[str, Any]]
-    fast_path_result: Optional[tuple]
-    tool_calls: List[Dict[str, Any]]
-    tool_results: List[Dict[str, Any]]
+    messages: list[dict[str, Any]]
+    fast_path_result: tuple | None
+    tool_calls: list[dict[str, Any]]
+    tool_results: list[dict[str, Any]]
     active_window: str
     stuck_detected: bool
-    clarification_question: Optional[str]
+    clarification_question: str | None
     final_response: str
     iteration: int
     is_complete: bool
     healing_attempts: int
-    last_error: Optional[str]
-    scratchpad: Dict[str, Any]
+    last_error: str | None
+    scratchpad: dict[str, Any]
 
 
 class SpaceVGraphEngine:
@@ -105,10 +107,10 @@ class SpaceVGraphEngine:
     Production StateGraph engine managing deterministic node execution, closed-loop perception,
     multi-step tool chaining (iteration < 3), and live UI/TTS streaming callbacks.
     """
-    def __init__(self, agent: Optional[OllamaAgent] = None):
+    def __init__(self, agent: OllamaAgent | None = None):
         self.agent = agent or OllamaAgent()
-        self._current_tool_callback: Optional[Callable] = None
-        self._current_token_callback: Optional[Callable] = None
+        self._current_tool_callback: Callable | None = None
+        self._current_token_callback: Callable | None = None
         self.workflow = self._build_graph()
         self.app = self.workflow.compile()
 
@@ -189,7 +191,7 @@ class SpaceVGraphEngine:
     # NODE IMPLEMENTATIONS
     # ==========================================
 
-    def _fast_router_node(self, state: SpaceVState) -> Dict[str, Any]:
+    def _fast_router_node(self, state: SpaceVState) -> dict[str, Any]:
         """
         Node 1: Evaluates deterministic FastRouter patterns in 0ms.
         Bypasses LLM inference entirely when safe, predictable shortcuts match.
@@ -240,7 +242,7 @@ class SpaceVGraphEngine:
             return "fast_complete"
         return "needs_brain"
 
-    def _perception_guard_node(self, state: SpaceVState) -> Dict[str, Any]:
+    def _perception_guard_node(self, state: SpaceVState) -> dict[str, Any]:
         """
         Node 2: Closed-Loop Perception Guard.
         Inspects active desktop window, detects roadblocks, and feeds perceptual context.
@@ -250,8 +252,8 @@ class SpaceVGraphEngine:
         prompt_lower = state.get("user_prompt", "").lower()
 
         # Universal Gatekeeper Perception Check
-        from core.modal_interceptor import modal_interceptor
         from core.memory import memory
+        from core.modal_interceptor import modal_interceptor
         gatekeeper = modal_interceptor.detect()
         if gatekeeper and gatekeeper.is_active:
             pref = memory.get_preference(gatekeeper.domain, gatekeeper.property_key)
@@ -312,7 +314,7 @@ class SpaceVGraphEngine:
             return "stuck"
         return "proceed"
 
-    def _model_reasoning_node(self, state: SpaceVState) -> Dict[str, Any]:
+    def _model_reasoning_node(self, state: SpaceVState) -> dict[str, Any]:
         """
         Node 3: LLM Model Reasoning.
         Sends prompt + tools to Ollama with smart low-RAM routing.
@@ -363,7 +365,7 @@ class SpaceVGraphEngine:
                 }
         except Exception as e:
             return {
-                "final_response": f"Reasoning engine exception: {str(e)}",
+                "final_response": f"Reasoning engine exception: {e!s}",
                 "tool_calls": [],
                 "is_complete": True
             }
@@ -374,7 +376,7 @@ class SpaceVGraphEngine:
             return "execute_tools"
         return "synthesize"
 
-    def _tool_executor_node(self, state: SpaceVState) -> Dict[str, Any]:
+    def _tool_executor_node(self, state: SpaceVState) -> dict[str, Any]:
         """
         Node 4: Pydantic-Validated Tool Execution.
         Executes tools, notifies live UI callbacks, and checks for modal roadblocks.
@@ -479,7 +481,7 @@ class SpaceVGraphEngine:
             return "loop_reasoning"
         return "synthesize"
 
-    def _self_healing_node(self, state: SpaceVState) -> Dict[str, Any]:
+    def _self_healing_node(self, state: SpaceVState) -> dict[str, Any]:
         """
         Self-Healing Reflection Node:
         Analyzes tool failures, computes dynamic OS remediations, and re-executes.
@@ -517,7 +519,7 @@ class SpaceVGraphEngine:
             return "retry_tool"
         return "escalate"
 
-    def _clarification_node(self, state: SpaceVState) -> Dict[str, Any]:
+    def _clarification_node(self, state: SpaceVState) -> dict[str, Any]:
         """
         Node 5: Self-Aware Clarification Inquirer.
         When stuck or confused, SpaceV asks the user for explicit guidance instead of hallucinating.
@@ -533,7 +535,7 @@ class SpaceVGraphEngine:
             "is_complete": True
         }
 
-    def _response_synthesizer_node(self, state: SpaceVState) -> Dict[str, Any]:
+    def _response_synthesizer_node(self, state: SpaceVState) -> dict[str, Any]:
         """
         Node 6: Final Natural Language Response Synthesizer with Real-Time Streaming.
         """
@@ -590,7 +592,7 @@ class SpaceVGraphEngine:
                     self._current_token_callback(fallback)
                 return {"final_response": fallback, "is_complete": True}
         except Exception as e:
-            fallback = f"Action completed, Sir. (Note: {str(e)})"
+            fallback = f"Action completed, Sir. (Note: {e!s})"
             if self._current_token_callback:
                 self._current_token_callback(fallback)
             return {"final_response": fallback, "is_complete": True}
@@ -599,7 +601,7 @@ class SpaceVGraphEngine:
     # PUBLIC EXECUTION INTERFACE
     # ==========================================
 
-    def run(self, user_prompt: str, tool_callback: Optional[Callable] = None, token_callback: Optional[Callable] = None) -> str:
+    def run(self, user_prompt: str, tool_callback: Callable | None = None, token_callback: Callable | None = None) -> str:
         """
         Executes the compiled LangGraph state machine with full deterministic node tracking,
         real-time UI callbacks, and closed-loop perception.

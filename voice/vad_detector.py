@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Tuple, Optional
 
 import numpy as np
 
@@ -30,7 +29,7 @@ class SileroVADDetector:
 
     def __init__(
         self,
-        model_path: Optional[str | Path] = None,
+        model_path: str | Path | None = None,
         sample_rate: int = 16000,
         threshold: float = 0.5,
         neg_threshold: float = 0.35,
@@ -44,7 +43,7 @@ class SileroVADDetector:
         self._state = np.zeros((2, 1, 128), dtype=np.float32)
         self._context = np.zeros((1, self.context_size), dtype=np.float32)
 
-        self._session: Optional[ort.InferenceSession] = None
+        self._session: ort.InferenceSession | None = None
         self._is_active = False
 
         resolved_path = Path(model_path) if model_path else MODEL_PATH
@@ -80,7 +79,7 @@ class SileroVADDetector:
         self._state = np.zeros((2, 1, 128), dtype=np.float32)
         self._context = np.zeros((1, self.context_size), dtype=np.float32)
 
-    def process_frame(self, pcm_bytes: bytes) -> Tuple[bool, float]:
+    def process_frame(self, pcm_bytes: bytes) -> tuple[bool, float]:
         """
         Evaluates a raw PCM byte chunk (512 samples / 1024 bytes for 16-bit 16kHz).
         Prepends the required 64-sample context window for Silero VAD.
@@ -140,7 +139,7 @@ class SileroVADDetector:
         else:
             return self._energy_fallback(audio_float32)
 
-    def _energy_fallback(self, audio_float32: np.ndarray) -> Tuple[bool, float]:
+    def _energy_fallback(self, audio_float32: np.ndarray) -> tuple[bool, float]:
         """Simple, fast Root Mean Square (RMS) energy estimation fallback."""
         rms = float(np.sqrt(np.mean(audio_float32 ** 2)))
         prob = min(1.0, rms * 15.0)

@@ -3,13 +3,11 @@ Universal Cross-Platform Operating System Adapter for SpaceV.
 Ensures seamless desktop application launch, URL opening, and process control
 across Windows, WSL (bridging to host Windows desktop), macOS, and native Linux.
 """
-import sys
-import os
+import logging
 import shutil
 import subprocess
-import logging
+import sys
 from pathlib import Path
-from typing import Optional, List
 
 logger = logging.getLogger("SpaceV.PlatformAdapter")
 
@@ -53,7 +51,7 @@ class PlatformAdapter:
     Production-grade platform bridge for SpaceV.
     Dynamically routes OS operations to the optimal native or bridged subsystem.
     """
-    _is_wsl_cached: Optional[bool] = None
+    _is_wsl_cached: bool | None = None
 
     @classmethod
     def is_wsl(cls) -> bool:

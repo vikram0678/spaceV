@@ -3,10 +3,13 @@ Cybernetic Animated Arc Reactor Floating Desktop Widget.
 Features live rotating energy rings, breathing core pulse, and state animations.
 """
 import math
-from PyQt6.QtCore import Qt, QPoint, QRectF, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QWidget, QMenu
-from PyQt6.QtGui import QPainter, QColor, QRadialGradient, QPen, QBrush, QFont, QAction
+
+from PyQt6.QtCore import QPoint, QRectF, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QPainter, QPen, QRadialGradient
+from PyQt6.QtWidgets import QMenu, QWidget
+
 from config import BUBBLE_SIZE, THEME
+
 
 class FloatingIcon(QWidget):
     clicked = pyqtSignal()
@@ -18,7 +21,7 @@ class FloatingIcon(QWidget):
         self.drag_position = QPoint()
         self.is_dragging = False
         self.drag_start_pos = QPoint()
-        
+
         self.state = "IDLE" # IDLE, REFLEX, REASONING, THINKING, LISTENING, SPEAKING, ALERT
         self.angle = 0.0
         self.pulse = 0.0

@@ -1,10 +1,8 @@
 import json
 import math
-import os
 import re
 import sys
 from pathlib import Path
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -233,6 +231,7 @@ def test_contract_10_concurrency():
 def test_contract_11_api_endpoints():
     """Requirement 11: FastAPI app endpoints /health, /api/runs (GET & POST)."""
     from fastapi.testclient import TestClient
+
     from spacev.control_plane.main import app
 
     client = TestClient(app)

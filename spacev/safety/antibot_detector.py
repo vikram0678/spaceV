@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -21,7 +20,7 @@ class AntiBotResult:
 
 
 # Tier 1: High-confidence structural markers (single match sufficient regardless of page length)
-_TIER1_PATTERNS: list[Tuple[re.Pattern, str, str]] = [
+_TIER1_PATTERNS: list[tuple[re.Pattern, str, str]] = [
     # Akamai reference pattern
     (
         re.compile(r"Reference\s*#\s*[\d]+\.[0-9a-f]+\.\d+\.[0-9a-f]+", re.IGNORECASE),
@@ -86,7 +85,7 @@ _TIER1_PATTERNS: list[Tuple[re.Pattern, str, str]] = [
 ]
 
 # Tier 2: Contextual markers (only trigger on short payloads < 12KB)
-_TIER2_PATTERNS: list[Tuple[re.Pattern, str, str]] = [
+_TIER2_PATTERNS: list[tuple[re.Pattern, str, str]] = [
     (re.compile(r"Checking\s+your\s+browser", re.IGNORECASE), "Cloudflare", "Browser Verification Notice"),
     (re.compile(r"Just\s+a\s+moment\.\.\.", re.IGNORECASE), "Cloudflare", "Cloudflare Waiting Room"),
     (re.compile(r"Access\s+Denied", re.IGNORECASE), "GenericWAF", "WAF Access Denied Page"),

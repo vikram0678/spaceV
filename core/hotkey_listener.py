@@ -8,6 +8,7 @@ Multi-modal activation architecture:
 
 import socket
 import threading
+
 from PyQt6.QtCore import QObject, pyqtSignal
 
 try:
@@ -43,7 +44,7 @@ class GlobalHotkeyListener(QObject):
         def on_press(key):
             try:
                 self._current_keys.add(key)
-                
+
                 # Check Ctrl + Space
                 is_ctrl = (
                     keyboard.Key.ctrl in self._current_keys or
@@ -54,7 +55,7 @@ class GlobalHotkeyListener(QObject):
                     keyboard.Key.space in self._current_keys or
                     getattr(key, 'char', None) == ' '
                 )
-                
+
                 if is_ctrl and is_space:
                     print("[HOTKEY] ⚡ 'Ctrl + Space' pressed -> Toggling SpaceV window!")
                     self.toggle_requested.emit()

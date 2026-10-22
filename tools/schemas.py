@@ -2,8 +2,8 @@
 Pydantic Validation Schemas for SpaceV Tools.
 Provides strict type-checking, automatic coercion, and clean JSON schemas.
 """
-from typing import Optional
 from pydantic import BaseModel, Field, field_validator
+
 
 # --- File & Folder Schemas ---
 class CreateFolderInput(BaseModel):

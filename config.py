@@ -3,13 +3,25 @@ Configuration settings for SpaceV Cybernetic Desktop AI Agent.
 """
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 # 1. Load .env if present (never breaks if .env is missing)
 
 load_dotenv(BASE_DIR / ".env")
-# 2. Multi-LLM Configuration with Defaults
+# 2. Dual-Brain Provider & Multi-LLM Configuration with Safe Defaults
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_MODEL = os.getenv("LLM_MODEL", "nvidia/nemotron-3.5-super-vl:free")
+
+# Frontier Cloud Model Roles (OpenRouter Free Tier)
+AUTONOMOUS_AGENT_MODEL = os.getenv("AUTONOMOUS_AGENT_MODEL", "nvidia/nemotron-3.5-super-vl:free")
+CODING_ENGINEER_MODEL = os.getenv("CODING_ENGINEER_MODEL", "poolside/laguna-s-2.1:free")
+FAST_CHAT_CLOUD_MODEL = os.getenv("FAST_CHAT_CLOUD_MODEL", "google/gemma-4-31b-it:free")
+
+# Local Multi-Model Tiers (Ollama)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 FAST_CHAT_MODEL = os.getenv("FAST_CHAT_MODEL", "qwen2.5:3b")
 PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "qwen2.5:3b")

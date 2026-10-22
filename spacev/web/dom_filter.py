@@ -6,7 +6,6 @@ Engineered from Browser-Use architecture for 85%+ LLM context token reduction.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -15,9 +14,9 @@ class DOMElement:
     tag: str
     text: str = ""
     role: str = ""
-    bounds: Dict[str, float] = field(default_factory=lambda: {"x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0})
-    attributes: Dict[str, str] = field(default_factory=dict)
-    computed_styles: Dict[str, str] = field(default_factory=dict)
+    bounds: dict[str, float] = field(default_factory=lambda: {"x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0})
+    attributes: dict[str, str] = field(default_factory=dict)
+    computed_styles: dict[str, str] = field(default_factory=dict)
     is_interactive: bool = False
     is_visible: bool = True
 
@@ -66,15 +65,15 @@ class PaintOrderFilter:
 
         return True
 
-    def prune_tree(self, elements: List[DOMElement]) -> List[DOMElement]:
-        survivors: List[DOMElement] = []
+    def prune_tree(self, elements: list[DOMElement]) -> list[DOMElement]:
+        survivors: list[DOMElement] = []
         for el in elements:
             if not self.is_visible(el):
                 continue
             survivors.append(el)
         return survivors
 
-    def format_interactive_prompt(self, elements: List[DOMElement]) -> str:
+    def format_interactive_prompt(self, elements: list[DOMElement]) -> str:
         """
         Formats surviving interactive elements into high-density tokens for LLM reasoning.
         """

@@ -4,22 +4,21 @@ Validates integrations inspired by Harness², Browser-Use, Crawl4AI, and Langflo
 """
 
 import time
-import pytest
 from pathlib import Path
 
-from spacev.safety.antibot_detector import AntiBotDetector, AntiBotResult
-from spacev.web.dom_filter import DOMElement, PaintOrderFilter
 from spacev.control_plane.macro_controller import MacroAction, MacroController
-from spacev.web.content_extractor import ContentExtractor
 from spacev.harness.experience_library import ExperienceLibrary, OperationalLesson
+from spacev.harness.middleware import ObservationSanitizerMiddleware
 from spacev.harness.propose_probe_compose import (
     ProbeCandidate,
     ProposeProbeComposeEngine,
 )
-from spacev.harness.middleware import ObservationSanitizerMiddleware
+from spacev.safety.antibot_detector import AntiBotDetector
 from spacev.services.registry import AdapterRegistry, ServiceType, register_adapter
-from spacev.services.telemetry import WorkflowEvent, WorkflowTelemetry
+from spacev.services.telemetry import WorkflowTelemetry
 from spacev.web.cdp_bridge import CDPBridge
+from spacev.web.content_extractor import ContentExtractor
+from spacev.web.dom_filter import DOMElement, PaintOrderFilter
 
 
 # ---------------------------------------------------------------------------

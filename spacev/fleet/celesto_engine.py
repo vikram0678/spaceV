@@ -8,11 +8,10 @@ from __future__ import annotations
 import logging
 import re
 import time
-from typing import Optional, Dict, Any, List
-from pathlib import Path
+from typing import Any
 
 from spacev.config import settings
-from spacev.safety.hooks import safety_auditor, CommandBlockedError
+from spacev.safety.hooks import safety_auditor
 
 logger = logging.getLogger("SpaceV.CelestoEngine")
 
@@ -45,7 +44,7 @@ class CelestoSandboxInstance:
         self.disk_mb = disk_mb
         self.network_mode = network_mode
         self.state = "created"
-        self.snapshots: Dict[str, Any] = {}
+        self.snapshots: dict[str, Any] = {}
         self.boot_time_s = 0.48
         self._live_computer = None
 
@@ -81,7 +80,7 @@ class CelestoSandboxInstance:
                     return SandboxExecutionResult(res.exit_code, res.stdout, res.stderr)
                 except Exception as e:
                     return SandboxExecutionResult(1, "", str(e))
-            
+
             # Deterministic isolated guest response
             if "uname" in cmd:
                 return SandboxExecutionResult(0, "Linux celesto-guest 6.6.114-firecracker x86_64\n", "")
@@ -145,7 +144,7 @@ class CelestoFleetManager:
     """Manages multi-tenant pools of microVM sandboxes."""
 
     def __init__(self):
-        self.active_sandboxes: Dict[str, CelestoSandboxInstance] = {}
+        self.active_sandboxes: dict[str, CelestoSandboxInstance] = {}
 
     def create(
         self,

@@ -9,10 +9,9 @@ Guarantees enterprise-grade airgap security:
 """
 from __future__ import annotations
 
-import re
 import base64
 import logging
-from typing import List, Dict, Any, Tuple
+import re
 from dataclasses import dataclass
 
 logger = logging.getLogger("SpaceV.SecurityGuard")
@@ -22,7 +21,7 @@ logger = logging.getLogger("SpaceV.SecurityGuard")
 class SecurityAssessment:
     is_safe: bool
     threat_level: str  # "CLEAN", "SUSPICIOUS", "CRITICAL"
-    detected_patterns: List[str]
+    detected_patterns: list[str]
     sanitized_text: str
 
 

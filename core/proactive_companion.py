@@ -4,16 +4,15 @@ Provides Gemini/Jarvis-style continuous conversational interactivity,
 context-aware Next Best Action (NBA) suggestions, dynamic follow-up chips,
 and proactive idle check-ins during working sessions.
 """
-import time
-import datetime
 import random
-from typing import List, Tuple, Optional, Dict, Any
+import time
+
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from config import COMPANION_CHECKIN_INTERVAL_SEC, COMPANION_MODE_DEFAULT
 
 # Context-Aware Next Best Action (NBA) mappings based on executed tools
-TOOL_FOLLOWUP_MAP: Dict[str, List[Tuple[str, str]]] = {
+TOOL_FOLLOWUP_MAP: dict[str, list[tuple[str, str]]] = {
     "activate_workspace_mode": [
         ("🎵 Focus Beats", "play lofi chill beats on youtube in chrome"),
         ("📄 New Script", "create a file named main.py with python boilerplate on Desktop"),
@@ -146,7 +145,7 @@ class ProactiveCompanion(QThread):
         self._running = False
 
     @staticmethod
-    def get_follow_up_chips(tool_name: str = "", reply_text: str = "") -> List[Tuple[str, str]]:
+    def get_follow_up_chips(tool_name: str = "", reply_text: str = "") -> list[tuple[str, str]]:
         """
         Dynamically derives 2-4 interactive follow-up action chips for any response.
         """

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import socket
-from typing import Optional, Dict, Any
+from typing import Any
 
 import requests
 
@@ -23,7 +23,7 @@ class CuaSandboxBridge:
 
     def __init__(self, endpoint: str = DEFAULT_CUA_SPACESD_URL):
         self.endpoint = endpoint
-        self._is_available: Optional[bool] = None
+        self._is_available: bool | None = None
 
     def check_availability(self) -> bool:
         """Checks if cua-spacesd is listening on port 3211."""
@@ -31,7 +31,7 @@ class CuaSandboxBridge:
             with socket.create_connection(("localhost", 3211), timeout=0.8):
                 self._is_available = True
                 return True
-        except (socket.timeout, ConnectionRefusedError, OSError):
+        except (TimeoutError, ConnectionRefusedError, OSError):
             self._is_available = False
             return False
 
@@ -41,7 +41,7 @@ class CuaSandboxBridge:
             return self.check_availability()
         return self._is_available
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Queries health status of the Cua daemon."""
         if not self.check_availability():
             return {

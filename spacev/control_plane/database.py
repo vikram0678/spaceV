@@ -5,7 +5,8 @@ Handles connection pooling and idempotent queries.
 from __future__ import annotations
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 import psycopg
 from psycopg.rows import dict_row
 
@@ -14,7 +15,7 @@ from spacev.config import settings
 logger = logging.getLogger("SpaceV.Database")
 
 # In-memory store fallback for standalone test harnesses when Postgres is offline
-_MEMORY_RUNS: List[Dict[str, Any]] = [
+_MEMORY_RUNS: list[dict[str, Any]] = [
     {
         "id": 1,
         "run_id": "run-seed-001",
@@ -28,7 +29,7 @@ _MEMORY_RUNS: List[Dict[str, Any]] = [
 
 
 class DatabaseManager:
-    def __init__(self, db_url: Optional[str] = None):
+    def __init__(self, db_url: str | None = None):
         self.db_url = db_url or settings.database_url
 
     def get_connection(self):
@@ -43,21 +44,21 @@ class DatabaseManager:
         except Exception:
             return False
 
-    def list_runs(self) -> List[Dict[str, Any]]:
+    def list_runs(self) -> list[dict[str, Any]]:
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("SELECT id, run_id, sandbox_name, problem_id, state, execution_target, created_at FROM runs ORDER BY id ASC")
                     rows = cur.fetchall()
                     for r in rows:
-                        if "created_at" in r and r["created_at"]:
+                        if r.get("created_at"):
                             r["created_at"] = str(r["created_at"])
                     return rows
         except Exception as e:
             logger.warning(f"Using in-memory fallback ledger: {e}")
             return list(_MEMORY_RUNS)
 
-    def insert_run(self, run_id: str, sandbox_name: str, problem_id: str, state: str, execution_target: str) -> Dict[str, Any]:
+    def insert_run(self, run_id: str, sandbox_name: str, problem_id: str, state: str, execution_target: str) -> dict[str, Any]:
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cur:

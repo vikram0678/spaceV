@@ -2,20 +2,36 @@
 Tool Registry and Schema Definitions for Ollama native function calling.
 """
 import json
-from typing import Dict, Any, Callable
-from tools.file_tools import create_folder, open_folder, create_file, list_desktop_files, read_file_content
-from tools.web_tools import search_google, play_youtube, open_url
-from tools.system_tools import (
-    get_current_time, open_application, get_system_stats,
-    activate_workspace_mode, optimize_system_memory,
-    media_control, lock_workstation, empty_recycle_bin,
-    get_network_info, list_running_apps, kill_process_by_name,
-    set_timer, list_active_timers
-)
-from tools.gui_tools import gui_open_and_search_app, gui_search_google_browser, gui_type_text, gui_play_youtube, gui_draw_in_paint
-from tools.scraper_tools import scrape_jobs, fetch_news_headlines, get_weather, get_wikipedia_summary
-from tools.vision_tools import get_active_window_info, take_screen_snapshot, read_clipboard_text, write_clipboard_text
+from collections.abc import Callable
+from typing import Any
+
 from core.vision_grounding import gui_click_text, read_screen_text
+from tools.file_tools import create_file, create_folder, list_desktop_files, open_folder, read_file_content
+from tools.gui_tools import (
+    gui_draw_in_paint,
+    gui_open_and_search_app,
+    gui_play_youtube,
+    gui_search_google_browser,
+    gui_type_text,
+)
+from tools.scraper_tools import fetch_news_headlines, get_weather, get_wikipedia_summary, scrape_jobs
+from tools.system_tools import (
+    activate_workspace_mode,
+    empty_recycle_bin,
+    get_current_time,
+    get_network_info,
+    get_system_stats,
+    kill_process_by_name,
+    list_active_timers,
+    list_running_apps,
+    lock_workstation,
+    media_control,
+    open_application,
+    optimize_system_memory,
+    set_timer,
+)
+from tools.vision_tools import get_active_window_info, read_clipboard_text, take_screen_snapshot, write_clipboard_text
+from tools.web_tools import open_url, play_youtube, search_google
 
 
 def search_memory(query: str) -> str:
@@ -67,7 +83,7 @@ def get_ghost_mode_status() -> str:
 
 
 # Tool execution mapping
-TOOL_FUNCTIONS: Dict[str, Callable] = {
+TOOL_FUNCTIONS: dict[str, Callable] = {
     "create_folder": create_folder,
     "open_folder": open_folder,
     "create_file": create_file,
@@ -864,14 +880,14 @@ OLLAMA_TOOLS_SCHEMA = [
 ]
 
 
-def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
+def execute_tool(tool_name: str, arguments: dict[str, Any]) -> str:
     """
     Executes a registered tool function with Pydantic validation and type coercion.
     """
     func = TOOL_FUNCTIONS.get(tool_name)
     if not func:
         return f"Error: Tool '{tool_name}' is not recognized."
-    
+
     try:
         if isinstance(arguments, str):
             try:
@@ -900,6 +916,6 @@ def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
             result = func()
             return str(result)
         except Exception:
-            return f"Error executing tool '{tool_name}': {str(e)}"
+            return f"Error executing tool '{tool_name}': {e!s}"
     except Exception as e:
-        return f"Error executing tool '{tool_name}': {str(e)}"
+        return f"Error executing tool '{tool_name}': {e!s}"

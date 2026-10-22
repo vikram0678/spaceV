@@ -6,8 +6,9 @@ Engineered from Langflow / LFX event propagation for real-time cybernetic monito
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -15,8 +16,8 @@ class WorkflowEvent:
     event_type: str  # 'node_start', 'node_finish', 'tool_call', 'error', 'barge_in'
     node_id: str
     timestamp: float = field(default_factory=time.time)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    duration_ms: Optional[float] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    duration_ms: float | None = None
 
 
 class WorkflowTelemetry:
@@ -25,9 +26,9 @@ class WorkflowTelemetry:
     """
 
     def __init__(self):
-        self._listeners: List[Callable[[WorkflowEvent], None]] = []
-        self._active_timers: Dict[str, float] = {}
-        self.history: List[WorkflowEvent] = []
+        self._listeners: list[Callable[[WorkflowEvent], None]] = []
+        self._active_timers: dict[str, float] = {}
+        self.history: list[WorkflowEvent] = []
 
     def subscribe(self, listener: Callable[[WorkflowEvent], None]) -> None:
         self._listeners.append(listener)
@@ -40,17 +41,17 @@ class WorkflowTelemetry:
             except Exception:
                 pass  # Telemetry emission never breaks core execution
 
-    def start_node(self, node_id: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+    def start_node(self, node_id: str, metadata: dict[str, Any] | None = None) -> None:
         self._active_timers[node_id] = time.perf_counter()
         self._emit(WorkflowEvent("node_start", node_id, metadata=metadata or {}))
 
-    def finish_node(self, node_id: str, metadata: Optional[Dict[str, Any]] = None) -> float:
+    def finish_node(self, node_id: str, metadata: dict[str, Any] | None = None) -> float:
         start = self._active_timers.pop(node_id, None)
         duration_ms = (time.perf_counter() - start) * 1000.0 if start else 0.0
         self._emit(WorkflowEvent("node_finish", node_id, metadata=metadata or {}, duration_ms=duration_ms))
         return duration_ms
 
-    def record_tool_call(self, tool_name: str, args: Dict[str, Any], duration_ms: float, success: bool) -> None:
+    def record_tool_call(self, tool_name: str, args: dict[str, Any], duration_ms: float, success: bool) -> None:
         self._emit(
             WorkflowEvent(
                 "tool_call",

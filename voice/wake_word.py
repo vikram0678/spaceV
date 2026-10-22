@@ -9,13 +9,13 @@ from __future__ import annotations
 import logging
 import re
 import time
-from typing import Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
+
 from config import WAKE_WORDS
 from voice.audio_stream import AudioStreamRecorder
-from voice.vad_detector import SileroVADDetector
 from voice.stt_engine import VoiceListener
+from voice.vad_detector import SileroVADDetector
 
 logger = logging.getLogger("SpaceV.WakeWord")
 

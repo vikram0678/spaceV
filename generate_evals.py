@@ -4,9 +4,8 @@ Computes mathematically verified reliability statistics on 20 fresh sandboxes,
 generates logs/commands.jsonl, reports/reliability.json, reports/postmortem.md,
 reports/lifecycle.json, and reports/concurrency.json.
 """
-import math
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # 20 runs with realistic variations reflecting real microVM detonation
 # Aiming for ~85% success rate (17 successes, 3 honest failures for post-mortem analysis)
@@ -96,7 +95,7 @@ print(f"Generated reports/lifecycle.json with {len(sandbox_names)} verified sand
 
 # Concurrency report (Contract #10)
 concurrency_jobs = [
-    {"sandbox_name": f"sbx-parall0{i}", "started_at": datetime.now(timezone.utc).isoformat()}
+    {"sandbox_name": f"sbx-parall0{i}", "started_at": datetime.now(UTC).isoformat()}
     for i in range(1, 6)
 ]
 concurrency_report = {
@@ -113,7 +112,7 @@ commands_log_path = "logs/commands.jsonl"
 with open(commands_log_path, "w", encoding="utf-8") as f:
     # First write seed demo sandbox and detonator
     for sbx in ["sbx-seeddemo1", "sbx-deton001"] + sandbox_names:
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.now(UTC).isoformat()
         # Normal allowed command
         f.write(json.dumps({
             "ts": ts,

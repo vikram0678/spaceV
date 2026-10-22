@@ -6,11 +6,11 @@ and remote companion endpoints using standard W3C Server-Sent Events protocol.
 from __future__ import annotations
 
 import json
-import time
-import queue
 import logging
-from typing import Dict, Any, Optional, Generator, AsyncGenerator
+import queue
+import time
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger("SpaceV.SSE")
 
@@ -18,8 +18,8 @@ logger = logging.getLogger("SpaceV.SSE")
 @dataclass
 class SSEMessage:
     event: str
-    data: Dict[str, Any]
-    id: Optional[str] = None
+    data: dict[str, Any]
+    id: str | None = None
 
     def encode(self) -> str:
         """Encodes event into standard W3C text/event-stream wire format."""
@@ -50,7 +50,7 @@ class SSEBroadcaster:
         if q in self._subscribers:
             self._subscribers.remove(q)
 
-    def publish(self, event: str, data: Dict[str, Any], event_id: Optional[str] = None):
+    def publish(self, event: str, data: dict[str, Any], event_id: str | None = None):
         """Broadcasts an event message to all connected clients."""
         msg = SSEMessage(event=event, data=data, id=event_id)
         encoded = msg.encode()
@@ -72,7 +72,7 @@ class SSEBroadcaster:
         """Streams a real-time STT speech draft."""
         self.publish("draft", {"text": draft_text, "ts": time.time()})
 
-    def emit_reflex(self, tool_name: str, args: Dict[str, Any], latency_ms: float):
+    def emit_reflex(self, tool_name: str, args: dict[str, Any], latency_ms: float):
         """Broadcasts a sub-0.5ms deterministic reflex match."""
         self.publish("reflex", {
             "tool": tool_name,

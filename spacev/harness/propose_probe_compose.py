@@ -6,8 +6,9 @@ Engineered from Harness² (Google LLC 2026) for ground-truth-free contrastive re
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from collections.abc import Callable
+from dataclasses import dataclass
+
 from .experience_library import ExperienceLibrary, OperationalLesson
 
 
@@ -24,7 +25,7 @@ class ProbeExecutionResult:
     candidate_id: str
     success: bool
     latency_ms: float
-    error: Optional[str] = None
+    error: str | None = None
     trajectory_evidence: str = ""
 
 
@@ -42,7 +43,7 @@ class ProposeProbeComposeEngine:
     Executes contrastive task-level self-healing without ground-truth labels.
     """
 
-    def __init__(self, library: Optional[ExperienceLibrary] = None):
+    def __init__(self, library: ExperienceLibrary | None = None):
         self.library = library
 
     def heal_failure(
@@ -50,13 +51,13 @@ class ProposeProbeComposeEngine:
         domain: str,
         task_id: str,
         failure_signature: str,
-        candidates: List[ProbeCandidate],
+        candidates: list[ProbeCandidate],
     ) -> ComposedHealingPlan:
-        probe_results: List[ProbeExecutionResult] = []
+        probe_results: list[ProbeExecutionResult] = []
 
         # 1. Probe candidate actions
-        winning_candidate: Optional[ProbeCandidate] = None
-        winning_result: Optional[ProbeExecutionResult] = None
+        winning_candidate: ProbeCandidate | None = None
+        winning_result: ProbeExecutionResult | None = None
 
         for cand in candidates:
             start = time.perf_counter()
@@ -80,7 +81,7 @@ class ProposeProbeComposeEngine:
                     success=False,
                     latency_ms=lat,
                     error=str(e),
-                    trajectory_evidence=f"Action '{cand.description}' raised exception: {str(e)}",
+                    trajectory_evidence=f"Action '{cand.description}' raised exception: {e!s}",
                 )
                 probe_results.append(res)
 
