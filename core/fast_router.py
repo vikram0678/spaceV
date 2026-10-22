@@ -93,12 +93,19 @@ class FastRouter:
             status_reply = "SpaceV systems fully operational, primed, and awaiting your command, Sir."
             return ("status_ping", "SpaceV Primed", status_reply)
 
-        if re.search(r"^(who are you|what is your name|identify yourself|who made you|who created you)$", text):
+        if re.search(r"^(who are you|what is your name|identify yourself|who made you|who created you|what can you do|what can you done|what are your capabilities|help|commands)$", text):
             id_text = (
                 "I am **SpaceV** (*System Protocol Autonomous Cybernetic Engine Version V*), "
-                "your intelligent desktop companion and autonomous automation assistant, Sir."
+                "your intelligent desktop companion and autonomous workstation copilot, Sir.\n\n"
+                "Here are my core capabilities:\n"
+                "• 🖥️ **Workstation Control**: Launch apps, inspect windows, capture screen snapshots, manage desktop files.\n"
+                "• ⚡ **Cybernetic Automation**: Execute bash tasks, manage timers, optimize memory, detonate sandboxed workflows.\n"
+                "• 🌐 **Web Intelligence**: Search Google, play YouTube, distill web pages to Markdown with Crawl4AI.\n"
+                "• 🎙️ **Full-Duplex Voice**: Hands-free conversation, speech dictation, audio effects.\n"
+                "• 🛡️ **Container Isolation**: Run code in Celesto MicroVMs with strict action authority.\n\n"
+                "What would you like to tackle first, Sir?"
             )
-            return ("identity", "SpaceV Identity", id_text)
+            return ("identity", "SpaceV Identity & Capabilities", id_text)
 
         # 0.5 Countdown Timers ("set a timer for 5 minutes", "timer 10 minutes")
         timer_match = re.match(r"^(?:set\s+a\s+)?timer\s+(?:for\s+)?(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes)(?:\s+(?:for|to|named)\s+(.+))?$", text)

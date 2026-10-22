@@ -322,6 +322,39 @@ class SpaceVGraphEngine:
         messages = state.get("messages", [])
         prompt = state.get("user_prompt", "")
         needs_tools = model_router.needs_tools(prompt)
+
+        # Dual-Brain Branch: OpenRouter / Cloud API
+        if getattr(self.agent, "provider", "ollama") in ("openai", "openrouter") and hasattr(self.agent, "cloud_client"):
+            cloud_model = self.agent.cloud_client.select_cloud_model(prompt, requires_tools=needs_tools)
+            self.agent.model = cloud_model
+            self.agent.active_role = "cloud_agent"
+
+            resp_dict = self.agent.cloud_client.chat(
+                messages=messages,
+                tools=OLLAMA_TOOLS_SCHEMA if needs_tools else None,
+                model=cloud_model
+            )
+            content = resp_dict.get("content", "")
+            tool_calls = resp_dict.get("tool_calls", [])
+
+            if not tool_calls and content:
+                extracted, clean = parse_fallback_tool_calls(content)
+                if extracted:
+                    tool_calls = extracted
+                    content = clean
+
+            msg = {"role": "assistant", "content": content}
+            if tool_calls:
+                msg["tool_calls"] = tool_calls
+            messages.append(msg)
+
+            return {
+                "messages": messages,
+                "tool_calls": tool_calls,
+                "final_response": content,
+                "iteration": state.get("iteration", 0) + 1
+            }
+
         selected_model, role = model_router.select_model(prompt, requires_tools=needs_tools)
         self.agent.model = selected_model
         self.agent.active_role = role
@@ -547,6 +580,19 @@ class SpaceVGraphEngine:
             return {"final_response": content, "is_complete": True}
 
         messages = state.get("messages", [])
+
+        # Dual-Brain Branch: OpenRouter / Cloud API
+        if getattr(self.agent, "provider", "ollama") in ("openai", "openrouter") and hasattr(self.agent, "cloud_client"):
+            synth_dict = self.agent.cloud_client.chat(
+                messages=messages,
+                tools=None,
+                model=self.agent.model,
+                token_callback=self._current_token_callback
+            )
+            full_reply = synth_dict.get("content", "")
+            messages.append({"role": "assistant", "content": full_reply})
+            return {"final_response": full_reply, "is_complete": True}
+
         stream_payload = {
             "model": self.agent.model,
             "messages": messages,
