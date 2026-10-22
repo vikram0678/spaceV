@@ -125,6 +125,7 @@ TOOL_FUNCTIONS: Dict[str, Callable] = {
     "detonate_in_sandbox": lambda command: __import__("tools.sandbox_tools", fromlist=["detonate_in_sandbox"]).detonate_in_sandbox(command),
     "run_sandboxed_workflow": lambda workflow_name="celesto_deployment_pipeline": __import__("tools.sandbox_tools", fromlist=["run_sandboxed_workflow"]).run_sandboxed_workflow(workflow_name),
     "audit_sandbox_containment": lambda attack_type="prompt_injection_exfil": __import__("tools.sandbox_tools", fromlist=["audit_sandbox_containment"]).audit_sandbox_containment(attack_type),
+    "get_run_ledger_summary": lambda: __import__("core.run_ledger", fromlist=["get_run_ledger_summary"]).get_run_ledger_summary(),
 }
 
 # Standard Ollama JSON Tool Schemas
@@ -844,6 +845,18 @@ OLLAMA_TOOLS_SCHEMA = [
                         "description": "The attack vector: 'prompt_injection_exfil', 'destructive_command', or 'suspicious_package'."
                     }
                 },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_run_ledger_summary",
+            "description": "Inspects the active Celesto microVM sandbox run ledger and evaluation benchmark statistics (success rate, median latency, p90 wall clock).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
                 "required": []
             }
         }
