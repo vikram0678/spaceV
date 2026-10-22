@@ -4,6 +4,7 @@ Ollama Client with Low-RAM Multi-Model Routing and Real-Time Streaming.
 import datetime
 import json
 import re
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -205,8 +206,10 @@ class OllamaAgent:
                     if tool_callback:
                         tool_callback(tool_name, args, tool_result)
 
+                    call_id = tool_call.get("id") or f"call_{uuid.uuid4().hex[:8]}"
                     self.messages.append({
                         "role": "tool",
+                        "tool_call_id": call_id,
                         "content": str(tool_result),
                     })
 

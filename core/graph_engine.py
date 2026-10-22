@@ -5,6 +5,7 @@ Pydantic tool execution, roadblock clarification, and real-time streaming respon
 """
 import datetime
 import json
+import uuid
 from collections.abc import Callable
 from typing import Any, TypedDict
 
@@ -434,6 +435,7 @@ class SpaceVGraphEngine:
             func = call.get("function", {})
             t_name = func.get("name")
             t_args = func.get("arguments", {})
+            call_id = call.get("id") or f"call_{uuid.uuid4().hex[:8]}"
             ts = datetime.datetime.now().strftime("%H:%M:%S")
             print(f"[{ts}] [TOOL CALL]: {t_name}({t_args})")
             if self._current_tool_callback:
@@ -443,7 +445,7 @@ class SpaceVGraphEngine:
             print(f"[{ts}] [OS RESULT]: {res}")
             if self._current_tool_callback:
                 self._current_tool_callback(t_name, t_args, res)
-            return t_name, t_args, res
+            return t_name, t_args, res, call_id
 
         scratchpad = SpaceVScratchpad.from_dict(state.get("scratchpad"))
 
@@ -451,18 +453,18 @@ class SpaceVGraphEngine:
         if len(tool_calls) > 1 and not is_gui_required:
             with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(tool_calls))) as executor:
                 executed_items = list(executor.map(_exec_single, tool_calls))
-            for t_name, t_args, res in executed_items:
+            for t_name, t_args, res, call_id in executed_items:
                 tool_results.append({"name": t_name, "args": t_args, "result": res})
-                messages.append({"role": "tool", "content": str(res)})
+                messages.append({"role": "tool", "tool_call_id": call_id, "content": str(res)})
                 scratchpad.record_tool_action(t_name, t_args, str(res))
                 if not t_name.startswith("scratchpad_"):
                     scratchpad.advance_step(result=str(res)[:120], success=True)
         else:
             # Deterministic sequential execution for GUI actions & single tools
             for call in tool_calls:
-                t_name, t_args, res = _exec_single(call)
+                t_name, t_args, res, call_id = _exec_single(call)
                 tool_results.append({"name": t_name, "args": t_args, "result": res})
-                messages.append({"role": "tool", "content": str(res)})
+                messages.append({"role": "tool", "tool_call_id": call_id, "content": str(res)})
                 scratchpad.record_tool_action(t_name, t_args, str(res))
 
                 res_str = str(res)

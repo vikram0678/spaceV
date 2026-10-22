@@ -4,6 +4,7 @@ Provides native OpenAI / OpenRouter API communication with streaming,
 tool calling, and automatic rate-limit (HTTP 429) fallback to local Ollama.
 """
 import json
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -92,9 +93,33 @@ class UniversalBrainClient:
                 else:
                     openai_tools.append({"type": "function", "function": t})
 
+        # Transform messages to strict OpenAI/OpenRouter contract:
+        # Every 'tool' role message MUST carry a non-empty string tool_call_id.
+        sanitized_messages = []
+        pending_tool_call_ids = []
+        for msg in messages:
+            msg_copy = dict(msg)
+            role = msg_copy.get("role")
+            if role == "assistant" and msg_copy.get("tool_calls"):
+                fixed_calls = []
+                for idx, tc in enumerate(msg_copy["tool_calls"]):
+                    tc_copy = dict(tc)
+                    tc_id = tc_copy.get("id") or f"call_{idx}_{uuid.uuid4().hex[:8]}"
+                    tc_copy["id"] = tc_id
+                    pending_tool_call_ids.append(tc_id)
+                    fixed_calls.append(tc_copy)
+                msg_copy["tool_calls"] = fixed_calls
+            elif role == "tool":
+                if not msg_copy.get("tool_call_id"):
+                    if pending_tool_call_ids:
+                        msg_copy["tool_call_id"] = pending_tool_call_ids.pop(0)
+                    else:
+                        msg_copy["tool_call_id"] = f"call_{uuid.uuid4().hex[:8]}"
+            sanitized_messages.append(msg_copy)
+
         payload: dict[str, Any] = {
             "model": active_model,
-            "messages": messages,
+            "messages": sanitized_messages,
             "temperature": temperature,
             "max_tokens": max_tokens
         }
@@ -199,15 +224,40 @@ class UniversalBrainClient:
         self.last_used_provider = "ollama_fallback"
         url = f"{self.fallback_base_url}/api/chat"
 
-        # Format messages for Ollama
+        # Sanitize messages for Ollama native format (strip OpenAI-specific properties)
+        ollama_messages = []
+        for m in messages:
+            role = m.get("role", "user")
+            content = str(m.get("content", ""))
+            cleaned = {"role": role, "content": content}
+            if role == "assistant" and m.get("tool_calls"):
+                cleaned_calls = []
+                for tc in m["tool_calls"]:
+                    fn = tc.get("function", {})
+                    args = fn.get("arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except Exception:
+                            pass
+                    cleaned_calls.append({"function": {"name": fn.get("name", ""), "arguments": args}})
+                cleaned["tool_calls"] = cleaned_calls
+            ollama_messages.append(cleaned)
+
         ollama_payload: dict[str, Any] = {
             "model": self.fallback_model,
-            "messages": messages,
+            "messages": ollama_messages,
             "stream": bool(token_callback and not tools),
             "options": {"temperature": 0.2, "num_ctx": 2048}
         }
         if tools:
-            ollama_payload["tools"] = tools
+            clean_tools = []
+            for t in tools:
+                if "function" in t:
+                    clean_tools.append(t)
+                else:
+                    clean_tools.append({"type": "function", "function": t})
+            ollama_payload["tools"] = clean_tools
 
         try:
             if token_callback and not tools:
