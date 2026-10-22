@@ -1,15 +1,15 @@
 # ROADMAP.md
 
-> **Current Phase**: Phase 3: Run Ledger, 20 Evals & Hackathon Audit Package
+> **Current Phase**: Phase 3 Complete (Milestone Complete)
 > **Milestone**: v1.0 — Hackathon Submission Release
-> **Progress**: 2 / 3 Phases Complete
+> **Progress**: 3 / 3 Phases Complete (100%)
 
 ## Must-Haves (from SPEC)
 - [x] Celesto sandbox execution & cleanup lifecycle
 - [x] Step 7/10 failure detection and snapshot rollback
 - [x] Host containment against prompt-injected commands
-- [ ] 20 scored evaluation runs logged in Run Ledger
-- [x] 52/52 SpaceV unit tests green
+- [x] 20 scored evaluation runs logged in Run Ledger
+- [x] 58/58 SpaceV unit & contract tests green
 
 ## Phases
 
@@ -26,7 +26,7 @@
 **Target Files**: `tools/sandbox_tools.py`, `tests/test_phase6_containment.py`
 
 ### Phase 3: Run Ledger, 20 Evals & Hackathon Audit Package
-**Status**: ⬜ Not Started  
+**Status**: ✅ Complete  
 **Objective**: Connect PostgreSQL / SQLite run ledger, execute batch evaluation generating at least 20 scored fresh runs, and package audit documentation.  
 **Requirements**: REQ-04, REQ-05  
-**Target Files**: `reports/`, `seeds/01_runs.sql`, `generate_evals.py`
+**Target Files**: `reports/`, `seeds/01_runs.sql`, `generate_evals.py`, `core/run_ledger.py`
