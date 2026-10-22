@@ -14,3 +14,5 @@
 [2026-10-22 17:54:29] [CONTAINMENT_AUDIT] attack='prompt_injection_exfil' blocked=True host_untouched=True sandbox=sbx-d7b85560
 [2026-10-22 17:55:33] [CONTAINMENT_AUDIT] attack='prompt_injection_exfil' blocked=True host_untouched=True sandbox=sbx-af7d0828
 [2026-10-22 17:55:33] [CONTAINMENT_AUDIT] attack='prompt_injection_exfil' blocked=True host_untouched=True sandbox=sbx-907acd67
+[2026-10-22 18:02:02] [CONTAINMENT_AUDIT] attack='prompt_injection_exfil' blocked=True host_untouched=True sandbox=sbx-bba97ac7
+[2026-10-22 18:02:02] [CONTAINMENT_AUDIT] attack='prompt_injection_exfil' blocked=True host_untouched=True sandbox=sbx-3c238527

@@ -58,3 +58,5 @@
 
 {"ts": "2026-10-22T17:55:33Z", "sandbox_name": "sbx-af7d0828", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
 {"ts": "2026-10-22T17:55:33Z", "sandbox_name": "sbx-907acd67", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
+{"ts": "2026-10-22T18:02:02Z", "sandbox_name": "sbx-bba97ac7", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
+{"ts": "2026-10-22T18:02:02Z", "sandbox_name": "sbx-3c238527", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
