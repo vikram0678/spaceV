@@ -61,27 +61,20 @@ class MultiModelRouter:
 
     def needs_tools(self, prompt: str) -> bool:
         """
-        Determines if the query actually requires tool calling schemas attached.
-        Keeps conversational queries fast and lightweight without 2000-token tool schema overhead.
+        Determines if the query requires tool calling schemas attached.
+        Pure chit-chat greetings stay fast; all actionable, computational, or system queries
+        are empowered with the full tool calling schema.
         """
         text = prompt.lower().strip()
-        tool_keywords = [
-            "python", "script", "code", "debug", "function", "class",
-            "regex", "sql", "html", "javascript", "scrape", "csv",
-            "terminal", "powershell", "execute", "create file", "write code",
-            "search web", "search google", "search the web", "search for", "look up",
-            "browse", "weather in", "forecast", "headlines", "news about",
-            "read file", "delete file", "save to desktop", "open file",
-            "draw in paint", "mspaint", "draw a", "draw me", "play youtube",
-            "open app", "kill process", "youtube", "take screenshot", "active window",
-            "running", "what is running", "running on my desktop", "running on the desktop", "running apps",
-            "what is open", "open windows", "processes", "going in the desktop",
-            "on the desktop", "in the desktop", "the desktop", "desktop", "screen",
-            "what is on", "what's on", "open apps", "active apps", "application",
-            "applications", "laptop", "opened", "task manager", "activity monitor",
-            "open window", "open windows", "window open", "windows open"
-        ]
-        return any(k in text for k in tool_keywords)
+        pure_chat_greetings = {
+            "hi", "hello", "hey", "yo", "sup", "good morning", "good evening",
+            "good afternoon", "how are you", "who are you", "what is your name",
+            "thank you", "thanks", "bye", "goodbye", "how are you doing"
+        }
+        if text in pure_chat_greetings:
+            return False
+
+        return True
 
     def classify_intent(self, prompt: str, has_tools: bool = False, has_images: bool = False) -> str:
         """

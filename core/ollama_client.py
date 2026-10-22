@@ -86,7 +86,9 @@ def parse_fallback_tool_calls(content: str) -> Tuple[List[Dict[str, Any]], str]:
             except Exception:
                 pass
 
-    clean_content = re.sub(r"<(?:tools|tool_call)>.*?</(?:tools|tool_call)>", "", content, flags=re.DOTALL).strip()
+    clean_content = re.sub(r"<(?:tools|tool_call)>.*?</(?:tools|tool_call)>", "", content, flags=re.DOTALL)
+    clean_content = re.sub(r"```(?:json)?\s*\{.*?\"name\"\s*:\s*\"[a-zA-Z0-9_]+\".*?\}\s*```", "", clean_content, flags=re.DOTALL)
+    clean_content = re.sub(r"\{\s*\"name\"\s*:\s*\"[a-zA-Z0-9_]+\"\s*,\s*\"arguments\"\s*:\s*\{.*?\}\s*\}", "", clean_content, flags=re.DOTALL).strip()
     return extracted, clean_content
 
 class OllamaAgent:

@@ -251,6 +251,7 @@ class SpaceVGraphEngine:
 
         # Universal Gatekeeper Perception Check
         from core.modal_interceptor import modal_interceptor
+        from core.memory import memory
         gatekeeper = modal_interceptor.detect()
         if gatekeeper and gatekeeper.is_active:
             pref = memory.get_preference(gatekeeper.domain, gatekeeper.property_key)
@@ -566,6 +567,22 @@ class SpaceVGraphEngine:
                                 self._current_token_callback(token)
 
                 messages.append({"role": "assistant", "content": full_reply})
+
+                # Pro ReAct Action Interceptor: Catch and execute any embedded tool calls
+                extracted, clean = parse_fallback_tool_calls(full_reply)
+                if extracted:
+                    for call in extracted:
+                        func = call.get("function", {})
+                        t_name = func.get("name")
+                        t_args = func.get("arguments", {})
+                        if t_name:
+                            ts = datetime.datetime.now().strftime("%H:%M:%S")
+                            print(f"[{ts}] [REACT INTERCEPTOR]: Executing embedded tool '{t_name}'({t_args})")
+                            tool_out = execute_tool(t_name, t_args)
+                            if self._current_tool_callback:
+                                self._current_tool_callback(t_name, t_args, tool_out)
+                            full_reply = f"{clean}\n\n{tool_out}".strip() if clean else str(tool_out)
+
                 return {"final_response": full_reply, "messages": messages, "is_complete": True}
             else:
                 fallback = "Action completed successfully, Sir."

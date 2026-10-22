@@ -59,24 +59,14 @@ def get_current_time() -> str:
 
 def open_application(app_name: str) -> str:
     """
-    Launches a Windows application by name (e.g. 'calculator', 'notepad', 'chrome', 'paint').
+    Launches an application by name across Windows, WSL, macOS, and Linux.
     """
     from tools.gui_tools import safety, gui_open_and_search_app
     if safety.autonomous_mode_enabled:
         return gui_open_and_search_app(app_name)
 
-    clean_name = app_name.strip().lower()
-    cmd = APP_COMMAND_MAP.get(clean_name, None)
-    
-    try:
-        if cmd:
-            subprocess.Popen(cmd, shell=True)
-            return f"Launched application: {app_name}"
-        else:
-            subprocess.Popen(f"start {clean_name}", shell=True)
-            return f"Attempted to launch: {app_name}"
-    except Exception as e:
-        return f"Failed to launch '{app_name}': {str(e)}"
+    from core.platform_adapter import PlatformAdapter
+    return PlatformAdapter.launch_app(app_name)
 
 def get_system_stats() -> str:
     """

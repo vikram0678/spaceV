@@ -12,13 +12,14 @@ def search_google(query: str) -> str:
     if safety.autonomous_mode_enabled:
         return gui_search_google_browser(query)
         
+    from core.platform_adapter import PlatformAdapter
     try:
         encoded_query = urllib.parse.quote_plus(query)
         url = f"https://www.google.com/search?q={encoded_query}"
-        webbrowser.open(url)
+        PlatformAdapter.open_url(url)
         return f"Opened Google search for: '{query}'"
     except Exception as e:
-        return f"Failed to search Google: {str(e)}"
+        return f"Failed to search Google: {e!s}"
 
 def play_youtube(video_query: str) -> str:
     """
@@ -27,26 +28,27 @@ def play_youtube(video_query: str) -> str:
     if safety.autonomous_mode_enabled:
         return gui_play_youtube(video_query)
 
+    from core.platform_adapter import PlatformAdapter
     try:
         encoded_query = urllib.parse.quote_plus(video_query)
-        # Opening YouTube search results directly
         url = f"https://www.youtube.com/results?search_query={encoded_query}"
-        webbrowser.open(url)
+        PlatformAdapter.open_url(url)
         return f"Opening YouTube to play: '{video_query}'"
     except Exception as e:
-        return f"Failed to open YouTube: {str(e)}"
+        return f"Failed to open YouTube: {e!s}"
 
 def open_url(url: str) -> str:
     """
-    Opens any website URL in the default web browser.
+    Opens any website URL in the default web browser cross-platform.
     """
+    from core.platform_adapter import PlatformAdapter
     try:
         if not url.startswith("http://") and not url.startswith("https://"):
             url = "https://" + url
-        webbrowser.open(url)
+        PlatformAdapter.open_url(url)
         return f"Opened website: {url}"
     except Exception as e:
-        return f"Failed to open website: {str(e)}"
+        return f"Failed to open website: {e!s}"
 
 
 # ============================================================================

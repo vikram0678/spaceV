@@ -139,9 +139,30 @@ class SpaceVReflexEngine:
 
         routes = [
             {
+                "tool": "run_sandboxed_workflow",
+                "patterns": [
+                    (r"^(?:run|execute)\s+(?:the\s+)?(?:sandboxed\s+workflow|celesto\s+pipeline|deployment\s+pipeline|sandbox\s+workflow)$", [])
+                ],
+                "reply": "{res}"
+            },
+            {
+                "tool": "audit_sandbox_containment",
+                "patterns": [
+                    (r"^(?:audit|test|check)\s+(?:the\s+)?(?:sandbox\s+containment|containment\s+proof|prompt\s+injection\s+containment|containment)$", [])
+                ],
+                "reply": "{res}"
+            },
+            {
+                "tool": "get_run_ledger_summary",
+                "patterns": [
+                    (r"^(?:get|show|view|check|fetch)\s+(?:the\s+)?(?:run\s+ledger|ledger\s+summary|eval\s+summary|evals\s+summary|benchmark\s+runs|run\s+ledger\s+summary)$", [])
+                ],
+                "reply": "{res}"
+            },
+            {
                 "tool": "open_application",
                 "patterns": [
-                    (r"^(?:open|launch|start|run)\s+([a-zA-Z0-9\s\-_]+)$", ["app_name"])
+                    (r"^(?:open|launch)\s+(?:the\s+)?(chrome|google\s+chrome|browser|calc|calculator|notepad|paint|mspaint|task\s*manager|taskmgr|vs\s*code|vscode|code|terminal|explorer|file\s+explorer|settings|spotify)$", ["app_name"])
                 ],
                 "reply": "Right away, Sir. Initializing {app_name} for you now."
             },
@@ -183,7 +204,7 @@ class SpaceVReflexEngine:
             {
                 "tool": "get_weather",
                 "patterns": [
-                    (r"^(?:what(?:'s|\s+is)\s+the\s+)?weather(?:\s+in|\s+for|\s+at)?\s+([a-zA-Z\s]+)$", ["city"])
+                    (r"^(?:check|what(?:'s|\s+is)\s+the|tell\s+me\s+the|how\s+is\s+the)?\s*weather(?:\s+in|\s+for|\s+at)?\s+([a-zA-Z\s]+)$", ["city"])
                 ],
                 "reply": "{res}"
             },

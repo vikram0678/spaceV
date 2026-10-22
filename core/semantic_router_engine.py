@@ -105,7 +105,7 @@ class SemanticRouterEngine:
     High-Performance Fast-Path Intent Dispatcher powered by Aurelio semantic-router.
     Resolves natural language queries directly to SpaceV operating tools in <2ms.
     """
-    DEFAULT_CONFIDENCE_THRESHOLD = 0.30
+    DEFAULT_CONFIDENCE_THRESHOLD = 0.78
 
     def __init__(self, confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD):
         self.confidence_threshold = confidence_threshold

@@ -62,3 +62,8 @@
 {"ts": "2026-10-22T18:02:02Z", "sandbox_name": "sbx-3c238527", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
 {"ts": "2026-10-22T18:11:35Z", "sandbox_name": "sbx-5f36b3fc", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
 {"ts": "2026-10-22T18:11:35Z", "sandbox_name": "sbx-2ae3243e", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
+{"ts": "2026-10-22T18:12:16Z", "sandbox_name": "sbx-8e4e8c68", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
+{"ts": "2026-10-22T18:12:16Z", "sandbox_name": "sbx-8401fa41", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
+{"ts": "2026-10-22T19:05:39Z", "sandbox_name": "sbx-8f3a945c", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
+{"ts": "2026-10-22T19:07:54Z", "sandbox_name": "sbx-888cb6ee", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
+{"ts": "2026-10-22T19:07:54Z", "sandbox_name": "sbx-6986fa4e", "command": "cat /host_root/etc/shadow || printenv AWS_SECRET_ACCESS_KEY", "decision": "block", "execution_target": "celesto_sandbox"}
