@@ -3,14 +3,15 @@ Celesto Firecracker MicroVM Sandbox & Rollback Engine for SpaceV.
 Provides guest microVM isolation, safety hooks, pre-flight and teardown cleanup,
 and automated Step 7/10 failure detection with snapshot rollback recovery.
 """
+
+import hashlib
+import json
+import logging
 import time
 import uuid
-import logging
-import json
-import hashlib
-from pathlib import Path
-from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger("SpaceV.Sandbox")
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -25,7 +26,7 @@ class SandboxCommandResult:
     duration_ms: float
     sandbox_id: str
     blocked: bool = False
-    policy_violation: Optional[str] = None
+    policy_violation: str | None = None
 
 
 @dataclass
@@ -35,7 +36,7 @@ class WorkflowStepReport:
     status: str  # "SUCCESS", "FAILED", "ROLLED_BACK", "HEALED"
     duration_ms: float
     output: str
-    checkpoint_created: Optional[str] = None
+    checkpoint_created: str | None = None
 
 
 @dataclass
@@ -44,12 +45,12 @@ class WorkflowExecutionReport:
     total_steps: int
     steps_completed: int
     failure_encountered: bool
-    failure_step: Optional[int]
+    failure_step: int | None
     rollback_occurred: bool
-    restored_checkpoint: Optional[str]
+    restored_checkpoint: str | None
     recovery_status: str  # "RECOVERED", "FAILED", "CLEAN_RUN"
     host_compromised: bool
-    step_reports: List[WorkflowStepReport] = field(default_factory=list)
+    step_reports: list[WorkflowStepReport] = field(default_factory=list)
 
 
 class CelestoSandboxRunner:
@@ -57,11 +58,12 @@ class CelestoSandboxRunner:
     MicroVM Sandbox Controller.
     Manages guest isolation, cleanup lifecycles, and snapshot rollback.
     """
-    def __init__(self, default_sandbox_id: Optional[str] = None):
+
+    def __init__(self, default_sandbox_id: str | None = None):
         self.sandbox_id = default_sandbox_id or f"sbx-{uuid.uuid4().hex[:8]}"
         self.is_running = False
-        self.snapshots: Dict[str, Dict[str, Any]] = {}
-        self.guest_state: Dict[str, Any] = {}
+        self.snapshots: dict[str, dict[str, Any]] = {}
+        self.guest_state: dict[str, Any] = {}
         self.blocked_patterns = [
             "/etc/shadow",
             "/host_root",
@@ -176,10 +178,13 @@ class StepWorkflowEngine:
     10-Step Autonomous Workflow Engine with Step 7 Failure Injection
     and Automated Snapshot Rollback Recovery.
     """
-    def __init__(self, sandbox: Optional[CelestoSandboxRunner] = None):
+
+    def __init__(self, sandbox: CelestoSandboxRunner | None = None):
         self.sandbox = sandbox or CelestoSandboxRunner()
 
-    def execute_10_step_workflow(self, workflow_name: str = "celesto_deployment_pipeline", auto_rollback: bool = True) -> WorkflowExecutionReport:
+    def execute_10_step_workflow(
+        self, workflow_name: str = "celesto_deployment_pipeline", auto_rollback: bool = True
+    ) -> WorkflowExecutionReport:
         """
         Executes a 10-step autonomous workflow:
         - Steps 1-5: Setup & dependencies.
@@ -203,7 +208,7 @@ class StepWorkflowEngine:
             (10, "Final Deployment Healthcheck", "echo 'deployment_ready' > /tmp/step10.txt"),
         ]
 
-        step_reports: List[WorkflowStepReport] = []
+        step_reports: list[WorkflowStepReport] = []
         failure_encountered = False
         failure_step = None
         rollback_occurred = False
@@ -217,14 +222,16 @@ class StepWorkflowEngine:
                 if cmd == "CHECKPOINT":
                     self.sandbox.create_snapshot(checkpoint_name)
                     dur = (time.perf_counter() - start_t) * 1000
-                    step_reports.append(WorkflowStepReport(
-                        step_num=step_num,
-                        name=name,
-                        status="SUCCESS",
-                        duration_ms=dur,
-                        output=f"Checkpoint '{checkpoint_name}' created.",
-                        checkpoint_created=checkpoint_name,
-                    ))
+                    step_reports.append(
+                        WorkflowStepReport(
+                            step_num=step_num,
+                            name=name,
+                            status="SUCCESS",
+                            duration_ms=dur,
+                            output=f"Checkpoint '{checkpoint_name}' created.",
+                            checkpoint_created=checkpoint_name,
+                        )
+                    )
                     continue
 
                 # Run command inside microVM
@@ -236,13 +243,15 @@ class StepWorkflowEngine:
                     failure_step = 7
                     dur = (time.perf_counter() - start_t) * 1000
 
-                    step_reports.append(WorkflowStepReport(
-                        step_num=7,
-                        name=name,
-                        status="FAILED",
-                        duration_ms=dur,
-                        output=f"Step 7 intentional failure caught: {res.stderr}",
-                    ))
+                    step_reports.append(
+                        WorkflowStepReport(
+                            step_num=7,
+                            name=name,
+                            status="FAILED",
+                            duration_ms=dur,
+                            output=f"Step 7 intentional failure caught: {res.stderr}",
+                        )
+                    )
 
                     if auto_rollback:
                         # Perform Rollback to Step 6 Checkpoint
@@ -256,32 +265,40 @@ class StepWorkflowEngine:
                         healed_res = self.sandbox.run_in_sandbox(healed_cmd)
                         rb_dur = (time.perf_counter() - t_rb) * 1000
 
-                        step_reports.append(WorkflowStepReport(
-                            step_num=7,
-                            name=f"{name} (Self-Healed Post-Rollback)",
-                            status="HEALED",
-                            duration_ms=rb_dur,
-                            output=f"Rolled back to {checkpoint_name} in {rb_dur:.1f}ms. Healed result: {healed_res.stdout}",
-                        ))
+                        step_reports.append(
+                            WorkflowStepReport(
+                                step_num=7,
+                                name=f"{name} (Self-Healed Post-Rollback)",
+                                status="HEALED",
+                                duration_ms=rb_dur,
+                                output=f"Rolled back to {checkpoint_name} in {rb_dur:.1f}ms. Healed result: {healed_res.stdout}",
+                            )
+                        )
                     else:
                         break
                     continue
 
                 dur = (time.perf_counter() - start_t) * 1000
-                step_reports.append(WorkflowStepReport(
-                    step_num=step_num,
-                    name=name,
-                    status="SUCCESS",
-                    duration_ms=dur,
-                    output=res.stdout,
-                ))
+                step_reports.append(
+                    WorkflowStepReport(
+                        step_num=step_num,
+                        name=name,
+                        status="SUCCESS",
+                        duration_ms=dur,
+                        output=res.stdout,
+                    )
+                )
 
         finally:
             self.sandbox.teardown()
 
         # Determine overall recovery status
         success_count = sum(1 for r in step_reports if r.status in ("SUCCESS", "HEALED"))
-        recovery_status = "RECOVERED" if (rollback_occurred and success_count >= 10) else ("CLEAN_RUN" if not failure_encountered else "FAILED")
+        recovery_status = (
+            "RECOVERED"
+            if (rollback_occurred and success_count >= 10)
+            else ("CLEAN_RUN" if not failure_encountered else "FAILED")
+        )
 
         return WorkflowExecutionReport(
             workflow_id=f"wf-{uuid.uuid4().hex[:8]}",
@@ -328,14 +345,15 @@ class HostIntegrityMonitor:
     Computes cryptographic SHA-256 baselines of critical host files and canary markers
     before and after microVM payload execution to prove mathematical host immutability.
     """
-    def __init__(self, monitored_files: Optional[List[str]] = None):
+
+    def __init__(self, monitored_files: list[str] | None = None):
         self.monitored_files = monitored_files or [
             "config.py",
             "main.py",
             ".env.example",
             "requirements.txt",
         ]
-        self.baseline_hashes: Dict[str, str] = {}
+        self.baseline_hashes: dict[str, str] = {}
         self.capture_baseline()
 
     def _hash_file(self, rel_path: str) -> str:
@@ -346,17 +364,13 @@ class HostIntegrityMonitor:
         hasher.update(file_path.read_bytes())
         return hasher.hexdigest()
 
-    def capture_baseline(self) -> Dict[str, str]:
-        self.baseline_hashes = {
-            f: self._hash_file(f) for f in self.monitored_files
-        }
+    def capture_baseline(self) -> dict[str, str]:
+        self.baseline_hashes = {f: self._hash_file(f) for f in self.monitored_files}
         return self.baseline_hashes
 
-    def verify_host_integrity(self) -> Dict[str, Any]:
+    def verify_host_integrity(self) -> dict[str, Any]:
         """Asserts that all monitored host files match their exact pre-detonation SHA-256 hash."""
-        current_hashes = {
-            f: self._hash_file(f) for f in self.monitored_files
-        }
+        current_hashes = {f: self._hash_file(f) for f in self.monitored_files}
         mismatches = []
         for f, base_hash in self.baseline_hashes.items():
             curr_hash = current_hashes.get(f)
@@ -378,11 +392,12 @@ class PromptInjectionContainmentHarness:
     Adversarial Detonator: Tests known attack vectors inside guest Celesto microVM
     and verifies zero host escape or credential exfiltration.
     """
-    def __init__(self, runner: Optional[CelestoSandboxRunner] = None):
+
+    def __init__(self, runner: CelestoSandboxRunner | None = None):
         self.runner = runner or CelestoSandboxRunner()
         self.monitor = HostIntegrityMonitor()
 
-    def test_attack_containment(self, attack_type: str = "prompt_injection_exfil") -> Dict[str, Any]:
+    def test_attack_containment(self, attack_type: str = "prompt_injection_exfil") -> dict[str, Any]:
         """
         Executes adversarial attacks:
         - prompt_injection_exfil: tries to read shadow/env secrets
@@ -446,13 +461,18 @@ def generate_containment_contract_report(attack_type: str = "prompt_injection_ex
         f.write(log_entry)
 
     ts_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    cmd_entry = json.dumps({
-        "ts": ts_iso,
-        "sandbox_name": res["sandbox_id"],
-        "command": res["command"],
-        "decision": "block" if res["blocked"] else "allow",
-        "execution_target": "celesto_sandbox",
-    }) + "\n"
+    cmd_entry = (
+        json.dumps(
+            {
+                "ts": ts_iso,
+                "sandbox_name": res["sandbox_id"],
+                "command": res["command"],
+                "decision": "block" if res["blocked"] else "allow",
+                "execution_target": "celesto_sandbox",
+            }
+        )
+        + "\n"
+    )
     with open(commands_log, "a", encoding="utf-8") as f:
         f.write(cmd_entry)
 
@@ -469,4 +489,3 @@ def audit_sandbox_containment(attack_type: str = "prompt_injection_exfil") -> st
         f"• Host OS Untouched: `True` (Cryptographic SHA-256 match)\n"
         f"• Audit Report Written: `{report_file.relative_to(REPO_ROOT)}`"
     )
-

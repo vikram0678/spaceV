@@ -3,8 +3,9 @@ Phase 7 Tests: Run Ledger Service, 20 Fresh Evals & SpaceV Audit Integration.
 Validates persistent microVM execution ledger (seeds/01_runs.sql), statistical
 evaluation math (success rate, median latency, p90 latency), and SpaceV tool integration.
 """
-import sys
+
 import re
+import sys
 import tempfile
 from pathlib import Path
 
@@ -25,18 +26,27 @@ def test_run_ledger_schema_and_idempotency():
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / "test_ledger.db"
         service = RunLedgerService(db_path=db_path)
-        
+
         # Verify file exists
         assert db_path.exists()
-        
+
         # Verify schema
         with service.get_connection() as conn:
             cursor = conn.execute("PRAGMA table_info(runs);")
             cols = {row["name"] for row in cursor.fetchall()}
             expected_cols = {
-                "id", "run_id", "sandbox_name", "problem_id", "state",
-                "execution_target", "wall_clock_s", "boot_to_ready_s",
-                "cost_usd", "success", "fresh", "created_at"
+                "id",
+                "run_id",
+                "sandbox_name",
+                "problem_id",
+                "state",
+                "execution_target",
+                "wall_clock_s",
+                "boot_to_ready_s",
+                "cost_usd",
+                "success",
+                "fresh",
+                "created_at",
             }
             assert expected_cols.issubset(cols)
 
@@ -51,7 +61,7 @@ def test_run_ledger_20_fresh_evals():
     """Verify 20 runs have unique sbx-* names, fresh=True, and valid execution targets."""
     service = RunLedgerService()
     runs = service.get_all_runs()
-    
+
     assert len(runs) >= 20
     sandbox_names = set()
     for run in runs:
@@ -69,7 +79,7 @@ def test_run_ledger_statistics_math():
         db_path = Path(tmpdir) / "test_math.db"
         service = RunLedgerService(db_path=db_path)
         stats = service.get_ledger_stats()
-        
+
         # 17 successes out of 20 = 85.0%
         assert stats["total_runs"] == 20
         assert stats["success_count"] == 17
@@ -85,7 +95,7 @@ def test_record_run_update_conflict():
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / "test_rec.db"
         service = RunLedgerService(db_path=db_path)
-        
+
         new_record = SandboxRunRecord(
             run_id="run-custom01",
             sandbox_name="sbx-custom001",
@@ -99,12 +109,12 @@ def test_record_run_update_conflict():
             fresh=True,
         )
         service.record_run(new_record)
-        
+
         runs = [r for r in service.get_all_runs() if r["sandbox_name"] == "sbx-custom001"]
         assert len(runs) == 1
         assert runs[0]["state"] == "in_progress"
         assert runs[0]["success"] == 0
-        
+
         # Update run to completed / success
         updated_record = SandboxRunRecord(
             run_id="run-custom01",
@@ -119,7 +129,7 @@ def test_record_run_update_conflict():
             fresh=True,
         )
         service.record_run(updated_record)
-        
+
         runs = [r for r in service.get_all_runs() if r["sandbox_name"] == "sbx-custom001"]
         assert len(runs) == 1
         assert runs[0]["state"] == "completed"

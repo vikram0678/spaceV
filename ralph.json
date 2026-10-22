@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "name": "SpaceV Ralph Loop Configuration",
+  "test_command": ".venv/bin/pytest tests/ -v",
+  "lint_command": ".venv/bin/ruff check core/ tools/ tests/",
+  "format_command": ".venv/bin/ruff format core/ tools/ tests/",
+  "max_iterations": 5,
+  "stop_on_first_pass": true,
+  "watch_paths": [
+    "core",
+    "tools",
+    "tests",
+    "ui",
+    "voice"
+  ],
+  "invariants": [
+    "58/58 tests must pass",
+    "Zero host breakouts",
+    "Audit log schema in logs/commands.jsonl must include ts",
+    "UI window size 500x620"
+  ]
+}

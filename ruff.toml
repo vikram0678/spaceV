@@ -1,0 +1,31 @@
+# Ruff configuration for SpaceV
+target-version = "py312"
+line-length = 120
+indent-width = 4
+
+[lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort (import sorting)
+    "UP",     # pyupgrade
+    "RUF",    # Ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long (handled by formatter / long docstrings)
+    "RUF012", # mutable class attributes
+    "RUF001", # ambiguous unicode characters (intentional emojis in SpaceV UI)
+    "RUF002", # ambiguous docstring characters
+    "RUF003", # ambiguous comment characters
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["E402"]
+
+[lint.isort]
+combine-as-imports = true
+
+[format]
+quote-style = "double"
+indent-style = "space"

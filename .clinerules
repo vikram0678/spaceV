@@ -1,0 +1,28 @@
+# SpaceV Roo Code Master Rules (.clinerules)
+
+## Mission
+SpaceV is an Autonomous AI Workforce running inside Celesto Firecracker microVM sandboxes for the Celesto Hackathon.
+
+## System & Environment
+- **Workspace**: `/home/vikram/agentSpace`
+- **Python**: `.venv/bin/python` (Python 3.12)
+- **Test Runner**: `.venv/bin/pytest tests/ -v` (Currently 58/58 tests passing)
+- **Linter & Formatter**: `.venv/bin/ruff check --fix` and `.venv/bin/ruff format`
+
+## Core Architectural Guardrails
+1. **Host Containment**:
+   - Never allow untrusted or guest code to modify host files or exfiltrate tokens.
+   - All guest detonations run via `CelestoSandboxRunner` or `tools.sandbox_tools`.
+   - Host integrity is verified via SHA-256 baselines (`HostIntegrityMonitor`).
+2. **Audit & Log Schema**:
+   - Any sandboxed command logged in `logs/commands.jsonl` MUST contain `"ts"` (ISO 8601 string), `"sandbox_name"` (matching `^sbx-[a-z0-9]{8,}$`), `"command"`, `"decision"` (`allow` | `block`), and `"execution_target": "celesto_sandbox"`.
+3. **Run Ledger**:
+   - The SQLite run ledger is at `reports/run_ledger.db` conforming to `seeds/01_runs.sql`.
+   - Track `wall_clock_s`, `boot_to_ready_s`, `cost_usd`, and `success`.
+4. **UI Guidelines**:
+   - PySide6 interface constrained to `500x620` resolution.
+   - Glassmorphic translucent styling (`rgba(15, 23, 42, 0.95)`).
+   - Zero text clipping on chat bubbles (using `ChatBubble(QLabel)` with document layouts).
+5. **Quality Standard**:
+   - Run `.venv/bin/pytest tests/` after any non-trivial change.
+   - Zero test regressions allowed.

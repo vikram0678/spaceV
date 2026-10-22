@@ -1,0 +1,27 @@
+# CodeRabbit AI Review Configuration
+version: "2"
+language: "en-US"
+tone_instructions: "Be rigorous, concise, and focused on security, isolation contracts, and performance."
+early_access: false
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  guidelines:
+    - "All untrusted shell commands must detonate inside Celesto Firecracker microVMs."
+    - "Never leak host credentials, environment variables, or private files to the sandbox guest."
+    - "All commands logged to logs/commands.jsonl must have an ISO timestamp in field 'ts'."
+    - "PySide6 UI must maintain a 500x620 window size without clipping chat bubbles."
+    - "All 58 pytest tests in tests/ must pass 100% green without regressions."
