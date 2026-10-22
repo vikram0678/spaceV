@@ -1,0 +1,7 @@
+{
+  "failed_step": 7,
+  "total_steps": 10,
+  "policy": "rollback",
+  "rationale": "When untrusted package detonation triggers an unexpected crash, credential theft attempt, or environment corruption at Step 7, continuing or simply resuming execution leaves the guest filesystem in a dirty, potentially compromised state. Applying policy 'rollback' restores the clean copy-on-write hardware snapshot captured at Step 6 in under 200 milliseconds, purging malicious filesystem artifacts and memory hooks instantly while maintaining test continuity without the high latency and cost of a cold reboot.",
+  "trace_path": "reports/failure_trace.jsonl"
+}

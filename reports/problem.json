@@ -1,0 +1,6 @@
+{
+  "who": "DevSecOps teams, autonomous coding agents, and security researchers evaluating untrusted third-party dependencies.",
+  "agent_work": "SpaceV quarantines suspicious packages inside isolated Celesto microVMs, analyzes behavioral execution traces, blocks unauthorized credential exfiltration via safety hooks, and rolls back state using hardware snapshots.",
+  "proof_output": "A cryptographically signed forensic risk report and command audit log certifying sandbox containment and zero host leakage.",
+  "idea_source": "idea_bank"
+}

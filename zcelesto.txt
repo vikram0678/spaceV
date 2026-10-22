@@ -1,0 +1,2143 @@
+vikram@vikram:~$ ls
+ Gpp-tasks   'New folder'   mtl-gradient-surgery
+vikram@vikram:~$ cd Gpp-tasks
+vikram@vikram:~/Gpp-tasks$ ls
+agentstream
+vikram@vikram:~/Gpp-tasks$ python --version
+Command 'python' not found, did you mean:
+  command 'python3' from deb python3
+  command 'python' from deb python-is-python3
+vikram@vikram:~/Gpp-tasks$ python3 --version
+Python 3.14.4
+vikram@vikram:~/Gpp-tasks$ cd ..
+vikram@vikram:~$ python3 --version
+Python 3.14.4
+vikram@vikram:~$ cd Gpp-tasks/agentstream
+vikram@vikram:~/Gpp-tasks/agentstream$ ls -la
+total 60
+drwxr-xr-x 7 vikram vikram 4096 Jul 18 09:59 .
+drwxr-xr-x 3 vikram vikram 4096 Jul 18 05:23 ..
+-rw-r--r-- 1 vikram vikram  613 Jul 18 08:40 .env
+-rw-r--r-- 1 vikram vikram  544 Jul 18 09:55 .env.example
+drwxr-xr-x 7 vikram vikram 4096 Jul 18 10:05 .git
+-rw-r--r-- 1 vikram vikram   11 Jul 18 09:58 .gitignore
+-rw-r--r-- 1 vikram vikram 7103 Jul 18 09:45 EVALUATION.md
+-rw-r--r-- 1 vikram vikram 6853 Jul 18 09:54 README.md
+drwxr-xr-x 3 vikram vikram 4096 Jul 18 05:23 backend
+-rw-r--r-- 1 vikram vikram 1673 Jul 18 07:15 docker-compose.yml
+drwxr-xr-x 2 vikram vikram 4096 Jul 18 09:52 docs
+drwxr-xr-x 4 vikram vikram 4096 Jul 18 10:26 frontend
+drwxr-xr-x 5 vikram vikram 4096 Jul 18 06:28 pyvenv
+vikram@vikram:~/Gpp-tasks/agentstream$ find . -maxdepth 2 \( -name "pyvenv.cfg" -o -name "requirements.txt" -o -name "pyproject.toml" -o -name "Pipfile" \) -print
+./pyvenv/pyvenv.cfg
+./backend/requirements.txt
+vikram@vikram:~/Gpp-tasks/agentstream$ cat pyvenv/pyvenv.cfg
+home = /usr/bin
+include-system-site-packages = false
+version = 3.14.4
+executable = /usr/bin/python3.14
+command = /usr/bin/python3 -m venv /home/vikram/Gpp-tasks/agentstream/pyvenv
+vikram@vikram:~/Gpp-tasks/agentstream$ ./pyvenv/bin/python --version
+Python 3.14.4
+vikram@vikram:~/Gpp-tasks/agentstream$ ./pyvenv/bin/python -m pip --version
+pip 25.1.1 from /home/vikram/Gpp-tasks/agentstream/pyvenv/lib/python3.14/site-packages/pip (python 3.14)
+vikram@vikram:~/Gpp-tasks/agentstream$ apt-cache policy python3.12
+python3.12:
+  Installed: (none)
+  Candidate: 3.12.15-1+resolute1
+  Version table:
+     3.12.15-1+resolute1 500
+        500 https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu resolute/main amd64 Packages
+vikram@vikram:~/Gpp-tasks/agentstream$ mkdir -p ~/proofops
+cd ~/proofops
+python3 -m venv .venv
+source .venv/bin/activate
+(.venv) vikram@vikram:~/proofops$ python --version
+python -m pip --version
+Python 3.14.4
+pip 25.1.1 from /home/vikram/proofops/.venv/lib/python3.14/site-packages/pip (python 3.14)
+(.venv) vikram@vikram:~/proofops$ python -m pip install --upgrade pip
+Requirement already satisfied: pip in ./.venv/lib/python3.14/site-packages (25.1.1)
+Collecting pip
+  Downloading pip-26.2.2-py3-none-any.whl.metadata (4.6 kB)
+Downloading pip-26.2.2-py3-none-any.whl (1.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 1.3 MB/s eta 0:00:00
+Installing collected packages: pip
+  Attempting uninstall: pip
+    Found existing installation: pip 25.1.1
+    Uninstalling pip-25.1.1:
+      Successfully uninstalled pip-25.1.1
+Successfully installed pip-26.2.2
+(.venv) vikram@vikram:~/proofops$ python -c "import sys; print(sys.executable); print(sys.version)"
+/home/vikram/proofops/.venv/bin/python
+3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]
+(.venv) vikram@vikram:~/proofops$ uname -a
+ls -l /dev/kvm
+python --version
+python -m pip --version
+Linux vikram 6.6.114.1-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Mon Dec  1 20:46:23 UTC 2025 x86_64 GNU/Linux
+crw-rw---- 1 root kvm 10, 232 Oct 21 17:26 /dev/kvm
+Python 3.14.4
+pip 26.2.2 from /home/vikram/proofops/.venv/lib/python3.14/site-packages/pip (python 3.14)
+(.venv) vikram@vikram:~/proofops$ python -m pip install celesto
+Collecting celesto
+  Downloading celesto-0.1.4-py3-none-any.whl.metadata (19 kB)
+Collecting attrs>=23.2 (from celesto)
+  Using cached attrs-26.1.0-py3-none-any.whl.metadata (8.8 kB)
+Collecting celesto-core~=2026.9.22 (from celesto)
+  Downloading celesto_core-2026.9.22-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (5.9 kB)
+Collecting click>=8.0 (from celesto)
+  Downloading click-8.5.0-py3-none-any.whl.metadata (2.6 kB)
+Collecting httpx<0.29,>=0.27 (from celesto)
+  Using cached httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+Collecting paramiko>=3.0 (from celesto)
+  Downloading paramiko-5.1.0-py3-none-any.whl.metadata (3.8 kB)
+Collecting pycdlib>=1.14.0 (from celesto)
+  Downloading pycdlib-1.22.0-py3-none-any.whl.metadata (1.3 kB)
+Collecting pydantic>=2.0 (from celesto)
+  Downloading pydantic-2.14.1-py3-none-any.whl.metadata (133 kB)
+Collecting python-dateutil>=2.8 (from celesto)
+  Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Collecting requests>=2.34.2 (from celesto)
+  Using cached requests-2.34.2-py3-none-any.whl.metadata (4.8 kB)
+Collecting rich>=13.0 (from celesto)
+  Using cached rich-15.0.0-py3-none-any.whl.metadata (18 kB)
+Collecting typing-extensions>=4.16.0 (from celesto)
+  Using cached typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+Collecting websockets>=14.0 (from celesto)
+  Downloading websockets-17.3-cp314-cp314-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.3 kB)
+Collecting zstandard>=0.22 (from celesto)
+  Downloading zstandard-0.25.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (3.3 kB)
+Collecting anyio (from httpx<0.29,>=0.27->celesto)
+  Downloading anyio-4.15.1-py3-none-any.whl.metadata (4.7 kB)
+Collecting certifi (from httpx<0.29,>=0.27->celesto)
+  Downloading certifi-2026.10.19-py3-none-any.whl.metadata (2.5 kB)
+Collecting httpcore==1.* (from httpx<0.29,>=0.27->celesto)
+  Using cached httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+Collecting idna (from httpx<0.29,>=0.27->celesto)
+  Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+Collecting h11>=0.16 (from httpcore==1.*->httpx<0.29,>=0.27->celesto)
+  Using cached h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Collecting bcrypt>=3.2 (from paramiko>=3.0->celesto)
+  Downloading bcrypt-5.0.0-cp39-abi3-manylinux_2_34_x86_64.whl.metadata (10 kB)
+Collecting cryptography>=3.3 (from paramiko>=3.0->celesto)
+  Downloading cryptography-50.0.2-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (4.4 kB)
+Collecting invoke>=2.0 (from paramiko>=3.0->celesto)
+  Downloading invoke-3.0.3-py3-none-any.whl.metadata (3.2 kB)
+Collecting pynacl>=1.5 (from paramiko>=3.0->celesto)
+  Downloading pynacl-1.6.2-cp38-abi3-manylinux_2_34_x86_64.whl.metadata (10.0 kB)
+Collecting cffi>=2.0.0 (from cryptography>=3.3->paramiko>=3.0->celesto)
+  Downloading cffi-2.1.1-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.5 kB)
+Collecting pycparser (from cffi>=2.0.0->cryptography>=3.3->paramiko>=3.0->celesto)
+  Downloading pycparser-3.11-py3-none-any.whl.metadata (8.2 kB)
+Collecting annotated-types>=0.6.0 (from pydantic>=2.0->celesto)
+  Downloading annotated_types-0.8.0-py3-none-any.whl.metadata (15 kB)
+Collecting pydantic-core==2.50.1 (from pydantic>=2.0->celesto)
+  Downloading pydantic_core-2.50.1-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.5 kB)
+Collecting typing-inspection>=0.4.4 (from pydantic>=2.0->celesto)
+  Downloading typing_inspection-0.4.4-py3-none-any.whl.metadata (2.6 kB)
+Collecting six>=1.5 (from python-dateutil>=2.8->celesto)
+  Using cached six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+Collecting charset_normalizer<4,>=2 (from requests>=2.34.2->celesto)
+  Downloading charset_normalizer-3.5.2-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (46 kB)
+Collecting urllib3<3,>=1.26 (from requests>=2.34.2->celesto)
+  Downloading urllib3-2.8.0-py3-none-any.whl.metadata (7.4 kB)
+Collecting markdown-it-py>=2.2.0 (from rich>=13.0->celesto)
+  Using cached markdown_it_py-4.2.0-py3-none-any.whl.metadata (7.4 kB)
+Collecting pygments<3.0.0,>=2.13.0 (from rich>=13.0->celesto)
+  Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)
+Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich>=13.0->celesto)
+  Using cached mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+Downloading celesto-0.1.4-py3-none-any.whl (1.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 1.1 MB/s  0:00:01
+Downloading celesto_core-2026.9.22-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (1.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.0/1.0 MB 1.2 MB/s  0:00:00
+Using cached httpx-0.28.1-py3-none-any.whl (73 kB)
+Using cached httpcore-1.0.9-py3-none-any.whl (78 kB)
+Using cached attrs-26.1.0-py3-none-any.whl (67 kB)
+Downloading click-8.5.0-py3-none-any.whl (125 kB)
+Using cached h11-0.16.0-py3-none-any.whl (37 kB)
+Downloading paramiko-5.1.0-py3-none-any.whl (211 kB)
+Downloading bcrypt-5.0.0-cp39-abi3-manylinux_2_34_x86_64.whl (278 kB)
+Downloading cryptography-50.0.2-cp311-abi3-manylinux_2_34_x86_64.whl (4.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.8/4.8 MB 1.6 MB/s  0:00:03
+Downloading cffi-2.1.1-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (221 kB)
+Downloading invoke-3.0.3-py3-none-any.whl (160 kB)
+Downloading pycdlib-1.22.0-py3-none-any.whl (238 kB)
+Downloading pydantic-2.14.1-py3-none-any.whl (488 kB)
+Downloading pydantic_core-2.50.1-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.2/2.2 MB 2.6 MB/s  0:00:00
+Downloading annotated_types-0.8.0-py3-none-any.whl (13 kB)
+Downloading pynacl-1.6.2-cp38-abi3-manylinux_2_34_x86_64.whl (1.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.4/1.4 MB 2.6 MB/s  0:00:00
+Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+Using cached requests-2.34.2-py3-none-any.whl (73 kB)
+Downloading charset_normalizer-3.5.2-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (255 kB)
+Downloading idna-3.20-py3-none-any.whl (69 kB)
+Downloading urllib3-2.8.0-py3-none-any.whl (135 kB)
+Downloading certifi-2026.10.19-py3-none-any.whl (136 kB)
+Using cached rich-15.0.0-py3-none-any.whl (310 kB)
+Downloading pygments-2.21.0-py3-none-any.whl (1.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 3.2 MB/s  0:00:00
+Using cached markdown_it_py-4.2.0-py3-none-any.whl (91 kB)
+Using cached mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+Using cached six-1.17.0-py2.py3-none-any.whl (11 kB)
+Using cached typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+Downloading typing_inspection-0.4.4-py3-none-any.whl (14 kB)
+Downloading websockets-17.3-cp314-cp314-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (225 kB)
+Downloading zstandard-0.25.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (5.6 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.6/5.6 MB 4.0 MB/s  0:00:01
+Downloading anyio-4.15.1-py3-none-any.whl (132 kB)
+Downloading pycparser-3.11-py3-none-any.whl (51 kB)
+Installing collected packages: zstandard, websockets, urllib3, typing-extensions, six, pygments, pycparser, pycdlib, mdurl, invoke, idna, h11, click, charset_normalizer, certifi, celesto-core, bcrypt, attrs, annotated-types, typing-inspection, requests, python-dateutil, pydantic-core, markdown-it-py, httpcore, cffi, anyio, rich, pynacl, pydantic, httpx, cryptography, paramiko, celesto
+Successfully installed annotated-types-0.8.0 anyio-4.15.1 attrs-26.1.0 bcrypt-5.0.0 celesto-0.1.4 celesto-core-2026.9.22 certifi-2026.10.19 cffi-2.1.1 charset_normalizer-3.5.2 click-8.5.0 cryptography-50.0.2 h11-0.16.0 httpcore-1.0.9 httpx-0.28.1 idna-3.20 invoke-3.0.3 markdown-it-py-4.2.0 mdurl-0.1.2 paramiko-5.1.0 pycdlib-1.22.0 pycparser-3.11 pydantic-2.14.1 pydantic-core-2.50.1 pygments-2.21.0 pynacl-1.6.2 python-dateutil-2.9.0.post0 requests-2.34.2 rich-15.0.0 six-1.17.0 typing-extensions-4.16.0 typing-inspection-0.4.4 urllib3-2.8.0 websockets-17.3 zstandard-0.25.0
+(.venv) vikram@vikram:~/proofops$ celesto --help
+Usage: celesto [OPTIONS] [COMMAND] [ARGS]...
+
+  Create, manage, and connect to disposable computers for AI agents.
+
+  Use `celesto computer` for computer commands. `celesto sandbox` is an
+  equivalent spelling for every subcommand.
+
+Options:
+  -V, --version  Show the version and exit.
+  -h, --help     Show this message and exit.
+
+Commands:
+  auth        Authenticate the CLI with Celesto Cloud.
+  bridge      Check host bridges for bridged networking.
+  browser     Manage browser sandboxes.
+  claude      Start a sandbox with Anthropic's Claude Code CLI preinstalled.
+  codex       Start a sandbox with OpenAI's codex CLI preinstalled.
+  completion  Print or install a shell tab-completion script.
+  computer    Create, inspect, connect to, and delete computers.
+  config      View and change Celesto settings.
+  doctor      Check whether this machine can run sandboxes.
+  hermes      Start a sandbox with the Hermes agent preinstalled.
+  image       Download and manage cached sandbox images.
+  images      Show downloaded images (alias for 'celesto image list').
+  openclaw    Create and manage OpenClaw sandboxes.
+  opencode    Start a sandbox with the stable OpenCode agent preinstalled.
+  pi          Start a sandbox with the Pi coding agent preinstalled.
+  prune       Remove stale image-cache entries (alias for 'celesto image...
+  sandbox     Create, inspect, connect to, and delete computers.
+  server      Run the local Celesto HTTP API.
+  setup       Install or validate local runtime dependencies.
+  ui          Start the local dashboard.
+  update      Upgrade Celesto to the latest stable release.
+  windows     Build Windows guest images.
+(.venv) vikram@vikram:~/proofops$ celesto doctor
+Celesto may send limited local usage counts (installation ID, feature category, version, OS family). PostHog may derive your approximate location (such as country or city) from your IP address and may retain that address. No commands, files, or URLs are sent. See https://celesto.ai/legal/privacy-policy. Opt out: celesto config telemetry off or CELESTO_NO_TELEMETRY=1.
+╭──── Celesto Doctor ────╮
+│ Backend: firecracker   │
+│ Platform: Linux x86_64 │
+│ Result: FAIL           │
+│ Failures: 4            │
+│ Warnings: 4            │
+╰────────────────────────╯
+                                                                     Checks
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Check                         ┃ Status ┃ Detail                                           ┃ Fix                                              ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ kvm                           │ fail   │ /dev/kvm exists but your user can't read or      │ Add your user to the kvm group, then start a new │
+│                               │        │ write it                                         │ login session: 'sudo usermod -aG kvm $USER' and  │
+│                               │        │                                                  │ either log out and back in, or run 'newgrp kvm'  │
+│                               │        │                                                  │ in this shell.                                   │
+│ firecracker                   │ fail   │ Not found in PATH or ~/.celesto/bin              │ Run celesto setup.                               │
+│ command:ip                    │ pass   │ /usr/sbin/ip                                     │ -                                                │
+│ command:nft                   │ fail   │ Not found                                        │ Install nftables                                 │
+│ command:ssh                   │ pass   │ /usr/bin/ssh                                     │ -                                                │
+│ e2fsprogs                     │ pass   │ e2fsck and resize2fs found                       │ -                                                │
+│ network-permissions           │ fail   │ 'nft' command not found; sudo ip missing (run    │ -                                                │
+│                               │        │ `celesto setup`); sudo nft missing (run `celesto │                                                  │
+│                               │        │ setup`); sudo sysctl missing (run `celesto       │                                                  │
+│                               │        │ setup`)                                          │                                                  │
+│ nft-table:ip:celesto_nat      │ warn   │ could not inspect table: Command failed: sudo -n │ -                                                │
+│                               │        │ nft list table ip celesto_nat                    │                                                  │
+│                               │        │ stderr: sudo: interactive authentication is      │                                                  │
+│                               │        │ required                                         │                                                  │
+│                               │        │                                                  │                                                  │
+│ nft-table:inet:celesto_filter │ warn   │ could not inspect table: Command failed: sudo -n │ -                                                │
+│                               │        │ nft list table inet celesto_filter               │                                                  │
+│                               │        │ stderr: sudo: interactive authentication is      │                                                  │
+│                               │        │ required                                         │                                                  │
+│                               │        │                                                  │                                                  │
+│ worker:swap-disabled          │ warn   │ Active (2097152 kB)                              │ sudo swapoff -a                                  │
+│ worker:ksm-disabled           │ pass   │ Disabled                                         │ -                                                │
+│ worker:thp-disabled           │ warn   │ Active ('madvise')                               │ sudo sh -c 'echo never >                         │
+│                               │        │                                                  │ /sys/kernel/mm/transparent_hugepage/enabled'     │
+│ worker:kvm-nx-huge-pages      │ pass   │ Mitigated ('n')                                  │ -                                                │
+│ worker:kvm-permissions        │ pass   │ 0o660 group=kvm                                  │ -                                                │
+└───────────────────────────────┴────────┴──────────────────────────────────────────────────┴──────────────────────────────────────────────────┘
+(.venv) vikram@vikram:~/proofops$ sudo usermod -aG kvm "$USER"
+newgrp kvm
+[sudo: authenticate] Password:
+Command 'newgrp' not found, but can be installed with:
+sudo apt install util-linux-extra
+(.venv) vikram@vikram:~/proofops$ suto apt install util-linux-extra
+Command 'suto' not found, did you mean:
+  command 'uuto' from deb uucp (1.07-31build1)
+  command 'sudo' from deb sudo (1.9.17p2-1ubuntu3)
+  command 'sudo' from deb sudo-rs (0.2.13-0ubuntu1)
+  command 'sumo' from deb sumo (1.25.0+dfsg1-1build2)
+  command 'sutf' from deb libsimdutf-tools (8.0.0-1)
+Try: sudo apt install <deb name>
+(.venv) vikram@vikram:~/proofops$ sudo apt install util-linux-extra
+Installing:
+  util-linux-extra
+
+Installing dependencies:
+  liblastlog2-2
+
+Summary:
+  Upgrading: 0, Installing: 2, Removing: 0, Not Upgrading: 69
+  Download size: 374 kB
+  Space needed: 1407 kB / 1010 GB available
+
+Continue? [Y/n] y
+Get:1 http://archive.ubuntu.com/ubuntu resolute-updates/main amd64 liblastlog2-2 amd64 2.41.3-3ubuntu2.2 [27.4 kB]
+Get:2 http://archive.ubuntu.com/ubuntu resolute-updates/main amd64 util-linux-extra amd64 2.41.3-3ubuntu2.2 [347 kB]
+Fetched 374 kB in 3s (147 kB/s)
+Selecting previously unselected package liblastlog2-2:amd64.
+(Reading database ... 36741 files and directories currently installed.)
+Preparing to unpack .../liblastlog2-2_2.41.3-3ubuntu2.2_amd64.deb ...
+Unpacking liblastlog2-2:amd64 (2.41.3-3ubuntu2.2) ...
+Selecting previously unselected package util-linux-extra.
+Preparing to unpack .../util-linux-extra_2.41.3-3ubuntu2.2_amd64.deb ...
+Unpacking util-linux-extra (2.41.3-3ubuntu2.2) ...
+Setting up liblastlog2-2:amd64 (2.41.3-3ubuntu2.2) ...
+Setting up util-linux-extra (2.41.3-3ubuntu2.2) ...
+Processing triggers for man-db (2.13.1-1build1) ...
+Processing triggers for libc-bin (2.43-2ubuntu2.4) ...
+(.venv) vikram@vikram:~/proofops$ sudo usermod -aG kvm "$USER"
+newgrp kvm
+vikram@vikram:~/proofops$ test -r /dev/kvm && test -w /dev/kvm && echo "KVM access OK" || echo "KVM access still denied"
+KVM access OK
+vikram@vikram:~/proofops$ celesto setup
+sudo: preserving the entire environment is not supported, '-E' is ignored
+=== Celesto System Setup ===
+Checking KVM...
+✅ User 'vikram' is already in the kvm group
+Installing KVM udev rule at /etc/udev/rules.d/65-celesto-kvm.rules...
+✅ KVM udev rule installed and applied
+Selecting previously unselected package libnftnl11:amd64.
+(Reading database ... 36855 files and directories currently installed.)
+Preparing to unpack .../libnftnl11_1.3.1-1_amd64.deb ...
+Unpacking libnftnl11:amd64 (1.3.1-1) ...
+Selecting previously unselected package libnftables1:amd64.
+Preparing to unpack .../libnftables1_1.1.6-1_amd64.deb ...
+Unpacking libnftables1:amd64 (1.1.6-1) ...
+Selecting previously unselected package nftables.
+Preparing to unpack .../nftables_1.1.6-1_amd64.deb ...
+Unpacking nftables (1.1.6-1) ...
+Setting up libnftnl11:amd64 (1.3.1-1) ...
+Setting up libnftables1:amd64 (1.1.6-1) ...
+Setting up nftables (1.1.6-1) ...
+Processing triggers for man-db (2.13.1-1build1) ...
+Processing triggers for libc-bin (2.43-2ubuntu2.4) ...
+Installing Firecracker in '/home/vikram/.celesto/bin'...
+Downloading Firecracker v1.14.1 for x86_64...
+✅ Firecracker v1.14.1 installed at '/home/vikram/.celesto/bin/firecracker'.
+Firecracker v1.14.1
+Configuring runtime sudoers (no interactive password during SDK runtime)...
+✅ Installed runtime sudoers: /etc/sudoers.d/celesto-runtime-vikram
+✅ Installed runtime helper: /var/lib/celesto/libexec/celesto-loopfs-helper
+✅ Runtime sudo access check passed for user 'vikram'
+✅ System setup complete
+vikram@vikram:~/proofops$ celesto doctor
+╭──── Celesto Doctor ────╮
+│ Backend: firecracker   │
+│ Platform: Linux x86_64 │
+│ Result: OK             │
+│ Failures: 0            │
+│ Warnings: 4            │
+╰────────────────────────╯
+                                                                     Checks
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Check                         ┃ Status ┃ Detail                                           ┃ Fix                                              ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ kvm                           │ pass   │ /dev/kvm is available                            │ -                                                │
+│ firecracker                   │ pass   │ /home/vikram/.celesto/bin/firecracker            │ -                                                │
+│ command:ip                    │ pass   │ /usr/sbin/ip                                     │ -                                                │
+│ command:nft                   │ pass   │ /usr/sbin/nft                                    │ -                                                │
+│ command:ssh                   │ pass   │ /usr/bin/ssh                                     │ -                                                │
+│ e2fsprogs                     │ pass   │ e2fsck and resize2fs found                       │ -                                                │
+│ network-permissions           │ pass   │ network commands and sudo policy are available   │ -                                                │
+│ nft-table:ip:celesto_nat      │ warn   │ not created yet (will be created on first VM     │ -                                                │
+│                               │        │ network setup)                                   │                                                  │
+│ nft-table:inet:celesto_filter │ warn   │ not created yet (will be created on first VM     │ -                                                │
+│                               │        │ network setup)                                   │                                                  │
+│ worker:swap-disabled          │ warn   │ Active (2097152 kB)                              │ sudo swapoff -a                                  │
+│ worker:ksm-disabled           │ pass   │ Disabled                                         │ -                                                │
+│ worker:thp-disabled           │ warn   │ Active ('madvise')                               │ sudo sh -c 'echo never >                         │
+│                               │        │                                                  │ /sys/kernel/mm/transparent_hugepage/enabled'     │
+│ worker:kvm-nx-huge-pages      │ pass   │ Mitigated ('n')                                  │ -                                                │
+│ worker:kvm-permissions        │ pass   │ 0o660 group=kvm                                  │ -                                                │
+└───────────────────────────────┴────────┴──────────────────────────────────────────────────┴──────────────────────────────────────────────────┘
+vikram@vikram:~/proofops$ celesto computer --help
+Usage: celesto computer [OPTIONS] COMMAND [ARGS]...
+
+  Create, inspect, connect to, and delete computers.
+
+Options:
+  -h, --help  Show this message and exit.
+
+Commands:
+  create     Create a minimal computer; add --desktop for a Linux desktop.
+  delete     Delete one or more sandboxes.
+  desktop    Open a sandbox desktop.
+  env        Manage sandbox environment variables.
+  exec       Run a command in a sandbox and print its output.
+  file       Copy files into or out of a sandbox.
+  get        Inspect a cloud computer's status and connection info.
+  info       Show details about a sandbox.
+  list       List your sandboxes.
+  logs       Show a sandbox's boot and console logs.
+  open       Open a computer's desktop view.
+  pause      Pause a running sandbox.
+  port       Manage port forwarding for a sandbox.
+  prune      Delete files left behind by sandboxes that no longer exist.
+  resume     Resume a paused sandbox.
+  run        Run one command on a cloud computer and print its output.
+  shell      Open a fast shell in a sandbox.
+  snapshot   Save and restore sandbox state.
+  ssh        Open an SSH shell in a sandbox.
+  start      Start a stopped sandbox.
+  stop       Stop a running sandbox.
+  templates  List available computer templates.
+  terminal   Open a local interactive terminal, or select --cloud; exit...
+vikram@vikram:~/proofops$ celesto computer create --help
+Usage: celesto computer create [OPTIONS]
+
+  Create a minimal computer; add --desktop for a Linux desktop.
+
+Options:
+  --desktop                       Start a Linux desktop instead of a minimal
+                                  computer.
+  --local                         Run on this machine (the default).
+  --cloud                         Run in Celesto Cloud.
+  -n, --name TEXT                 Name for the computer.
+  --os [alpine|ubuntu|windows|macos]
+                                  Operating system image; auto-detected when
+                                  omitted.
+  --image TEXT                    S3 URI or local qcow2 image path.
+  --memory MIB
+  --disk-size MIB
+  --width INTEGER
+  --height INTEGER
+  --backend [auto|firecracker|qemu|libkrun|vz]
+                                  Virtualization backend.
+  --qemu-machine [auto|q35|microvm]
+                                  QEMU machine model.  [default: auto]
+  --comm-channel [ssh|vsock]      Host-to-guest control channel.
+  --mount HOST_PATH[:GUEST_PATH]
+  --writable-mounts               Allow writes to mounted host folders.
+  --clipboard / --no-clipboard    Copy and paste between this Mac and the
+                                  macOS desktop (on by default). Use --no-
+                                  clipboard to keep the two clipboards
+                                  separate.
+  --yes                           Confirm one-time macOS image preparation.
+  --network [nat|bridge]          Network mode: 'nat' (default, private
+                                  network) or 'bridge' (connect to a host
+                                  bridge).
+  --bridge BRIDGE                 Linux bridge to attach to (required with
+                                  --network bridge).
+  --boot-timeout FLOAT            Seconds to wait for the sandbox to be ready.
+                                  [default: 30.0]
+  --json                          Output a JSON envelope.
+  -h, --help                      Show this message and exit.
+vikram@vikram:~/proofops$ celesto computer create \
+  --local \
+  --name proofops-test \
+  --os alpine \
+  --memory 512 \
+  --disk-size 2048 \
+  --backend firecracker
+╭─────────────────────────────────────────────────────────────────── Error ────────────────────────────────────────────────────────────────────╮
+│ Error: Docker is required to build images, but Docker could not be used successfully. Install Docker Desktop (macOS) or docker.io (Linux).   │
+│ Original Docker error: The command 'docker' could not be found in this WSL 2 distro.                                                         │
+│ We recommend to activate the WSL integration in Docker Desktop settings.                                                                     │
+│                                                                                                                                              │
+│ For details about using Docker Desktop with WSL 2, visit:                                                                                    │
+│                                                                                                                                              │
+│ https://docs.docker.com/go/wsl2/                                                                                                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+vikram@vikram:~/proofops$ free -h
+               total        used        free      shared  buff/cache   available
+Mem:           7.6Gi       963Mi       6.4Gi       4.0Mi       406Mi       6.7Gi
+Swap:          2.0Gi          0B       2.0Gi
+vikram@vikram:~/proofops$ cat /proc/meminfo | head -5
+MemTotal:        7970896 kB
+MemFree:         6743588 kB
+MemAvailable:    6978980 kB
+Buffers:            3900 kB
+Cached:           337520 kB
+vikram@vikram:~/proofops$ lscpu | head -15
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           39 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  16
+On-line CPU(s) list:                     0-15
+Vendor ID:                               GenuineIntel
+Model name:                              13th Gen Intel(R) Core(TM) i7-13620H
+CPU family:                              6
+Model:                                   186
+Thread(s) per core:                      2
+Core(s) per socket:                      8
+Socket(s):                               1
+Stepping:                                2
+BogoMIPS:                                5836.79
+vikram@vikram:~/proofops$ sudo dmidecode -t memory
+sudo: 'dmidecode': command not found
+vikram@vikram:~/proofops$ df -h /
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sdd       1007G   16G  941G   2% /
+vikram@vikram:~/proofops$ du -sh ~/proofops
+117M    /home/vikram/proofops
+vikram@vikram:~/proofops$ free -h
+               total        used        free      shared  buff/cache   available
+Mem:           7.6Gi       961Mi       6.4Gi       4.0Mi       413Mi       6.7Gi
+Swap:          2.0Gi          0B       2.0Gi
+vikram@vikram:~/proofops$ grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+MemTotal:        7970896 kB
+MemAvailable:    6986584 kB
+SwapTotal:       2097152 kB
+SwapFree:        2097152 kB
+vikram@vikram:~/proofops$ df -h /
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sdd       1007G   16G  941G   2% /
+vikram@vikram:~/proofops$ sudo apt update
+Hit:1 http://security.ubuntu.com/ubuntu resolute-security InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu resolute InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu resolute-updates InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu resolute-backports InRelease
+Ign:5 https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu resolute InRelease
+Ign:5 https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu resolute InRelease
+Ign:5 https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu resolute InRelease
+Err:5 https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu resolute InRelease
+  503  Service Unavailable [IP: 185.125.189.188 443]
+  503  Service Unavailable [IP: 185.125.189.186 443]
+69 packages can be upgraded. Run 'apt list --upgradable' to see them.
+Warning: Failed to fetch https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu/dists/resolute/InRelease  503  Service Unavailable [IP: 185.125.189.186 443]
+Warning: Some index files failed to download. They have been ignored, or old ones used instead.
+vikram@vikram:~/proofops$ docker --version
+docker info
+docker run --rm hello-world
+Docker version 29.8.2, build 7fc2dff
+Client:
+ Version:    29.8.2
+ Context:    default
+ Debug Mode: false
+ Plugins:
+  agent: Docker AI Agent Runner (Docker Inc.)
+    Version:  v1.144.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-agent
+  ai: Docker AI Agent - Ask Gordon (Docker Inc.)
+    Version:  v1.31.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-ai
+  buildx: Docker Buildx (Docker Inc.)
+    Version:  v0.37.2
+    Path:     /usr/local/lib/docker/cli-plugins/docker-buildx
+  compose: Docker Compose (Docker Inc.)
+    Version:  v5.5.1
+    Path:     /usr/local/lib/docker/cli-plugins/docker-compose
+  debug: Get a shell into any image or container (Docker Inc.)
+    Version:  0.0.47
+    Path:     /usr/local/lib/docker/cli-plugins/docker-debug
+  desktop: Docker Desktop commands (Docker Inc.)
+    Version:  v0.4.4
+    Path:     /usr/local/lib/docker/cli-plugins/docker-desktop
+  dhi: CLI for managing Docker Hardened Images (Docker Inc.)
+    Version:  v0.0.7
+    Path:     /usr/local/lib/docker/cli-plugins/docker-dhi
+  extension: Manages Docker extensions (Docker Inc.)
+    Version:  v0.2.31
+    Path:     /usr/local/lib/docker/cli-plugins/docker-extension
+  init: Creates Docker-related starter files for your project (Docker Inc.)
+    Version:  v1.4.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-init
+  mcp: Docker MCP Plugin (Docker Inc.)
+    Version:  v0.44.1
+    Path:     /usr/local/lib/docker/cli-plugins/docker-mcp
+  model: Docker Model Runner (Docker Inc.)
+    Version:  v1.2.6
+    Path:     /usr/local/lib/docker/cli-plugins/docker-model
+  offload: Docker Offload (Docker Inc.)
+    Version:  v0.6.53
+    Path:     /usr/local/lib/docker/cli-plugins/docker-offload
+  pass: Docker Pass Secrets Manager Plugin (beta) (Docker Inc.)
+    Version:  v0.2.4
+    Path:     /usr/local/lib/docker/cli-plugins/docker-pass
+  sandbox: "docker sandbox" is deprecated, use Docker Sandboxes instead (Docker Inc.)
+    Version:  v0.13.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-sandbox
+  scout: Docker Scout (Docker Inc.)
+    Version:  v1.25.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-scout
+
+Server:
+ Containers: 2
+  Running: 0
+  Paused: 0
+  Stopped: 2
+ Images: 4
+ Server Version: 29.8.2
+ Storage Driver: overlayfs
+  driver-type: io.containerd.snapshotter.v1
+ Logging Driver: local
+ Cgroup Driver: cgroupfs
+ Cgroup Version: 2
+ Plugins:
+  Volume: local
+  Network: bridge host ipvlan macvlan null overlay
+  Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+ CDI spec directories:
+  /etc/cdi
+  /var/run/cdi
+ Discovered Devices:
+  cdi: docker.com/gpu=webgpu
+ Swarm: inactive
+ Runtimes: io.containerd.runc.v2 nvidia runc
+ Default Runtime: runc
+ Init Binary: docker-init
+ containerd version: ee2735368117d2eb259779949d5e75cdafec9761
+ runc version: v1.5.1-0-g8f2685a4
+ init version: de40ad0
+ Security Options:
+  seccomp
+   Profile: builtin
+  cgroupns
+ Kernel Version: 6.6.114.1-microsoft-standard-WSL2
+ Operating System: Docker Desktop
+ OSType: linux
+ Architecture: x86_64
+ CPUs: 16
+ Total Memory: 7.602GiB
+ Name: docker-desktop
+ ID: 778abad9-00c4-4e32-a0e4-84adb773ce20
+ Docker Root Dir: /var/lib/docker
+ Debug Mode: false
+ HTTP Proxy: http.docker.internal:3128
+ HTTPS Proxy: http.docker.internal:3128
+ No Proxy: hubproxy.docker.internal
+ Labels:
+  com.docker.desktop.address=unix:///var/run/docker-cli.sock
+ Experimental: false
+ Insecure Registries:
+  hubproxy.docker.internal:5555
+  127.0.0.0/8
+  ::1/128
+ Live Restore Enabled: false
+ Firewall Backend: iptables
+
+Unable to find image 'hello-world:latest' locally
+latest: Pulling from library/hello-world
+4f55086f7dd0: Pull complete
+d5e71e642bf5: Download complete
+Digest: sha256:11a3eb1597e864c51b3f56733cb2e8a90bf0c284bfc05f9444d81c558bc848aa
+Status: Downloaded newer image for hello-world:latest
+
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+
+To generate this message, Docker took the following steps:
+ 1. The Docker client contacted the Docker daemon.
+ 2. The Docker daemon pulled the "hello-world" image from the Docker Hub.
+    (amd64)
+ 3. The Docker daemon created a new container from that image which runs the
+    executable that produces the output you are currently reading.
+ 4. The Docker daemon streamed that output to the Docker client, which sent it
+    to your terminal.
+
+To try something more ambitious, you can run an Ubuntu container with:
+ $ docker run -it ubuntu bash
+
+Share images, automate workflows, and more with a free Docker ID:
+ https://hub.docker.com/
+
+For more examples and ideas, visit:
+ https://docs.docker.com/get-started/
+
+vikram@vikram:~/proofops$ cd ~/proofops
+source .venv/bin/activate
+
+celesto computer create \
+  --local \
+  --name proofops-test \
+  --os alpine \
+  --memory 512 \
+  --disk-size 2048 \
+  --backend firecracker
+
+^C
+(.venv) vikram@vikram:~/proofops$ cd ~/proofops
+source .venv/bin/activate
+
+celesto computer create \
+  --local \
+  --name proofops-test \
+  --os alpine \
+  --memory 512 \
+  --disk-size 2048 \
+  --backend firecracker
+Fast Rust networking needs permission to change Linux networking directly (root or CAP_NET_ADMIN). Celesto is using the slower sudo fallback;
+run `celesto setup` if sudo fallback is missing, or start the same Celesto command with sudo to get the Rust networking speedup.
+╭──────── VM Created ─────────╮
+│ Created VM 'proofops-test'. │
+╰─────────────────────────────╯
+             VM Details
+┌─────────┬─────────────────────────┐
+│ Name    │ proofops-test           │
+│ Status  │ running                 │
+│ OS      │ alpine                  │
+│ Started │ 2026-10-21 18:36:11 UTC │
+└─────────┴─────────────────────────┘
+Next: celesto sandbox shell proofops-test
+SSH:  celesto sandbox ssh proofops-test
+Info: celesto sandbox info proofops-test
+(.venv) vikram@vikram:~/proofops$ celesto computer info proofops-test
+             VM Details
+┌──────────────┬────────────────────┐
+│ Name         │ proofops-test      │
+│ Status       │ running            │
+│ OS           │ Alpine Linux v3.19 │
+│ Backend      │ firecracker        │
+│ Network Mode │ nat                │
+│ IP Address   │ 172.16.0.2         │
+│ SSH Port     │ -                  │
+│ CPUs         │ 1                  │
+│ Memory       │ 19 / 512 MiB used  │
+│ Disk Size    │ 2048 MiB           │
+│ PID          │ 24833              │
+└──────────────┴────────────────────┘
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- uname -a
+Linux celesto 6.12.85 #1 SMP PREEMPT_DYNAMIC Fri Oct  2 20:28:16 UTC 2026 x86_64 Linux
+(.venv) vikram@vikram:~/proofops$ celesto sandbox shell proofops-test
+celesto:/# cat /etc/os-release
+NAME="Alpine Linux"
+ID=alpine
+VERSION_ID=3.19.9
+PRETTY_NAME="Alpine Linux v3.19"
+HOME_URL="https://alpinelinux.org/"
+BUG_REPORT_URL="https://gitlab.alpinelinux.org/alpine/aports/-/issues"
+celesto:/# exit
+logout
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- python3 --version
+Python 3.11.14
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- python3 -c "print('ProofOps sandbox works!')"
+bash: !': event not found
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- git --version
+/bin/sh: git: not found
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- python3 -c 'print("ProofOps sandbox works!")'
+ProofOps sandbox works!
+(.venv) vikram@vikram:~/proofops$ celesto sandbox shell proofops-test
+celesto:/# apk update
+apk add git
+git --version
+fetch https://dl-cdn.alpinelinux.org/alpine/v3.19/main/x86_64/APKINDEX.tar.gz
+fetch https://dl-cdn.alpinelinux.org/alpine/v3.19/community/x86_64/APKINDEX.tar.gz
+v3.19.9-165-ge298e430e43 [https://dl-cdn.alpinelinux.org/alpine/v3.19/main]
+v3.19.9-162-g081c4e63481 [https://dl-cdn.alpinelinux.org/alpine/v3.19/community]
+OK: 23040 distinct packages available
+(1/2) Installing pcre2 (10.42-r2)
+(2/2) Installing git (2.43.7-r0)
+Executing busybox-1.36.1-r20.trigger
+OK: 73 MiB in 61 packages
+git version 2.43.7
+celesto:/# exit
+logout
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- python3 --version
+celesto computer exec proofops-test -- git --version
+Python 3.11.14
+git version 2.43.7
+(.venv) vikram@vikram:~/proofops$ cd ~/proofops
+find . -maxdepth 2 -type f -not -path './.venv/*' | sort | head -80
+(.venv) vikram@vikram:~/proofops$ python -c 'from celesto import Computer; print("Celesto Python SDK import works")'
+Celesto Python SDK import works
+(.venv) vikram@vikram:~/proofops$ cd ~/proofops
+pwd
+ls -la
+/home/vikram/proofops
+total 12
+drwxr-xr-x  3 vikram vikram 4096 Oct 21 18:09 .
+drwxr-x--- 19 vikram vikram 4096 Oct 21 18:36 ..
+drwxr-xr-x  6 vikram vikram 4096 Oct 21 18:11 .venv
+(.venv) vikram@vikram:~/proofops$ python -c 'import celesto; print(celesto.__file__)'
+/home/vikram/proofops/.venv/lib/python3.14/site-packages/celesto/__init__.py
+(.venv) vikram@vikram:~/proofops$ python -c 'from celesto import Computer; help(Computer)'
+
+(.venv) vikram@vikram:~/proofops$ celesto computer list
+             Celesto Instances
+┏━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━┓
+┃ Name          ┃ Preset ┃ Status  ┃   PID ┃
+┡━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━┩
+│ proofops-test │ -      │ running │ 24833 │
+└───────────────┴────────┴─────────┴───────┘
+Total: 1 VM(s).
+(.venv) vikram@vikram:~/proofops$ python -c 'from celesto import Computer; print(dir(Computer))'
+['__annotations__', '__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__enter__', '__eq__', '__exit__', '__firstlineno__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__static_attributes__', '__str__', '__subclasshook__', '__weakref__', '_ensure_started', '_fixed_provider', '_port_provider', '_validate_port', '_validate_run', 'browser', 'close', 'delete', 'display', 'get', 'id', 'lifetime', 'provider', 'publish_port', 'published_ports', 'resume', 'run', 'run_stream', 'start', 'stop', 'terminal', 'unpublish_port']
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto import Computer; print(inspect.signature(Computer)); print(inspect.getdoc(Computer) or "No class documentation available")'
+(*, provider: 'ProviderName | None' = None, local: 'bool | None' = None, lifetime: "Literal['ephemeral', 'persistent']" = 'ephemeral', **options: 'Any') -> 'None'
+A cloud or local computer with explicit ownership and deferred creation.
+
+Runs locally by default; pass ``provider="cloud"`` for cloud execution.
+Ephemeral computers are deleted on context exit, not on garbage collection
+or a hard process crash. Outside
+a context, call ``delete()`` explicitly for either lifetime.
+
+Local VM options (such as ``os``, ``memory``, and ``mounts``) are forwarded
+to the local runtime. Existing data directories and image caches are reused.
+(.venv) vikram@vikram:~/proofops$ python -m pip show celesto
+Name: celesto
+Version: 0.1.4
+Summary: Sandbox for computer-using agents with a unified API for VMMs — Firecracker, QEMU, and libkrun.
+Home-page: https://celesto.ai
+Author:
+Author-email: Celesto AI <oss@celesto.ai>
+License-Expression: Apache-2.0
+Location: /home/vikram/proofops/.venv/lib/python3.14/site-packages
+Requires: attrs, celesto-core, click, httpx, paramiko, pycdlib, pydantic, python-dateutil, requests, rich, typing-extensions, websockets, zstandard
+Required-by:
+(.venv) vikram@vikram:~/proofops$ celesto computer info proofops-test
+             VM Details
+┌──────────────┬────────────────────┐
+│ Name         │ proofops-test      │
+│ Status       │ running            │
+│ OS           │ Alpine Linux v3.19 │
+│ Backend      │ firecracker        │
+│ Network Mode │ nat                │
+│ IP Address   │ 172.16.0.2         │
+│ SSH Port     │ -                  │
+│ CPUs         │ 1                  │
+│ Memory       │ 19 / 512 MiB used  │
+│ Disk Size    │ 2048 MiB           │
+│ PID          │ 24833              │
+└──────────────┴────────────────────┘
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto import Computer; [print(f"{n}{inspect.signature(getattr(Computer,n))}\n  {inspect.getdoc(getattr(Computer,n))}") for n in ("run","run_stream","start","stop","resume","delete","terminal")]'
+run(self, command: 'str', timeout: 'int' = 30) -> 'CommandResult'
+  Run a shell command; nonzero exit codes are returned, not raised.
+run_stream(self, command: 'str', timeout: 'int' = 30) -> 'Iterator[CommandEvent]'
+  Yield started, stdout, stderr, and exit events as a command runs.
+start(self) -> 'Self'
+  Create and start this computer if it has not been created yet.
+stop(self) -> 'Self'
+  Stop a cloud computer while retaining its files for a later resume.
+resume(self) -> 'Self'
+  Start a previously stopped cloud computer without creating a new one.
+delete(self) -> 'None'
+  Delete this computer; failed cleanup can be retried on the same handle.
+terminal(self, *, terminal_id: 'str | None' = None) -> 'TerminalConnection'
+  Create an interactive terminal connection.
+
+Call ``attach()`` on the returned connection to bridge this process's
+stdin and stdout. Cloud terminal IDs can be supplied later to reattach.
+Local terminal sessions don't support reattachment.
+(.venv) vikram@vikram:~/proofops$ celesto computer create --help
+Usage: celesto computer create [OPTIONS]
+
+  Create a minimal computer; add --desktop for a Linux desktop.
+
+Options:
+  --desktop                       Start a Linux desktop instead of a minimal
+                                  computer.
+  --local                         Run on this machine (the default).
+  --cloud                         Run in Celesto Cloud.
+  -n, --name TEXT                 Name for the computer.
+  --os [alpine|ubuntu|windows|macos]
+                                  Operating system image; auto-detected when
+                                  omitted.
+  --image TEXT                    S3 URI or local qcow2 image path.
+  --memory MIB
+  --disk-size MIB
+  --width INTEGER
+  --height INTEGER
+  --backend [auto|firecracker|qemu|libkrun|vz]
+                                  Virtualization backend.
+  --qemu-machine [auto|q35|microvm]
+                                  QEMU machine model.  [default: auto]
+  --comm-channel [ssh|vsock]      Host-to-guest control channel.
+  --mount HOST_PATH[:GUEST_PATH]
+  --writable-mounts               Allow writes to mounted host folders.
+  --clipboard / --no-clipboard    Copy and paste between this Mac and the
+                                  macOS desktop (on by default). Use --no-
+                                  clipboard to keep the two clipboards
+                                  separate.
+  --yes                           Confirm one-time macOS image preparation.
+  --network [nat|bridge]          Network mode: 'nat' (default, private
+                                  network) or 'bridge' (connect to a host
+                                  bridge).
+  --bridge BRIDGE                 Linux bridge to attach to (required with
+                                  --network bridge).
+  --boot-timeout FLOAT            Seconds to wait for the sandbox to be ready.
+                                  [default: 30.0]
+  --json                          Output a JSON envelope.
+  -h, --help                      Show this message and exit.
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto import Computer; print(inspect.getsource(Computer.__init__))'
+    def __init__(
+        self,
+        *,
+        provider: ProviderName | None = None,
+        local: bool | None = None,
+        lifetime: Literal["ephemeral", "persistent"] = "ephemeral",
+        **options: Any,
+    ) -> None:
+        selected = resolve_provider(provider, local, self._fixed_provider)
+        if lifetime not in ("ephemeral", "persistent"):
+            raise ValueError("lifetime must be 'ephemeral' or 'persistent'.")
+        if "vm_id" in options or "state_manager" in options:
+            raise ValueError(
+                f"Use Computer.get(id, provider='{selected}') to reconnect to a computer."
+            )
+        self._provider_name = selected
+        self._provider = make_provider(selected, options)
+        self._connection_lock = Lock()
+        self._lifetime = lifetime
+        self._started = False
+        self._deleted = False
+        self._entered = False
+        self._failed = False
+
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto import Computer; print(inspect.getsource(Computer.run))'
+    @observe_sdk_operation("command_execution")
+    def run(self, command: str, timeout: int = 30) -> CommandResult:
+        """Run a shell command; nonzero exit codes are returned, not raised."""
+        self._validate_run(command, timeout)
+        self._provider.validate_command(command, timeout)
+        return self._ensure_started().run(command, timeout=timeout)
+
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto import Computer; print(inspect.signature(Computer.get)); print(inspect.getdoc(Computer.get))'
+(computer_id: 'str', *, provider: 'ProviderName | None' = None, local: 'bool | None' = None, data_dir: 'Path | None' = None, **options: 'Any') -> 'Self'
+Attach to an existing computer without creating or starting it.
+
+Attached handles are persistent and cannot be used as contexts: attaching
+never implicitly takes ownership of another scope's cleanup.
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto import Computer; print(inspect.getsource(Computer.get))'
+    @classmethod
+    def get(
+        cls,
+        computer_id: str,
+        *,
+        provider: ProviderName | None = None,
+        local: bool | None = None,
+        data_dir: Path | None = None,
+        **options: Any,
+    ) -> Self:
+        """Attach to an existing computer without creating or starting it.
+
+        Attached handles are persistent and cannot be used as contexts: attaching
+        never implicitly takes ownership of another scope's cleanup.
+        """
+        if not computer_id:
+            raise ValueError("computer_id must not be empty.")
+        if not isinstance(computer_id, str) or not computer_id.strip():
+            raise ValueError("computer_id must be a nonempty string.")
+        selected = resolve_provider(provider, local, cls._fixed_provider)
+        if data_dir is not None:
+            if selected != "local":
+                raise ValueError("data_dir is only supported with provider='local'.")
+            options["data_dir"] = data_dir
+        instance = cls(provider=selected, lifetime="persistent", **options)
+        try:
+            instance._provider.attach(computer_id)
+        except BaseException:
+            instance._provider.close()
+            raise
+        instance._started = True
+        return instance
+
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto import Computer; print(inspect.getsource(Computer._fixed_provider))'
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import inspect; from celesto import Computer; print(inspect.getsource(Computer._fixed_provider))
+                                                        ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/inspect.py", line 1161, in getsource
+    lines, lnum = getsourcelines(object)
+                  ~~~~~~~~~~~~~~^^^^^^^^
+  File "/usr/lib/python3.14/inspect.py", line 1143, in getsourcelines
+    lines, lnum = findsource(object)
+                  ~~~~~~~~~~^^^^^^^^
+  File "/usr/lib/python3.14/inspect.py", line 958, in findsource
+    file = getsourcefile(object)
+  File "/usr/lib/python3.14/inspect.py", line 862, in getsourcefile
+    filename = getfile(object)
+  File "/usr/lib/python3.14/inspect.py", line 842, in getfile
+    raise TypeError('module, class, method, function, traceback, frame, or '
+                    'code object was expected, got {}'.format(
+                    type(object).__name__))
+TypeError: module, class, method, function, traceback, frame, or code object was expected, got NoneType
+(.venv) vikram@vikram:~/proofops$ celesto computer info proofops-test
+             VM Details
+┌──────────────┬────────────────────┐
+│ Name         │ proofops-test      │
+│ Status       │ running            │
+│ OS           │ Alpine Linux v3.19 │
+│ Backend      │ firecracker        │
+│ Network Mode │ nat                │
+│ IP Address   │ 172.16.0.2         │
+│ SSH Port     │ -                  │
+│ CPUs         │ 1                  │
+│ Memory       │ 18 / 512 MiB used  │
+│ Disk Size    │ 2048 MiB           │
+│ PID          │ 24833              │
+└──────────────┴────────────────────┘
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto import Computer; c=Computer(local=True); print(type(c._provider)); print(inspect.getsource(type(c._provider).attach)); c._provider.close()'
+<class 'celesto._providers.local.LocalProvider'>
+    def attach(self, computer_id: str) -> None:
+        from celesto.computer import _ComputerSandbox
+
+        options = self._runtime_options()
+        state = options.get("state_manager")
+        session = None
+        if state is not None:
+            with suppress(BrowserSessionNotFoundError):
+                session = state.get_browser_session(computer_id)
+        if session is not None and state is not None:
+            config = state.get_browser_session_config(computer_id)
+            if config.mode != "computer":
+                raise ValueError(
+                    f"'{computer_id}' is not a computer; run 'celesto computer list' to choose one."
+                )
+            unsupported = options.keys() - {
+                "data_dir",
+                "socket_dir",
+                "ssh_key_path",
+                "state_manager",
+            }
+            if unsupported:
+                names = ", ".join(sorted(unsupported))
+                raise ValueError(
+                    f"Desktop computer '{computer_id}' does not accept {names} when reconnecting; "
+                    "omit those options and retry."
+                )
+            self._desktop = cast(
+                "_ComputerSandbox", _ComputerSandbox.from_id(computer_id, **options)
+            )
+            self._vm = self._desktop.vm
+        else:
+            self._vm = Celesto(vm_id=computer_id, **options)
+
+(.venv) vikram@vikram:~/proofops$ python -c 'from celesto import Computer; print(Computer.__module__)'
+celesto.sdk
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto_core import Celesto; print(inspect.signature(Celesto)); print(inspect.getsource(Celesto.__init__))'
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import inspect; from celesto_core import Celesto; print(inspect.signature(Celesto)); print(inspect.getsource(Celesto.__init__))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ImportError: cannot import name 'Celesto' from 'celesto_core' (/home/vikram/proofops/.venv/lib/python3.14/site-packages/celesto_core/__init__.py)
+(.venv) vikram@vikram:~/proofops$ python -c 'import celesto; print(celesto.__file__)'
+/home/vikram/proofops/.venv/lib/python3.14/site-packages/celesto/__init__.py
+(.venv) vikram@vikram:~/proofops$ python -c 'import celesto_core, os; print(os.path.dirname(celesto_core.__file__))'
+/home/vikram/proofops/.venv/lib/python3.14/site-packages/celesto_core
+(.venv) vikram@vikram:~/proofops$ grep -R -n 'class Celesto' .venv/lib/python3.14/site-packages/celesto_core
+.venv/lib/python3.14/site-packages/celesto_core/errors.py:8:class CelestoCoreError(Exception):
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto._providers.local import LocalProvider; print(inspect.getsource(LocalProvider._runtime_options))'
+    def _runtime_options(self) -> dict[str, Any]:
+        from celesto.cli.state import create_cli_state_manager
+        from celesto.vm import resolve_data_dir
+
+        options = self._options.copy()
+        data_dir = resolve_data_dir(options.get("data_dir"))
+        options["data_dir"] = data_dir
+        options["state_manager"] = create_cli_state_manager(data_dir / "celesto.db")
+        return options
+
+(.venv) vikram@vikram:~/proofops$ python -c 'from celesto.vm import resolve_data_dir; print(resolve_data_dir(None))'
+/home/vikram/.local/state/celesto
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto.cli.state import create_cli_state_manager; print(inspect.signature(create_cli_state_manager))'
+(db_path: 'Path') -> 'StateManagerProtocol'
+(.venv) vikram@vikram:~/proofops$ python -c 'import celesto.vm; print(celesto.vm.__file__)'
+/home/vikram/proofops/.venv/lib/python3.14/site-packages/celesto/vm.py
+(.venv) vikram@vikram:~/proofops$ ls -lah ~/.local/state/celesto
+total 168K
+drwxr-xr-x 6 vikram kvm 4.0K Oct 21 18:36 .
+drwxr-xr-x 3 vikram kvm 4.0K Oct 21 18:48 ..
+-rw-r--r-- 1 vikram kvm 124K Oct 21 18:36 celesto.db
+drwxr-xr-x 2 vikram kvm 4.0K Oct 21 18:36 disks
+drwxr-xr-x 2 vikram kvm 4.0K Oct 21 18:36 firmware
+drwxr-xr-x 2 vikram kvm 4.0K Oct 21 18:36 locks
+-rw-r--r-- 1 vikram kvm  14K Oct 21 18:36 proofops-test.log
+drwxr-xr-x 2 vikram kvm 4.0K Oct 21 18:36 snapshots
+(.venv) vikram@vikram:~/proofops$ python -c 'import sqlite3, pathlib; p=pathlib.Path.home()/".local/state/celesto/celesto.db"; c=sqlite3.connect(f"file:{p}?mode=ro", uri=True); print("\n".join(r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type=\"table\""))); c.close()'
+vms
+ip_leases
+ssh_forwards
+vsock_cids
+tap_allocations
+browser_sessions
+snapshots
+(.venv) vikram@vikram:~/proofops$ grep -nE 'class |vm_id|def attach|def run|data_dir' \
+  .venv/lib/python3.14/site-packages/celesto/vm.py | head -80
+122:class LeftoverArtifact:
+125:    vm_id: str
+212:def _usernet_addresses(backend: str, vm_id: str) -> tuple[str, str, str]:
+224:            f"'celesto sandbox create --name {vm_id} --backend {BACKEND_QEMU}' instead."
+253:def _candidate_data_dirs() -> list[Path]:
+276:def resolve_data_dir(data_dir: Path | None = None) -> Path:
+280:    1) Explicit ``data_dir`` argument.
+284:    if data_dir is not None:
+285:        resolved = data_dir.expanduser()
+295:    for candidate in _candidate_data_dirs():
+300:    attempted = ", ".join(str(p) for p in _candidate_data_dirs())
+307:def _crashed_message(vm_id: str) -> str:
+310:        f"VM '{vm_id}' is not running — its process has exited; "
+311:        f"run 'celesto sandbox delete {vm_id}' to clear it."
+315:def _vsock_recovery_command(vm_id: str, backend: str) -> str:
+317:    return f"celesto sandbox create --name {vm_id} --backend {backend}"
+321:    vm_id: str,
+337:        f"Cannot use vsock for sandbox '{vm_id}': {reason}; "
+342:class CelestoManager:
+343:    """Low-level manager class for orchestrating sandbox VMs.
+351:        data_dir: Path | None = None,
+359:            data_dir: Directory for state database. If omitted, Celesto resolves
+368:        self.data_dir = resolve_data_dir(data_dir)
+371:        self.disk_dir = self.data_dir / "disks"
+372:        self.snapshot_dir = self.data_dir / "snapshots"
+379:            self._ensure_path_owner(self.data_dir, owner.pw_uid, owner.pw_gid)
+385:        self.state: StateManagerProtocol = state_manager or MemoryStateManager(self.data_dir)
+398:            "Celesto initialized: data_dir=%s, socket_dir=%s, backend=%s",
+399:            self.data_dir,
+418:    # Lifecycle & class methods
+422:    def from_id(cls, vm_id: str, **kwargs: Any) -> CelestoManager:
+428:            vm_id: The VM identifier to look up.
+429:            **kwargs: Forwarded to :meth:`__init__` (e.g. ``data_dir``).
+432:            A :class:`CelestoManager` instance whose state DB contains *vm_id*.
+438:        sdk.state.get_vm(vm_id)  # raises VMNotFoundError if absent
+493:        firmware_dir = self.data_dir / "firmware"
+496:            data_dir=self.data_dir,
+543:        vm_id: str,
+549:        return self.disk_dir / f"{vm_id}{suffix}"
+569:            config.vm_id,
+596:    def _cleanup_unpersisted_firmware(self, vm_id: str, *, existed_before: bool) -> None:
+600:        firmware_state = self.data_dir / "firmware" / vm_id
+631:    def _ensure_vm_id_available(self, vm_id: str) -> None:
+634:            self.state.get_vm(vm_id)
+637:        raise VMAlreadyExistsError(vm_id)
+648:        lock_dir = self.data_dir / "locks"
+654:    def _acquire_vm_create_lock(self, vm_id: str) -> tuple[Any | None, TextIO | None]:
+656:        return self._acquire_operation_lock(f"{vm_id}.create.lock")
+671:    def _vm_create_lock(self, vm_id: str) -> Iterator[None]:
+673:        lock = self._acquire_vm_create_lock(vm_id)
+680:    async def _async_vm_create_lock(self, vm_id: str) -> Iterator[None]:
+682:        lock = await asyncio.to_thread(self._acquire_vm_create_lock, vm_id)
+689:    def _snapshot_operation_locks(self, vm_id: str, snapshot_id: str) -> Iterator[None]:
+693:            locks.append(self._acquire_operation_lock(f"{vm_id}.snapshot.lock"))
+836:    def _resize_recovery(vm_id: str) -> str:
+838:        return f"celesto sandbox delete {vm_id}"
+847:                f"Disk resizing needs an isolated disk for sandbox '{config.vm_id}'; set "
+848:                f"disk_mode='isolated', or run '{CelestoManager._resize_recovery(config.vm_id)}'."
+861:                    f"'{config.vm_id}'; omit grow_filesystem, or run "
+862:                    f"'{self._resize_recovery(config.vm_id)}'."
+865:                self._resize_qcow2_disk(config.rootfs_path, config.disk_size_mib, config.vm_id)
+872:            vm_id=config.vm_id,
+882:        vm_id: str,
+892:                    f"'{vm_id}'; choose at least {current_mib} MiB, or run "
+893:                    f"'{self._resize_recovery(vm_id)}'."
+898:                    vm_id,
+906:            self._grow_raw_ext4_filesystem(disk_path, vm_id)
+921:    def _grow_raw_ext4_filesystem(self, disk_path: Path, vm_id: str) -> None:
+932:                f"Disk preparation tools are missing for sandbox '{vm_id}'; "
+933:                f"{install}, or run '{self._resize_recovery(vm_id)}'."
+938:            vm_id,
+941:        self._run_resize_tool([str(resize2fs), str(disk_path)], "resize2fs", vm_id)
+947:        vm_id: str,
+957:                f"{tool_name} failed while resizing the disk for sandbox '{vm_id}'; run "
+958:                f"'{self._resize_recovery(vm_id)}'.",
+962:    def _qcow2_virtual_size_bytes(self, disk_path: Path, vm_id: str) -> int:
+967:                f"qemu-img is needed to resize the disk for sandbox '{vm_id}'; "
+978:                f"qemu-img could not inspect the disk for sandbox '{vm_id}'; run "
+979:                f"'{self._resize_recovery(vm_id)}'.",
+987:                f"qemu-img returned invalid disk info for sandbox '{vm_id}'; run "
+(.venv) vikram@vikram:~/proofops$ python -c 'import sqlite3, pathlib; p=pathlib.Path.home()/".local/state/celesto/celesto.db"; c=sqlite3.connect(f"file:{p}?mode=ro", uri=True); print("VM columns:", c.execute("PRAGMA table_info(vms)").fetchall()); print("VM rows:", c.execute("SELECT * FROM vms").fetchall()); c.close()'
+VM columns: [(0, 'id', 'TEXT', 0, None, 1), (1, 'status', 'TEXT', 1, None, 0), (2, 'config', 'TEXT', 1, None, 0), (3, 'network', 'TEXT', 0, None, 0), (4, 'pid', 'INTEGER', 0, None, 0), (5, 'socket_path', 'TEXT', 0, None, 0), (6, 'display', 'TEXT', 0, None, 0), (7, 'created_at', 'TEXT', 1, None, 0), (8, 'updated_at', 'TEXT', 1, None, 0)]
+VM rows: [('proofops-test', 'running', '{"vm_id":"proofops-test","preset":null,"vcpu_count":1,"memory":512,"guest_os":"alpine","boot_mode":"direct_kernel","kernel_path":"/home/vikram/.celesto/images/alpine-ssh-key-guestnet-v1-2048m/vmlinux.bin","initrd_path":null,"rootfs_path":"/home/vikram/.local/state/celesto/disks/proofops-test.ext4","rootfs_format":"raw-ext4","macos_machine":null,"extra_drives":[],"boot_args":"console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw tsc=reliable no_timer_check quiet init=/init","ssh_capable":false,"backend":"firecracker","qemu_network":"slirp","qemu_machine":"auto","disk_mode":"isolated","disk_size_mib":null,"grow_filesystem":false,"retain_disk_on_delete":false,"env_vars":{},"network_rate_limit_mbps":null,"port_forwards":[],"vsock":{"guest_cid":3,"uds_path":"/tmp/vsock-proofops-test.sock"},"comm_channel":null,"internet_settings":null,"workspace_mounts":[],"ssh_public_key":"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMcm3BmRMK5OeSct6EsKoMYoL90C/Ymp2M2mNsCU8rAt celesto-auto","guest_managed_networking":true,"network_attachment":{"mode":"nat","bridge":null}}', '{"guest_ip":"172.16.0.2","gateway_ip":"172.16.0.1","netmask":"255.255.255.0","tap_device":"tap2","guest_mac":"AA:FC:00:00:00:02","ssh_host_port":null,"egress_proxy_host_port":null,"mode":"nat","bridge":null}', 24833, '/tmp/fc-proofops-test.sock', None, '2026-10-21T18:36:09.728151+00:00', '2026-10-21T18:36:10.383206+00:00')]
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto.vm import CelestoManager; print(inspect.signature(CelestoManager.from_id)); print(inspect.getsource(CelestoManager.from_id))'
+(vm_id: 'str', **kwargs: 'Any') -> 'CelestoManager'
+    @classmethod
+    def from_id(cls, vm_id: str, **kwargs: Any) -> CelestoManager:
+        """Create an SDK instance and verify a VM exists.
+
+        Useful for attaching to an existing VM from a different process.
+
+        Args:
+            vm_id: The VM identifier to look up.
+            **kwargs: Forwarded to :meth:`__init__` (e.g. ``data_dir``).
+
+        Returns:
+            A :class:`CelestoManager` instance whose state DB contains *vm_id*.
+
+        Raises:
+            VMNotFoundError: If no VM with this ID exists.
+        """
+        sdk = cls(**kwargs)
+        sdk.state.get_vm(vm_id)  # raises VMNotFoundError if absent
+        return sdk
+
+(.venv) vikram@vikram:~/proofops$ python -c 'import inspect; from celesto._providers.local import LocalProvider; print(inspect.getsource(LocalProvider.attach))'
+    def attach(self, computer_id: str) -> None:
+        from celesto.computer import _ComputerSandbox
+
+        options = self._runtime_options()
+        state = options.get("state_manager")
+        session = None
+        if state is not None:
+            with suppress(BrowserSessionNotFoundError):
+                session = state.get_browser_session(computer_id)
+        if session is not None and state is not None:
+            config = state.get_browser_session_config(computer_id)
+            if config.mode != "computer":
+                raise ValueError(
+                    f"'{computer_id}' is not a computer; run 'celesto computer list' to choose one."
+                )
+            unsupported = options.keys() - {
+                "data_dir",
+                "socket_dir",
+                "ssh_key_path",
+                "state_manager",
+            }
+            if unsupported:
+                names = ", ".join(sorted(unsupported))
+                raise ValueError(
+                    f"Desktop computer '{computer_id}' does not accept {names} when reconnecting; "
+                    "omit those options and retry."
+                )
+            self._desktop = cast(
+                "_ComputerSandbox", _ComputerSandbox.from_id(computer_id, **options)
+            )
+            self._vm = self._desktop.vm
+        else:
+            self._vm = Celesto(vm_id=computer_id, **options)
+
+(.venv) vikram@vikram:~/proofops$ cat > sdk_smoke_test.py <<'PY'
+from celesto import Computer
+
+computer = Computer.get("proofops-test", local=True)
+
+try:
+    result = computer.run("python3 -c 'print(123)'")
+    print("Exit code:", result.exit_code)
+    print("Result:", result)
+finally:
+    computer.close()
+PY
+(.venv) vikram@vikram:~/proofops$ python sdk_smoke_test.py
+Exit code: 0
+Result: exit_code=0 stdout='123\n' stderr=''
+(.venv) vikram@vikram:~/proofops$ celesto computer list
+             Celesto Instances
+┏━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━┓
+┃ Name          ┃ Preset ┃ Status  ┃   PID ┃
+┡━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━┩
+│ proofops-test │ -      │ running │ 24833 │
+└───────────────┴────────┴─────────┴───────┘
+Total: 1 VM(s).
+(.venv) vikram@vikram:~/proofops$
+(.venv) vikram@vikram:~/proofops$ cat > eval_runner.py <<'PY'
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from celesto import Computer
+
+REPORT_DIR = Path("reports")
+REPORT_DIR.mkdir(exist_ok=True)
+
+computer = Computer.get("proofops-test", local=True)
+
+try:
+    command = "python3 -c 'print(\"ProofOps evaluation passed\")'"
+    result = computer.run(command, timeout=30)
+
+    report = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "sandbox": "proofops-test",
+        "command": command,
+        "exit_code": result.exit_code,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "passed": result.exit_code == 0,
+    }
+
+    report_path = REPORT_DIR / "smoke_test.json"
+    report_path.write_text(json.dumps(report, indent=2) + "\n")
+
+    print(json.dumps(report, indent=2))
+    print(f"\nEvidence saved to: {report_path}")
+finally:
+    computer.close()
+PY
+(.venv) vikram@vikram:~/proofops$ python eval_runner.py
+{
+  "timestamp": "2026-10-21T19:00:26.819161+00:00",
+  "sandbox": "proofops-test",
+  "command": "python3 -c 'print(\"ProofOps evaluation passed\")'",
+  "exit_code": 0,
+  "stdout": "ProofOps evaluation passed\n",
+  "stderr": "",
+  "passed": true
+}
+
+Evidence saved to: reports/smoke_test.json
+(.venv) vikram@vikram:~/proofops$ cat reports/smoke_test.json
+{
+  "timestamp": "2026-10-21T19:00:26.819161+00:00",
+  "sandbox": "proofops-test",
+  "command": "python3 -c 'print(\"ProofOps evaluation passed\")'",
+  "exit_code": 0,
+  "stdout": "ProofOps evaluation passed\n",
+  "stderr": "",
+  "passed": true
+}
+(.venv) vikram@vikram:~/proofops$
+(.venv) vikram@vikram:~/proofops$ cat > test_eval_runner.py <<'PY'
+import json
+from pathlib import Path
+
+from celesto import Computer
+
+computer = Computer.get("proofops-test", local=True)
+
+tests = [
+    {
+        "name": "success_case",
+        "command": "python3 -c 'print(42)'",
+        "expected_exit_code": 0,
+    },
+    {
+        "name": "failure_case",
+        "command": "python3 -c 'raise SystemExit(2)'",
+        "expected_exit_code": 2,
+    },
+]
+
+results = []
+
+try:
+    for test in tests:
+        result = computer.run(test["command"], timeout=30)
+
+        results.append({
+            "name": test["name"],
+            "command": test["command"],
+            "expected_exit_code": test["expected_exit_code"],
+            "actual_exit_code": result.exit_code,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "passed": result.exit_code == test["expected_exit_code"],
+        })
+finally:
+    computer.close()
+
+report = {
+    "evaluation": "exit_code_handling",
+    "passed": all(item["passed"] for item in results),
+    "total": len(results),
+    "passed_count": sum(item["passed"] for item in results),
+    "results": results,
+}
+
+Path("reports").mkdir(exist_ok=True)
+Path("reports/exit_code_handling.json").write_text(
+    json.dumps(report, indent=2) + "\n"
+)
+
+print(json.dumps(report, indent=2))
+PY
+(.venv) vikram@vikram:~/proofops$ python test_eval_runner.py
+{
+  "evaluation": "exit_code_handling",
+  "passed": true,
+  "total": 2,
+  "passed_count": 2,
+  "results": [
+    {
+      "name": "success_case",
+      "command": "python3 -c 'print(42)'",
+      "expected_exit_code": 0,
+      "actual_exit_code": 0,
+      "stdout": "42\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "name": "failure_case",
+      "command": "python3 -c 'raise SystemExit(2)'",
+      "expected_exit_code": 2,
+      "actual_exit_code": 2,
+      "stdout": "",
+      "stderr": "",
+      "passed": true
+    }
+  ]
+}
+(.venv) vikram@vikram:~/proofops$ cat reports/exit_code_handling.json
+{
+  "evaluation": "exit_code_handling",
+  "passed": true,
+  "total": 2,
+  "passed_count": 2,
+  "results": [
+    {
+      "name": "success_case",
+      "command": "python3 -c 'print(42)'",
+      "expected_exit_code": 0,
+      "actual_exit_code": 0,
+      "stdout": "42\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "name": "failure_case",
+      "command": "python3 -c 'raise SystemExit(2)'",
+      "expected_exit_code": 2,
+      "actual_exit_code": 2,
+      "stdout": "",
+      "stderr": "",
+      "passed": true
+    }
+  ]
+}
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- python3 -m pytest --version
+/usr/bin/python3: No module named pytest
+(.venv) vikram@vikram:~/proofops$ celesto sandbox shell proofops-test
+celesto:/# apk add py3-pytest
+(1/12) Installing py3-iniconfig-pyc (1.1.1-r7)
+(2/12) Installing py3-parsing (3.1.1-r0)
+(3/12) Installing py3-parsing-pyc (3.1.1-r0)
+(4/12) Installing py3-packaging (23.2-r0)
+(5/12) Installing py3-packaging-pyc (23.2-r0)
+(6/12) Installing py3-pluggy (1.3.0-r0)
+(7/12) Installing py3-pluggy-pyc (1.3.0-r0)
+(8/12) Installing py3-py (1.11.0-r2)
+(9/12) Installing py3-py-pyc (1.11.0-r2)
+(10/12) Installing py3-pytest-pyc (7.4.3-r0)
+(11/12) Installing py3-iniconfig (1.1.1-r7)
+(12/12) Installing py3-pytest (7.4.3-r0)
+Executing busybox-1.36.1-r20.trigger
+OK: 79 MiB in 73 packages
+celesto:/# python3 -m pytest --version
+pytest 7.4.3
+celesto:/# exit
+logout
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- python3 -m pytest --version
+pytest 7.4.3
+(.venv) vikram@vikram:~/proofops$
+(.venv) vikram@vikram:~/proofops$ cat > repair_eval.py <<'PY'
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from celesto import Computer
+
+REPORT_DIR = Path("reports")
+REPORT_DIR.mkdir(exist_ok=True)
+
+computer = Computer.get("proofops-test", local=True)
+
+setup = r"""
+mkdir -p /tmp/repair-demo
+cd /tmp/repair-demo
+
+cat > calculator.py <<'EOF'
+def add(a, b):
+    return a - b
+EOF
+
+cat > test_calculator.py <<'EOF'
+from calculator import add
+
+def test_add():
+    assert add(2, 3) == 5
+
+def test_add_negative():
+    assert add(-2, -3) == -5
+EOF
+"""
+
+try:
+    setup_result = computer.run(setup, timeout=30)
+
+    if setup_result.exit_code != 0:
+        raise RuntimeError(
+            f"Setup failed: {setup_result.stderr}"
+        )
+
+    initial = computer.run(
+        "cd /tmp/repair-demo && python3 -m pytest -q",
+        timeout=60,
+    )
+
+    repair = computer.run(
+        "cd /tmp/repair-demo && sed -i 's/return a - b/return a + b/' calculator.py",
+        timeout=30,
+    )
+
+    final = computer.run(
+        "cd /tmp/repair-demo && python3 -m pytest -q",
+        timeout=60,
+    )
+
+    report = {
+        "evaluation": "repository_repair",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "sandbox": "proofops-test",
+        "initial_test": {
+            "exit_code": initial.exit_code,
+            "stdout": initial.stdout,
+            "stderr": initial.stderr,
+            "failed_as_expected": initial.exit_code != 0,
+        },
+        "repair_action": {
+            "command": "sed replacement: subtraction -> addition",
+            "exit_code": repair.exit_code,
+            "stderr": repair.stderr,
+        },
+        "final_test": {
+            "exit_code": final.exit_code,
+            "stdout": final.stdout,
+            "stderr": final.stderr,
+            "passed": final.exit_code == 0,
+        },
+    }
+
+    report["passed"] = (
+        report["initial_test"]["failed_as_expected"]
+        and repair.exit_code == 0
+        and report["final_test"]["passed"]
+    )
+
+    report_path = REPORT_DIR / "repair_eval.json"
+    report_path.write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report, indent=2))
+    print(f"\nEvidence saved to: {report_path}")
+
+finally:
+    computer.close()
+PY
+(.venv) vikram@vikram:~/proofops$ python repair_eval.py
+{
+  "evaluation": "repository_repair",
+  "timestamp": "2026-10-21T19:03:39.556005+00:00",
+  "sandbox": "proofops-test",
+  "initial_test": {
+    "exit_code": 1,
+    "stdout": "FF                                                                       [100%]\n=================================== FAILURES ===================================\n___________________________________ test_add ___________________________________\n\n    def test_add():\n>       assert add(2, 3) == 5\nE       assert -1 == 5\nE        +  where -1 = add(2, 3)\n\ntest_calculator.py:4: AssertionError\n______________________________ test_add_negative _______________________________\n\n    def test_add_negative():\n>       assert add(-2, -3) == -5\nE       assert 1 == -5\nE        +  where 1 = add(-2, -3)\n\ntest_calculator.py:7: AssertionError\n=========================== short test summary info ============================\nFAILED test_calculator.py::test_add - assert -1 == 5\nFAILED test_calculator.py::test_add_negative - assert 1 == -5\n2 failed in 0.02s\n",
+    "stderr": "",
+    "failed_as_expected": true
+  },
+  "repair_action": {
+    "command": "sed replacement: subtraction -> addition",
+    "exit_code": 0,
+    "stderr": ""
+  },
+  "final_test": {
+    "exit_code": 0,
+    "stdout": "..                                                                       [100%]\n2 passed in 0.00s\n",
+    "stderr": "",
+    "passed": true
+  },
+  "passed": true
+}
+
+Evidence saved to: reports/repair_eval.json
+(.venv) vikram@vikram:~/proofops$ cat reports/repair_eval.json
+{
+  "evaluation": "repository_repair",
+  "timestamp": "2026-10-21T19:03:39.556005+00:00",
+  "sandbox": "proofops-test",
+  "initial_test": {
+    "exit_code": 1,
+    "stdout": "FF                                                                       [100%]\n=================================== FAILURES ===================================\n___________________________________ test_add ___________________________________\n\n    def test_add():\n>       assert add(2, 3) == 5\nE       assert -1 == 5\nE        +  where -1 = add(2, 3)\n\ntest_calculator.py:4: AssertionError\n______________________________ test_add_negative _______________________________\n\n    def test_add_negative():\n>       assert add(-2, -3) == -5\nE       assert 1 == -5\nE        +  where 1 = add(-2, -3)\n\ntest_calculator.py:7: AssertionError\n=========================== short test summary info ============================\nFAILED test_calculator.py::test_add - assert -1 == 5\nFAILED test_calculator.py::test_add_negative - assert 1 == -5\n2 failed in 0.02s\n",
+    "stderr": "",
+    "failed_as_expected": true
+  },
+  "repair_action": {
+    "command": "sed replacement: subtraction -> addition",
+    "exit_code": 0,
+    "stderr": ""
+  },
+  "final_test": {
+    "exit_code": 0,
+    "stdout": "..                                                                       [100%]\n2 passed in 0.00s\n",
+    "stderr": "",
+    "passed": true
+  },
+  "passed": true
+}
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- python3 -c 'import os; print("Working directory:", os.getcwd()); print("User ID:", os.getuid()); print("Root filesystem:", os.path.realpath("/"))'
+Working directory: /
+User ID: 0
+Root filesystem: /
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- python3 -c 'import urllib.request; print("Network test:", urllib.request.urlopen("https://example.com", timeout=5).status)'
+Network test: 200
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- python3 -c 'from pathlib import Path; Path("/tmp/proofops-isolation-check.txt").write_text("sandbox-only test marker\n"); print("Marker created inside sandbox")'
+Marker created inside sandbox
+(.venv) vikram@vikram:~/proofops$ if [ -e /tmp/proofops-isolation-check.txt ]; then
+  echo "Marker exists on Ubuntu host"
+else
+  echo "Marker not found at that host path"
+fi
+Marker not found at that host path
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- cat /proc/mounts
+/dev/root / ext4 rw,relatime 0 0
+devtmpfs /dev devtmpfs rw,relatime,size=235500k,nr_inodes=58875,mode=755 0 0
+proc /proc proc rw,relatime 0 0
+sys /sys sysfs rw,relatime 0 0
+devpts /dev/pts devpts rw,relatime,mode=600,ptmxmode=000 0 0
+tmpfs /run tmpfs rw,relatime 0 0
+cgroup2 /sys/fs/cgroup cgroup2 rw,relatime 0 0
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-test -- df -h
+Filesystem                Size      Used Available Use% Mounted on
+/dev/root                 1.9G     84.2M      1.7G   5% /
+devtmpfs                230.0M         0    230.0M   0% /dev
+tmpfs                   232.1M     16.0K    232.0M   0% /run
+(.venv) vikram@vikram:~/proofops$
+(.venv) vikram@vikram:~/proofops$ cat > record_containment.py <<'PY'
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from celesto import Computer
+
+REPORT_DIR = Path("reports")
+REPORT_DIR.mkdir(exist_ok=True)
+
+computer = Computer.get("proofops-test", local=True)
+
+checks = [
+    {
+        "name": "guest_root_filesystem",
+        "command": "cat /proc/mounts",
+    },
+    {
+        "name": "guest_disk_usage",
+        "command": "df -h",
+    },
+    {
+        "name": "guest_identity",
+        "command": "id",
+    },
+    {
+        "name": "outbound_https",
+        "command": (
+            "python3 -c 'import urllib.request; "
+            "print(urllib.request.urlopen("
+            "\"https://example.com\", timeout=5).status)'"
+        ),
+    },
+]
+
+results = []
+
+try:
+    for check in checks:
+        result = computer.run(check["command"], timeout=15)
+        results.append({
+            **check,
+            "exit_code": result.exit_code,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "command_succeeded": result.exit_code == 0,
+        })
+finally:
+    computer.close()
+
+report = {
+    "evaluation": "baseline_containment_observations",
+    "timestamp": datetime.now(timezone.utc).isoformat(),
+    "sandbox": "proofops-test",
+    "checks": results,
+    "limitations": [
+        "These checks do not prove resistance to VM escape.",
+        "The guest root identity is not proof of host root access.",
+        "Successful HTTPS access does not establish unrestricted network access.",
+        "The filesystem observations do not prove every host access path is isolated.",
+    ],
+}
+
+path = REPORT_DIR / "containment.json"
+path.write_text(json.dumps(report, indent=2) + "\n")
+
+print(json.dumps(report, indent=2))
+print(f"\nEvidence saved to: {path}")
+PY
+(.venv) vikram@vikram:~/proofops$ python record_containment.py
+{
+  "evaluation": "baseline_containment_observations",
+  "timestamp": "2026-10-21T19:07:29.704715+00:00",
+  "sandbox": "proofops-test",
+  "checks": [
+    {
+      "name": "guest_root_filesystem",
+      "command": "cat /proc/mounts",
+      "exit_code": 0,
+      "stdout": "/dev/root / ext4 rw,relatime 0 0\ndevtmpfs /dev devtmpfs rw,relatime,size=235500k,nr_inodes=58875,mode=755 0 0\nproc /proc proc rw,relatime 0 0\nsys /sys sysfs rw,relatime 0 0\ndevpts /dev/pts devpts rw,relatime,mode=600,ptmxmode=000 0 0\ntmpfs /run tmpfs rw,relatime 0 0\ncgroup2 /sys/fs/cgroup cgroup2 rw,relatime 0 0\n",
+      "stderr": "",
+      "command_succeeded": true
+    },
+    {
+      "name": "guest_disk_usage",
+      "command": "df -h",
+      "exit_code": 0,
+      "stdout": "Filesystem                Size      Used Available Use% Mounted on\n/dev/root                 1.9G     84.2M      1.7G   5% /\ndevtmpfs                230.0M         0    230.0M   0% /dev\ntmpfs                   232.1M     16.0K    232.0M   0% /run\n",
+      "stderr": "",
+      "command_succeeded": true
+    },
+    {
+      "name": "guest_identity",
+      "command": "id",
+      "exit_code": 0,
+      "stdout": "uid=0(root) gid=0(root)\n",
+      "stderr": "",
+      "command_succeeded": true
+    },
+    {
+      "name": "outbound_https",
+      "command": "python3 -c 'import urllib.request; print(urllib.request.urlopen(\"https://example.com\", timeout=5).status)'",
+      "exit_code": 0,
+      "stdout": "200\n",
+      "stderr": "",
+      "command_succeeded": true
+    }
+  ],
+  "limitations": [
+    "These checks do not prove resistance to VM escape.",
+    "The guest root identity is not proof of host root access.",
+    "Successful HTTPS access does not establish unrestricted network access.",
+    "The filesystem observations do not prove every host access path is isolated."
+  ]
+}
+
+Evidence saved to: reports/containment.json
+(.venv) vikram@vikram:~/proofops$
+(.venv) vikram@vikram:~/proofops$ cat > failure_recovery.py <<'PY'
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from celesto import Computer
+
+REPORT_DIR = Path("reports")
+REPORT_DIR.mkdir(exist_ok=True)
+
+computer = Computer.get("proofops-test", local=True)
+attempts = []
+
+try:
+    commands = [
+        ("initial_failure", "python3 -c 'raise SystemExit(2)'"),
+        ("retry_success", "python3 -c 'print(\"Recovery successful\")'"),
+    ]
+
+    for name, command in commands:
+        result = computer.run(command, timeout=30)
+
+        attempts.append({
+            "attempt": name,
+            "command": command,
+            "exit_code": result.exit_code,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "passed": result.exit_code == 0,
+        })
+
+finally:
+    computer.close()
+
+report = {
+    "evaluation": "failure_recovery",
+    "timestamp": datetime.now(timezone.utc).isoformat(),
+    "sandbox": "proofops-test",
+    "attempts": attempts,
+    "recovered": (
+        len(attempts) == 2
+        and attempts[0]["exit_code"] == 2
+        and attempts[1]["exit_code"] == 0
+    ),
+}
+
+path = REPORT_DIR / "failure_recovery.json"
+path.write_text(json.dumps(report, indent=2) + "\n")
+
+print(json.dumps(report, indent=2))
+print(f"\nEvidence saved to: {path}")
+PY
+(.venv) vikram@vikram:~/proofops$ python failure_recovery.py
+{
+  "evaluation": "failure_recovery",
+  "timestamp": "2026-10-21T19:08:26.389898+00:00",
+  "sandbox": "proofops-test",
+  "attempts": [
+    {
+      "attempt": "initial_failure",
+      "command": "python3 -c 'raise SystemExit(2)'",
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "",
+      "passed": false
+    },
+    {
+      "attempt": "retry_success",
+      "command": "python3 -c 'print(\"Recovery successful\")'",
+      "exit_code": 0,
+      "stdout": "Recovery successful\n",
+      "stderr": "",
+      "passed": true
+    }
+  ],
+  "recovered": true
+}
+
+Evidence saved to: reports/failure_recovery.json
+(.venv) vikram@vikram:~/proofops$ cat recovery_policy.py
+cat: recovery_policy.py: No such file or directory
+(.venv) vikram@vikram:~/proofops$
+(.venv) vikram@vikram:~/proofops$ cat > recovery_policy.py <<'PY'
+import json
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+from celesto import Computer
+
+MAX_ATTEMPTS = 3
+REPORT_DIR = Path("reports")
+REPORT_DIR.mkdir(exist_ok=True)
+
+
+def run_with_retry(computer, command):
+    attempts = []
+
+    for number in range(1, MAX_ATTEMPTS + 1):
+        result = computer.run(command, timeout=30)
+
+        attempts.append({
+            "attempt": number,
+            "exit_code": result.exit_code,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        })
+
+        if result.exit_code == 0:
+            return {"success": True, "attempts": attempts}
+
+        if number < MAX_ATTEMPTS:
+            time.sleep(1)
+
+    return {"success": False, "attempts": attempts}
+
+
+computer = Computer.get("proofops-test", local=True)
+
+try:
+    result = run_with_retry(
+        computer,
+        "python3 -c 'raise SystemExit(2)'",
+    )
+finally:
+    computer.close()
+
+report = {
+    "evaluation": "bounded_retry_policy",
+    "timestamp": datetime.now(timezone.utc).isoformat(),
+    "max_attempts": MAX_ATTEMPTS,
+    "result": result,
+}
+
+path = REPORT_DIR / "failure_policy.json"
+path.write_text(json.dumps(report, indent=2) + "\n")
+
+print(json.dumps(report, indent=2))
+print(f"\nSaved to: {path}")
+PY
+(.venv) vikram@vikram:~/proofops$ ls -l recovery_policy.py
+-rw-r--r-- 1 vikram kvm 1268 Oct 21 19:10 recovery_policy.py
+(.venv) vikram@vikram:~/proofops$ python recovery_policy.py
+{
+  "evaluation": "bounded_retry_policy",
+  "timestamp": "2026-10-21T19:10:49.378071+00:00",
+  "max_attempts": 3,
+  "result": {
+    "success": false,
+    "attempts": [
+      {
+        "attempt": 1,
+        "exit_code": 2,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "attempt": 2,
+        "exit_code": 2,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "attempt": 3,
+        "exit_code": 2,
+        "stdout": "",
+        "stderr": ""
+      }
+    ]
+  }
+}
+
+Saved to: reports/failure_policy.json
+(.venv) vikram@vikram:~/proofops$ cat reports/failure_policy.json
+{
+  "evaluation": "bounded_retry_policy",
+  "timestamp": "2026-10-21T19:10:49.378071+00:00",
+  "max_attempts": 3,
+  "result": {
+    "success": false,
+    "attempts": [
+      {
+        "attempt": 1,
+        "exit_code": 2,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "attempt": 2,
+        "exit_code": 2,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "attempt": 3,
+        "exit_code": 2,
+        "stdout": "",
+        "stderr": ""
+      }
+    ]
+  }
+}
+(.venv) vikram@vikram:~/proofops$ celesto computer create \
+  --local \
+  --name proofops-recovery \
+  --os alpine \
+  --memory 512 \
+  --disk-size 2048 \
+  --backend firecracker
+Fast Rust networking needs permission to change Linux networking directly (root or CAP_NET_ADMIN). Celesto is using
+the slower sudo fallback; run `celesto setup` if sudo fallback is missing, or start the same Celesto command with
+sudo to get the Rust networking speedup.
+╭────────── VM Created ───────────╮
+│ Created VM 'proofops-recovery'. │
+╰─────────────────────────────────╯
+             VM Details
+┌─────────┬─────────────────────────┐
+│ Name    │ proofops-recovery       │
+│ Status  │ running                 │
+│ OS      │ alpine                  │
+│ Started │ 2026-10-21 19:11:36 UTC │
+└─────────┴─────────────────────────┘
+Next: celesto sandbox shell proofops-recovery
+SSH:  celesto sandbox ssh proofops-recovery
+Info: celesto sandbox info proofops-recovery
+(.venv) vikram@vikram:~/proofops$ celesto computer info proofops-recovery
+             VM Details
+┌──────────────┬────────────────────┐
+│ Name         │ proofops-recovery  │
+│ Status       │ running            │
+│ OS           │ Alpine Linux v3.19 │
+│ Backend      │ firecracker        │
+│ Network Mode │ nat                │
+│ IP Address   │ 172.16.0.3         │
+│ SSH Port     │ -                  │
+│ CPUs         │ 1                  │
+│ Memory       │ 19 / 512 MiB used  │
+│ Disk Size    │ 2048 MiB           │
+│ PID          │ 30726              │
+└──────────────┴────────────────────┘
+(.venv) vikram@vikram:~/proofops$ celesto computer exec proofops-recovery -- python3 -c 'print("Fresh sandbox recovery successful")'
+Fresh sandbox recovery successful
+(.venv) vikram@vikram:~/proofops$
+(.venv) vikram@vikram:~/proofops$ cat > fresh_sandbox_recovery.py <<'PY'
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from celesto import Computer
+
+REPORT_DIR = Path("reports")
+REPORT_DIR.mkdir(exist_ok=True)
+
+sandbox_name = "proofops-recovery"
+command = "python3 -c 'print(\"Fresh sandbox recovery successful\")'"
+
+computer = Computer.get(sandbox_name, local=True)
+
+try:
+    result = computer.run(command, timeout=30)
+finally:
+    computer.close()
+
+report = {
+    "evaluation": "fresh_sandbox_recovery",
+    "timestamp": datetime.now(timezone.utc).isoformat(),
+    "sandbox": sandbox_name,
+    "command": command,
+    "exit_code": result.exit_code,
+    "stdout": result.stdout,
+    "stderr": result.stderr,
+    "recovery_execution_passed": result.exit_code == 0,
+    "limitations": [
+        "The task is a smoke test, not a transferred production task.",
+        "Automatic failure-triggered sandbox creation is not yet implemented.",
+    ],
+}
+
+path = REPORT_DIR / "fresh_sandbox_recovery.json"
+path.write_text(json.dumps(report, indent=2) + "\n")
+
+print(json.dumps(report, indent=2))
+print(f"\nEvidence saved to: {path}")
+PY
+(.venv) vikram@vikram:~/proofops$ python fresh_sandbox_recovery.py
+{
+  "evaluation": "fresh_sandbox_recovery",
+  "timestamp": "2026-10-21T19:12:21.295890+00:00",
+  "sandbox": "proofops-recovery",
+  "command": "python3 -c 'print(\"Fresh sandbox recovery successful\")'",
+  "exit_code": 0,
+  "stdout": "Fresh sandbox recovery successful\n",
+  "stderr": "",
+  "recovery_execution_passed": true,
+  "limitations": [
+    "The task is a smoke test, not a transferred production task.",
+    "Automatic failure-triggered sandbox creation is not yet implemented."
+  ]
+}
+
+Evidence saved to: reports/fresh_sandbox_recovery.json
+(.venv) vikram@vikram:~/proofops$ cat reports/fresh_sandbox_recovery.json
+{
+  "evaluation": "fresh_sandbox_recovery",
+  "timestamp": "2026-10-21T19:12:21.295890+00:00",
+  "sandbox": "proofops-recovery",
+  "command": "python3 -c 'print(\"Fresh sandbox recovery successful\")'",
+  "exit_code": 0,
+  "stdout": "Fresh sandbox recovery successful\n",
+  "stderr": "",
+  "recovery_execution_passed": true,
+  "limitations": [
+    "The task is a smoke test, not a transferred production task.",
+    "Automatic failure-triggered sandbox creation is not yet implemented."
+  ]
+}
+(.venv) vikram@vikram:~/proofops$ cd ~/proofops
+
+docker compose version
+Docker Compose version v5.5.1
+(.venv) vikram@vikram:~/proofops$ python -c "import fastapi; print('FastAPI:', fastapi.__version__)"
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import fastapi; print('FastAPI:', fastapi.__version__)
+    ^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'fastapi'
+(.venv) vikram@vikram:~/proofops$ python -c "import psycopg; print('Psycopg: installed')"
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import psycopg; print('Psycopg: installed')
+    ^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'psycopg'
+(.venv) vikram@vikram:~/proofops$ cd ~/proofops
+
+python -m pip install "fastapi" "uvicorn[standard]" "psycopg[binary]" "pydantic-settings"
+Collecting fastapi
+  Downloading fastapi-0.158.1-py3-none-any.whl.metadata (26 kB)
+Collecting pydantic-settings
+  Downloading pydantic_settings-2.16.1-py3-none-any.whl.metadata (4.0 kB)
+Collecting uvicorn[standard]
+  Downloading uvicorn-0.54.0-py3-none-any.whl.metadata (6.6 kB)
+Collecting psycopg[binary]
+  Downloading psycopg-3.3.6-py3-none-any.whl.metadata (4.4 kB)
+Collecting starlette>=0.46.0 (from fastapi)
+  Downloading starlette-1.9.0-py3-none-any.whl.metadata (6.6 kB)
+Requirement already satisfied: pydantic>=2.9.0 in ./.venv/lib/python3.14/site-packages (from fastapi) (2.14.1)
+Requirement already satisfied: typing-extensions>=4.8.0 in ./.venv/lib/python3.14/site-packages (from fastapi) (4.16.0)
+Requirement already satisfied: typing-inspection>=0.4.2 in ./.venv/lib/python3.14/site-packages (from fastapi) (0.4.4)
+Collecting annotated-doc>=0.0.2 (from fastapi)
+  Downloading annotated_doc-0.0.5-py3-none-any.whl.metadata (6.5 kB)
+Collecting opentelemetry-api>=1.44.0 (from fastapi)
+  Downloading opentelemetry_api-1.45.1-py3-none-any.whl.metadata (1.4 kB)
+Requirement already satisfied: click>=7.0 in ./.venv/lib/python3.14/site-packages (from uvicorn[standard]) (8.5.0)
+Requirement already satisfied: h11>=0.8 in ./.venv/lib/python3.14/site-packages (from uvicorn[standard]) (0.16.0)
+Collecting httptools>=0.8.0 (from uvicorn[standard])
+  Downloading httptools-0.9.0-cp314-cp314-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (3.5 kB)
+Collecting python-dotenv>=0.13 (from uvicorn[standard])
+  Downloading python_dotenv-1.2.4-py3-none-any.whl.metadata (29 kB)
+Collecting pyyaml>=5.1 (from uvicorn[standard])
+  Using cached pyyaml-6.0.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+Collecting uvloop>=0.15.1 (from uvicorn[standard])
+  Downloading uvloop-0.23.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (5.1 kB)
+Collecting watchfiles>=0.20 (from uvicorn[standard])
+  Downloading watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+Requirement already satisfied: websockets>=13.0 in ./.venv/lib/python3.14/site-packages (from uvicorn[standard]) (17.3)
+Collecting psycopg-binary==3.3.6 (from psycopg[binary])
+  Downloading psycopg_binary-3.3.6-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.7 kB)
+Requirement already satisfied: annotated-types>=0.6.0 in ./.venv/lib/python3.14/site-packages (from pydantic>=2.9.0->fastapi) (0.8.0)
+Requirement already satisfied: pydantic-core==2.50.1 in ./.venv/lib/python3.14/site-packages (from pydantic>=2.9.0->fastapi) (2.50.1)
+Requirement already satisfied: anyio<5,>=4.0.0 in ./.venv/lib/python3.14/site-packages (from starlette>=0.46.0->fastapi) (4.15.1)
+Requirement already satisfied: idna>=2.8 in ./.venv/lib/python3.14/site-packages (from anyio<5,>=4.0.0->starlette>=0.46.0->fastapi) (3.20)
+Downloading fastapi-0.158.1-py3-none-any.whl (148 kB)
+Downloading uvicorn-0.54.0-py3-none-any.whl (87 kB)
+Downloading psycopg-3.3.6-py3-none-any.whl (215 kB)
+Downloading psycopg_binary-3.3.6-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (5.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.2/5.2 MB 2.5 MB/s  0:00:02
+Downloading pydantic_settings-2.16.1-py3-none-any.whl (80 kB)
+Downloading annotated_doc-0.0.5-py3-none-any.whl (5.3 kB)
+Downloading httptools-0.9.0-cp314-cp314-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (514 kB)
+Downloading opentelemetry_api-1.45.1-py3-none-any.whl (60 kB)
+Downloading python_dotenv-1.2.4-py3-none-any.whl (23 kB)
+Downloading pyyaml-6.0.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (794 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 794.2/794.2 kB 3.6 MB/s  0:00:00
+Downloading starlette-1.9.0-py3-none-any.whl (80 kB)
+Downloading uvloop-0.23.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.4/4.4 MB 4.2 MB/s  0:00:01
+Downloading watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (458 kB)
+Installing collected packages: uvloop, uvicorn, pyyaml, python-dotenv, psycopg-binary, psycopg, opentelemetry-api, httptools, annotated-doc, watchfiles, starlette, pydantic-settings, fastapi
+Successfully installed annotated-doc-0.0.5 fastapi-0.158.1 httptools-0.9.0 opentelemetry-api-1.45.1 psycopg-3.3.6 psycopg-binary-3.3.6 pydantic-settings-2.16.1 python-dotenv-1.2.4 pyyaml-6.0.3 starlette-1.9.0 uvicorn-0.54.0 uvloop-0.23.0 watchfiles-1.3.0
+(.venv) vikram@vikram:~/proofops$ python -c "import fastapi, uvicorn, psycopg, pydantic_settings; print('FastAPI:', fastapi.__version__); print('Uvicorn:', uvicorn.__version__); print('Psycopg:', psycopg.__version__); print('All backend dependencies installed successfully!')"
+bash: !': event not found
+(.venv) vikram@vikram:~/proofops$ ls -la
+total 48
+drwxr-xr-x  4 vikram vikram 4096 Oct 21 19:12 .
+drwxr-x--- 19 vikram vikram 4096 Oct 21 18:36 ..
+drwxr-xr-x  6 vikram vikram 4096 Oct 21 18:11 .venv
+-rw-r--r--  1 vikram kvm     870 Oct 21 19:00 eval_runner.py
+-rw-r--r--  1 vikram kvm    1261 Oct 21 19:08 failure_recovery.py
+-rw-r--r--  1 vikram kvm    1085 Oct 21 19:12 fresh_sandbox_recovery.py
+-rw-r--r--  1 vikram kvm    1755 Oct 21 19:07 record_containment.py
+-rw-r--r--  1 vikram kvm    1268 Oct 21 19:10 recovery_policy.py
+-rw-r--r--  1 vikram kvm    2208 Oct 21 19:03 repair_eval.py
+drwxr-xr-x  2 vikram kvm    4096 Oct 21 19:12 reports
+-rw-r--r--  1 vikram kvm     243 Oct 21 18:59 sdk_smoke_test.py
+-rw-r--r--  1 vikram kvm    1279 Oct 21 19:01 test_eval_runner.py
+(.venv) vikram@vikram:~/proofops$ python -c 'import fastapi, uvicorn, psycopg, pydantic_settings; print("FastAPI:", fastapi.__version__); print("Uvicorn:", uvicorn.__version__); print("Psycopg:", psycopg.__version__); print("All backend dependencies installed successfully.")'
+FastAPI: 0.158.1
+Uvicorn: 0.54.0
+Psycopg: 3.3.6
+All backend dependencies installed successfully.
+(.venv) vikram@vikram:~/proofops$ proofops/
+├── docker-compose.yml
+├── Dockerfile
+├── .env.example
+├── requirements.txt
+├── backend/
+│   ├── __init__.py
+│   └── main.py
+└── seeds/
+    └── 01_runs.sql
+bash: proofops/: No such file or directory
+├──: command not found
+├──: command not found
+├──: command not found
+├──: command not found
+├──: command not found
+│: command not found
+│: command not found
+└──: command not found
+└──: command not found
+(.venv) vikram@vikram:~/proofops$

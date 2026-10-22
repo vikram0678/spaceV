@@ -1,0 +1,30 @@
+# Git Ignore Rules for SpaceV
+
+# Environments & Virtual Envs
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Private Research & Cloned Tool Repositories (Internalized into SpaceV)
+opensourcetools/
+cua/
+
+# Secrets & Environment Configurations (Strict Hackathon Contract #2)
+.env
+.env.*
+!.env.example
+
+# Temporary Artifacts, OS and IDE files
+.DS_Store
+Thumbs.db
+*.sqlite3-journal
+*.db
+spacev_temporal_memory.db
+spacev_vector_memory.db
+spacev_task_ledger.db
+scratch/
+temp/

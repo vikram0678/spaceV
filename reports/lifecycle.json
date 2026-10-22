@@ -1,0 +1,27 @@
+{
+  "cleanup_on_success": true,
+  "cleanup_on_failure": true,
+  "cleanup_on_interrupt": true,
+  "sandbox_names": [
+    "sbx-spacevrun00001",
+    "sbx-spacevrun00002",
+    "sbx-spacevrun00003",
+    "sbx-spacevrun00004",
+    "sbx-spacevrun00005",
+    "sbx-spacevrun00006",
+    "sbx-spacevrun00007",
+    "sbx-spacevrun00008",
+    "sbx-spacevrun00009",
+    "sbx-spacevrun00010",
+    "sbx-spacevrun00011",
+    "sbx-spacevrun00012",
+    "sbx-spacevrun00013",
+    "sbx-spacevrun00014",
+    "sbx-spacevrun00015",
+    "sbx-spacevrun00016",
+    "sbx-spacevrun00017",
+    "sbx-spacevrun00018",
+    "sbx-spacevrun00019",
+    "sbx-spacevrun00020"
+  ]
+}

@@ -1,0 +1,155 @@
+"""
+Low-RAM Multi-LLM Dynamic Routing Engine for SpaceV.
+Automatically classifies user intent and routes tasks to the lightest,
+most capable specialized model available while enforcing RAM/VRAM auto-unloading.
+"""
+import re
+import requests
+from typing import List, Dict, Tuple, Optional
+from config import (
+    OLLAMA_BASE_URL, FAST_CHAT_MODEL, PRIMARY_MODEL,
+    CODER_MODEL, VISION_MODEL, FALLBACK_MODEL,
+    UI_TARS_MODEL, UI_TARS_MODEL_2B,
+    OLLAMA_KEEP_ALIVE, LOW_RAM_MODE
+)
+
+# Role Constants
+ROLE_FAST_CHAT = "chat"          # Lightweight fast conversational brain (3B)
+ROLE_CODER_TOOLS = "coder_tools" # Deep reasoning, tool calling, code generation (7B)
+ROLE_VISION = "vision"           # Screen perception & visual OCR
+ROLE_GUI_NAVIGATOR = "gui_navigation" # UI-TARS OSWorld SOTA computer control & mouse navigation (2B/7B)
+ROLE_PRIMARY = "primary"         # Generalist orchestrator
+
+
+class MultiModelRouter:
+    """
+    Intelligent Multi-LLM Router that selects optimal models per query
+    to maximize reasoning capability while preserving workstation RAM.
+    """
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(MultiModelRouter, cls).__new__(cls)
+            cls._instance.installed_models: List[str] = []
+            cls._instance.refresh_installed_models()
+        return cls._instance
+
+    def refresh_installed_models(self) -> List[str]:
+        """Probes the local Ollama API to detect which models are installed."""
+        try:
+            res = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2)
+            if res.status_code == 200:
+                self.installed_models = [m.get("name", "") for m in res.json().get("models", [])]
+        except Exception:
+            self.installed_models = []
+        return self.installed_models
+
+    def is_model_installed(self, model_tag: str) -> Optional[str]:
+        """Checks if a model tag or prefix exists in local Ollama installation."""
+        if not self.installed_models:
+            return None
+        # Exact match
+        if model_tag in self.installed_models:
+            return model_tag
+        # Prefix match (e.g. 'qwen2.5:7b' matches 'qwen2.5:7b-instruct-q5_0')
+        prefix = model_tag.split(":")[0]
+        for m in self.installed_models:
+            if prefix in m:
+                return m
+        return None
+
+    def needs_tools(self, prompt: str) -> bool:
+        """
+        Determines if the query actually requires tool calling schemas attached.
+        Keeps conversational queries fast and lightweight without 2000-token tool schema overhead.
+        """
+        text = prompt.lower().strip()
+        tool_keywords = [
+            "python", "script", "code", "debug", "function", "class",
+            "regex", "sql", "html", "javascript", "scrape", "csv",
+            "terminal", "powershell", "execute", "create file", "write code",
+            "search web", "search google", "search the web", "search for", "look up",
+            "browse", "weather in", "forecast", "headlines", "news about",
+            "read file", "delete file", "save to desktop", "open file",
+            "draw in paint", "mspaint", "draw a", "draw me", "play youtube",
+            "open app", "kill process", "youtube", "take screenshot", "active window",
+            "running", "what is running", "running on my desktop", "running on the desktop", "running apps",
+            "what is open", "open windows", "processes", "going in the desktop",
+            "on the desktop", "in the desktop", "the desktop", "desktop", "screen",
+            "what is on", "what's on", "open apps", "active apps", "application",
+            "applications", "laptop", "opened", "task manager", "activity monitor",
+            "open window", "open windows", "window open", "windows open"
+        ]
+        return any(k in text for k in tool_keywords)
+
+    def classify_intent(self, prompt: str, has_tools: bool = False, has_images: bool = False) -> str:
+        """
+        Classifies user prompt into the most cost-effective specialized role.
+        """
+        if has_images:
+            return ROLE_VISION
+
+        text = prompt.lower().strip()
+
+        # 1. Vision & Screen reading intents
+        if any(k in text for k in ["look at my screen", "read my screen", "what is on screen", "ocr", "read image", "see what is going in the desktop", "see what is on the desktop"]):
+            return ROLE_VISION
+
+        # 1.5 UI-TARS Autonomous Computer Control & Mouse Navigation
+        if any(k in text for k in ["navigate and click", "click on the icon", "ui-tars", "mouse navigation", "computer control", "gui action", "click button at"]):
+            return ROLE_GUI_NAVIGATOR
+
+        # 2. Coding, Scripting & Complex Tool Execution
+        if has_tools or self.needs_tools(prompt):
+            return ROLE_CODER_TOOLS
+
+        # 3. Fast Conversational, Summarization, Greetings, Q&A
+        return ROLE_FAST_CHAT
+
+    def select_model(self, prompt: str, requires_tools: bool = False, requires_vision: bool = False) -> Tuple[str, str]:
+        """
+        Resolves the optimal local model and role tag for the request.
+        Returns: (model_name, role_name)
+        """
+        role = self.classify_intent(prompt, has_tools=requires_tools, has_images=requires_vision)
+
+        # 1. Try resolving preferred role model
+        target_candidate = None
+        if role == ROLE_GUI_NAVIGATOR:
+            target_candidate = self.is_model_installed(UI_TARS_MODEL) or self.is_model_installed(UI_TARS_MODEL_2B) or self.is_model_installed(VISION_MODEL)
+        elif role == ROLE_VISION:
+            target_candidate = self.is_model_installed(VISION_MODEL)
+        elif role == ROLE_CODER_TOOLS:
+            target_candidate = self.is_model_installed(CODER_MODEL) or self.is_model_installed(PRIMARY_MODEL)
+        elif role == ROLE_FAST_CHAT and LOW_RAM_MODE:
+            target_candidate = self.is_model_installed(FAST_CHAT_MODEL)
+
+        if target_candidate:
+            return target_candidate, role
+
+
+        # 2. Fallback to Primary Model
+        primary_match = self.is_model_installed(PRIMARY_MODEL)
+        if primary_match:
+            return primary_match, ROLE_PRIMARY
+
+        # 3. Fallback to Fallback Model
+        fallback_match = self.is_model_installed(FALLBACK_MODEL)
+        if fallback_match:
+            return fallback_match, "fallback"
+
+        # 4. Fallback to any installed model
+        if self.installed_models:
+            return self.installed_models[0], "installed_default"
+
+        # 5. Default string if Ollama is not yet started
+        return PRIMARY_MODEL, "default"
+
+    @staticmethod
+    def get_keep_alive() -> str:
+        """Returns the configured Ollama keep_alive parameter to release memory."""
+        return OLLAMA_KEEP_ALIVE
+
+# Global singleton router
+model_router = MultiModelRouter()

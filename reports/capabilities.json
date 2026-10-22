@@ -1,0 +1,19 @@
+{
+  "capabilities": [
+    {
+      "id": "snapshots",
+      "why": "Enables SpaceV to checkpoint full hardware state in sub-200ms before detonating untrusted code and roll back cleanly if Step 7 encounters malicious exfiltration or runtime corruption.",
+      "evidence_path": "spacev/fleet/orchestrator.py"
+    },
+    {
+      "id": "safety_hooks",
+      "why": "Enforces pre-execution command introspection to detect and block reverse shells, canary token exfiltration, and destructive filesystem mutations before they reach the guest kernel.",
+      "evidence_path": "spacev/safety/hooks.py"
+    },
+    {
+      "id": "network_policy",
+      "why": "Enforces hardware-level air-gapping by disabling outbound network access, ensuring zero outbound leakage of canary credentials even under active prompt injection.",
+      "evidence_path": "reports/containment.json"
+    }
+  ]
+}
