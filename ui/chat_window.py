@@ -2,9 +2,20 @@
 Modern Glassmorphic Chat Popup Window with Word Streaming, Voice Support,
 and Proactive Companion Engine with Dynamic Follow-up Action Chips.
 """
-from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont, QKeyEvent, QTextDocument, QWheelEvent
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget
+
+from PyQt6.QtCore import QPoint, QRectF, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QFont, QKeyEvent, QKeySequence, QShortcut, QTextDocument, QWheelEvent
+from PyQt6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QPushButton,
+    QScrollArea,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from config import (
     APP_NAME,
@@ -30,15 +41,13 @@ from voice.wake_word import WakeWordDetector
 
 class HorizontalWheelScrollArea(QScrollArea):
     """Translates vertical mouse wheel rotation into smooth horizontal scrolling for chips."""
+
     def wheelEvent(self, event: QWheelEvent):
         if event.angleDelta().y() != 0:
-            self.horizontalScrollBar().setValue(
-                self.horizontalScrollBar().value() - event.angleDelta().y()
-            )
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - event.angleDelta().y())
             event.accept()
         else:
             super().wheelEvent(event)
-
 
 
 class ChatBubble(QLabel):
@@ -47,6 +56,7 @@ class ChatBubble(QLabel):
     Guarantees crisp typography, zero markdown text clipping,
     and adaptive wrapping for both agent and user messages.
     """
+
     def __init__(self, text: str, is_user: bool = False, max_width: int = 400, parent=None):
         super().__init__(parent)
         self.is_user = is_user
@@ -106,8 +116,9 @@ class ChatInput(QTextEdit):
         else:
             super().keyPressEvent(event)
 
+
 class ChatWindow(QWidget):
-    state_changed = pyqtSignal(str) # "IDLE", "THINKING", "LISTENING", "SPEAKING"
+    state_changed = pyqtSignal(str)  # "IDLE", "THINKING", "LISTENING", "SPEAKING"
 
     def __init__(self, agent: OllamaAgent):
         super().__init__()
@@ -132,11 +143,8 @@ class ChatWindow(QWidget):
         self.companion.check_in_triggered.connect(self.on_companion_check_in)
         self.companion.start()
 
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.Tool
-        )
+        self.setWindowTitle(f"⚡ {APP_NAME} AI Assistant")
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedSize(CHAT_WIDTH, CHAT_HEIGHT)
         self.setStyleSheet(MAIN_WINDOW_STYLE)
@@ -158,6 +166,8 @@ class ChatWindow(QWidget):
         header = QWidget()
         header.setObjectName("HeaderBar")
         header.setFixedHeight(44)
+        header.mousePressEvent = self.header_mouse_press
+        header.mouseMoveEvent = self.header_mouse_move
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(14, 0, 10, 0)
 
@@ -208,7 +218,7 @@ class ChatWindow(QWidget):
         cursor_layout.setContentsMargins(0, 0, 0, 0)
         cursor_layout.setSpacing(0)
 
-        self.btn_cursor_toggle = QPushButton("🤖 Cursor")
+        self.btn_cursor_toggle = QPushButton("🤖 Cursor: ON" if safety.autonomous_mode_enabled else "🤖 Cursor: OFF")
         self.btn_cursor_toggle.setObjectName("CursorToggleBtn")
         self.btn_cursor_toggle.setProperty("active", "false")
         self.btn_cursor_toggle.setToolTip("Toggle autonomous mouse & keyboard control")
@@ -223,19 +233,21 @@ class ChatWindow(QWidget):
         cursor_layout.addWidget(self.btn_cursor_toggle)
         cursor_layout.addWidget(self.btn_cursor_speed)
 
-        self.btn_voice_toggle = QPushButton("🔊 Voice")
+        self.btn_voice_toggle = QPushButton("🔊 Voice: ON" if tts.is_enabled else "🔇 Voice: OFF")
         self.btn_voice_toggle.setObjectName("VoiceToggleBtn")
         self.btn_voice_toggle.setProperty("active", "true")
         self.btn_voice_toggle.setToolTip("Toggle spoken voice responses (TTS)")
         self.btn_voice_toggle.clicked.connect(self.toggle_voice)
 
-        self.btn_wake_toggle = QPushButton("🎙️ Wake")
+        self.btn_wake_toggle = QPushButton("🎙️ Wake: ON" if WAKE_WORD_ENABLED_BY_DEFAULT else "🎙️ Wake: OFF")
         self.btn_wake_toggle.setObjectName("WakeToggleBtn")
         self.btn_wake_toggle.setProperty("active", "true" if WAKE_WORD_ENABLED_BY_DEFAULT else "false")
         self.btn_wake_toggle.setToolTip("Toggle continuous hands-free 'Hey SpaceV' wake-word detection")
         self.btn_wake_toggle.clicked.connect(self.toggle_wake_word)
 
-        self.btn_companion_toggle = QPushButton("💬 Companion")
+        self.btn_companion_toggle = QPushButton(
+            "💬 Companion: ON" if self.companion.is_enabled else "💬 Companion: OFF"
+        )
         self.btn_companion_toggle.setObjectName("CompanionToggleBtn")
         self.btn_companion_toggle.setProperty("active", "true")
         self.btn_companion_toggle.setToolTip("Toggle proactive companion check-ins & conversational follow-ups")
@@ -246,7 +258,7 @@ class ChatWindow(QWidget):
         self.btn_emergency_stop.setToolTip("Immediately stop autonomous action (or press ESC)")
         self.btn_emergency_stop.clicked.connect(self.emergency_stop)
 
-        toolbar_layout.addWidget(cursor_container)
+        # toolbar_layout.addWidget(cursor_container)
         toolbar_layout.addWidget(self.btn_voice_toggle)
         toolbar_layout.addWidget(self.btn_wake_toggle)
         toolbar_layout.addWidget(self.btn_companion_toggle)
@@ -348,10 +360,15 @@ class ChatWindow(QWidget):
 
         main_layout.addWidget(self.central_widget)
 
-        # Hands-free wake-word detector is OFF by default; starts only if explicitly enabled
+        # Hands-free wake-word detector
         self.wake_detector = None
         if WAKE_WORD_ENABLED_BY_DEFAULT:
             self.init_wake_detector()
+
+        # Dual-Scope In-Window Hotkey (OpenWhispr / Google Assistant Pattern)
+        # Allows pressing Ctrl+Space while chat window is active to toggle push-to-talk listening
+        self.mic_shortcut = QShortcut(QKeySequence("Ctrl+Space"), self)
+        self.mic_shortcut.activated.connect(self.toggle_mic_listening)
 
     def play_initial_greeting(self):
         """Proactively speaks and displays a warm companion greeting upon startup."""
@@ -365,10 +382,24 @@ class ChatWindow(QWidget):
             f"⚡ **SpaceV Online**:\n\n{greeting}\n\n"
             "* Press `Ctrl + Space` or click `🎤` to speak\n"
             "* Say **'Hey SpaceV'** anytime for hands-free mode",
-            custom_chips=chips
+            custom_chips=chips,
         )
         self._pending_auto_listen = True
         tts.speak(greeting)
+
+    def header_mouse_press(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def header_mouse_move(self, event):
+        if event.buttons() == Qt.MouseButton.LeftButton:
+            handle = self.windowHandle()
+            if handle and hasattr(handle, "startSystemMove") and handle.startSystemMove():
+                pass
+            else:
+                self.move(event.globalPosition().toPoint() - self.drag_position)
+            event.accept()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -377,20 +408,32 @@ class ChatWindow(QWidget):
 
     def mouseMoveEvent(self, event):
         if event.buttons() == Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self.drag_position)
+            handle = self.windowHandle()
+            if handle and hasattr(handle, "startSystemMove") and handle.startSystemMove():
+                pass
+            else:
+                self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
 
     def dock_near(self, point: QPoint):
-        """Positions chat window nicely relative to the floating icon."""
-        screen = self.screen().geometry()
-        x = point.x() - self.width() + 40
-        y = point.y() - self.height() - 10
+        """Positions chat window nicely directly above the floating icon, clamped to screen bounds."""
+        screen_obj = self.screen() or (QApplication.primaryScreen() if QApplication.instance() else None)
+        if screen_obj:
+            screen = screen_obj.availableGeometry()
+        else:
+            screen = QRectF(0, 0, 1920, 1080).toRect()
 
-        if x < 20:
-            x = point.x() + 80
-        if y < 20:
-            y = 20
-        self.move(x, y)
+        # Align chat window horizontally with the right side of the floating icon (approx 90px wide)
+        icon_right = point.x() + 90
+        x = icon_right - self.width()
+
+        # Place directly above the floating icon with a 12px gap
+        y = point.y() - self.height() - 12
+
+        # Safety clamps to ensure it's always fully visible within the active screen
+        x = max(screen.x() + 20, min(x, screen.x() + screen.width() - self.width() - 20))
+        y = max(screen.y() + 20, min(y, screen.y() + screen.height() - self.height() - 20))
+        self.move(int(x), int(y))
 
     def send_message(self):
         text = self.input_edit.toPlainText().strip()
@@ -402,6 +445,14 @@ class ChatWindow(QWidget):
         self.companion.record_activity()
         self.last_tool_executed = ""
         self._pending_auto_listen = False
+
+        # Track exit command to prevent trailing conversational auto-listen
+        clean = text.strip().lower()
+        EXIT_WORDS = ["thank you", "thanks", "that's all", "bye", "goodbye", "exit", "quit", "halt", "stop"]
+        if any(clean == ew or clean.startswith(ew + " ") or ew in clean for ew in EXIT_WORDS):
+            self._last_turn_was_exit = True
+        else:
+            self._last_turn_was_exit = False
 
         self.input_edit.clear()
         self.add_user_message(text)
@@ -489,8 +540,16 @@ class ChatWindow(QWidget):
     def on_speech_finished(self):
         self.state_changed.emit("IDLE")
         # Continuous Conversational Loop (Google Assistant / Siri Style)
-        if AUTO_LISTEN_FOLLOWUP and self.wake_detector and self.wake_detector.isRunning():
-            QTimer.singleShot(250, lambda: self.wake_detector.start_conversational_turn(timeout_sec=7.5))
+        # Suppress loop if muted, if paused, or if the user ended the conversation ('bye', 'thank you', etc.)
+        if (
+            AUTO_LISTEN_FOLLOWUP
+            and tts.is_enabled
+            and not getattr(self, "_last_turn_was_exit", False)
+            and self.wake_detector
+            and self.wake_detector.isRunning()
+            and not getattr(self.wake_detector, "_paused", False)
+        ):
+            QTimer.singleShot(350, lambda: self.wake_detector.start_conversational_turn(timeout_sec=7.5))
         elif self._pending_auto_listen and self.companion.is_enabled:
             self._pending_auto_listen = False
             QTimer.singleShot(400, self.toggle_mic_listening)
@@ -515,7 +574,7 @@ class ChatWindow(QWidget):
         self.messages_layout.addWidget(self._wrap_layout(msg_wrapper))
         self.scroll_to_bottom()
 
-    def add_agent_message(self, text: str, tool_name: str = "", custom_chips: list = None):
+    def add_agent_message(self, text: str, tool_name: str = "", custom_chips: list | None = None):
         msg_wrapper = QHBoxLayout()
         msg_wrapper.setContentsMargins(0, 0, 0, 0)
 
@@ -528,8 +587,12 @@ class ChatWindow(QWidget):
 
         # Add dynamic interactive follow-up chips below message
         is_custom = custom_chips is not None
-        chips = custom_chips if is_custom else ProactiveCompanion.get_follow_up_chips(tool_name=tool_name, reply_text=text)
-        is_clarification = is_custom or any(k in text.lower() for k in ["who's using chrome", "which profile", "select a profile", "clarification"])
+        chips = (
+            custom_chips if is_custom else ProactiveCompanion.get_follow_up_chips(tool_name=tool_name, reply_text=text)
+        )
+        is_clarification = is_custom or any(
+            k in text.lower() for k in ["who's using chrome", "which profile", "select a profile", "clarification"]
+        )
         self._render_follow_up_chips(chips, is_explicit=is_clarification)
 
         self.scroll_to_bottom()
@@ -579,12 +642,14 @@ class ChatWindow(QWidget):
     def toggle_cursor_mode(self):
         safety.autonomous_mode_enabled = not safety.autonomous_mode_enabled
         if safety.autonomous_mode_enabled:
-            self.btn_cursor_toggle.setText("🤖 Cursor")
+            self.btn_cursor_toggle.setText("🤖 Cursor: ON")
             self.btn_cursor_toggle.setProperty("active", "true")
             self.btn_cursor_speed.setProperty("active", "true")
-            self.add_agent_message("🤖 **Autonomous Cursor Mode Enabled**!\nSpaceV will move the cursor and type like a human for UI commands.\n\n🛡️ **Emergency Stop**: Press `ESC` or shove cursor to top-left corner anytime to halt!")
+            self.add_agent_message(
+                "🤖 **Autonomous Cursor Mode Enabled**!\nSpaceV will move the cursor and type like a human for UI commands.\n\n🛡️ **Emergency Stop**: Press `ESC` or shove cursor to top-left corner anytime to halt!"
+            )
         else:
-            self.btn_cursor_toggle.setText("🤖 Cursor")
+            self.btn_cursor_toggle.setText("🤖 Cursor: ON")
             self.btn_cursor_toggle.setProperty("active", "false")
             self.btn_cursor_speed.setProperty("active", "false")
             self.add_agent_message("🤖 Autonomous Cursor Mode Disabled. Reverted to standard background automation.")
@@ -619,15 +684,31 @@ class ChatWindow(QWidget):
     def toggle_voice(self):
         tts.is_enabled = not tts.is_enabled
         if tts.is_enabled:
-            self.btn_voice_toggle.setText("🔊 Voice")
+            self.btn_voice_toggle.setText("🔊 Voice: ON")
             self.btn_voice_toggle.setProperty("active", "true")
+            # Unmute: resume background mic listening or initialize if None
+            if self.wake_detector is None and WAKE_WORD_ENABLED_BY_DEFAULT:
+                self.init_wake_detector()
+            elif self.wake_detector and hasattr(self.wake_detector, "resume"):
+                self.wake_detector.resume()
             tts.speak("Voice enabled. I am listening and ready to assist you.")
-            self.add_agent_message("🔊 **Voice Mode Activated**! SpaceV will now speak responses aloud.")
+            self.add_agent_message(
+                "🔊 **Voice & Microphone Active**! SpaceV will speak responses and listen for commands."
+            )
         else:
-            self.btn_voice_toggle.setText("🔇 Voice")
+            self.btn_voice_toggle.setText("🔇 Voice: OFF")
             self.btn_voice_toggle.setProperty("active", "false")
             tts.stop()
-            self.add_agent_message("🔇 **Voice Mode Muted**.")
+            # MUTE: Stop background mic listening completely
+            if self.wake_detector and hasattr(self.wake_detector, "pause"):
+                self.wake_detector.pause()
+            # If manual voice_listener is active, stop it
+            listener = getattr(self, "voice_listener", None)
+            if listener is not None and listener.isRunning():
+                listener.stop()
+            self.add_agent_message(
+                "🔇 **Voice & Microphone Muted**! Speech output and microphone listening are paused."
+            )
 
         self.btn_voice_toggle.style().unpolish(self.btn_voice_toggle)
         self.btn_voice_toggle.style().polish(self.btn_voice_toggle)
@@ -635,11 +716,13 @@ class ChatWindow(QWidget):
     def toggle_companion_mode(self):
         self.companion.set_enabled(not self.companion.is_enabled)
         if self.companion.is_enabled:
-            self.btn_companion_toggle.setText("💬 Companion")
+            self.btn_companion_toggle.setText("💬 Companion: ON")
             self.btn_companion_toggle.setProperty("active", "true")
-            self.add_agent_message("💬 **Proactive Companion Mode Activated**! SpaceV will actively suggest next steps, provide interactive action chips, and check in during your work.")
+            self.add_agent_message(
+                "💬 **Proactive Companion Mode Activated**! SpaceV will actively suggest next steps, provide interactive action chips, and check in during your work."
+            )
         else:
-            self.btn_companion_toggle.setText("💬 Companion")
+            self.btn_companion_toggle.setText("💬 Companion: OFF")
             self.btn_companion_toggle.setProperty("active", "false")
             self.add_agent_message("💬 **Companion Mode Muted** (Standard on-demand response mode).")
 
@@ -663,7 +746,9 @@ class ChatWindow(QWidget):
         self.status_label.setText("🚨 EMERGENCY STOP TRIGGERED!")
         self.status_label.show()
         self.send_button.setEnabled(True)
-        self.add_agent_message("🚨 **EMERGENCY STOP TRIGGERED**\nAll autonomous cursor and keyboard actions have been halted immediately.")
+        self.add_agent_message(
+            "🚨 **EMERGENCY STOP TRIGGERED**\nAll autonomous cursor and keyboard actions have been halted immediately."
+        )
 
     def clear_conversation(self):
         while self.messages_layout.count() > 1:
@@ -676,12 +761,20 @@ class ChatWindow(QWidget):
     def toggle_mic_listening(self):
         # 1. Stop active audio via Pipecat Interruption Protocol
         frame_pipeline.interrupt(reason="mic_activated")
+        tts.stop()
         self.companion.record_activity()
 
-        # If conversational wake engine is running, start conversational turn directly
-        if self.wake_detector and self.wake_detector.isRunning():
-            self.wake_detector.start_conversational_turn(timeout_sec=8.5)
-            return
+        # If conversational wake engine is running and active:
+        if self.wake_detector and self.wake_detector.isRunning() and not getattr(self.wake_detector, "_paused", False):
+            if getattr(self.wake_detector, "is_conversational_mode", False):
+                # Clicking mic while listening halts the turn
+                self.wake_detector.end_conversational_turn()
+                self.on_conversational_state_changed("STANDBY")
+                return
+            else:
+                self.wake_detector.start_conversational_turn(timeout_sec=8.5)
+                self.on_conversational_state_changed("LISTENING")
+                return
 
         listener = getattr(self, "voice_listener", None)
         if listener is not None and listener.isRunning():
@@ -733,8 +826,8 @@ class ChatWindow(QWidget):
             self.status_label.setText("⚡ Dictated text injected!")
             QTimer.singleShot(2500, self.status_label.hide)
             self.add_agent_message(
-                f"🎙️ **Transcribed & Injected**:\n\n> \"{text}\"\n\n*Pasted directly into your focused application.*",
-                tool_name="dictation_mode"
+                f'🎙️ **Transcribed & Injected**:\n\n> "{text}"\n\n*Pasted directly into your focused application.*',
+                tool_name="dictation_mode",
             )
 
         def _on_error(err: str):
@@ -827,12 +920,12 @@ class ChatWindow(QWidget):
         if self.wake_detector and self.wake_detector.isRunning():
             self.wake_detector.stop()
             self.wake_detector = None
-            self.btn_wake_toggle.setText("🎙️ Wake")
+            self.btn_wake_toggle.setText("🎙️ Wake: OFF")
             self.btn_wake_toggle.setProperty("active", "false")
             self.add_agent_message("🎙️ **Hands-Free Wake-Word Disabled**.")
         else:
             self.init_wake_detector()
-            self.btn_wake_toggle.setText("🎙️ Wake")
+            self.btn_wake_toggle.setText("🎙️ Wake: ON")
             self.btn_wake_toggle.setProperty("active", "true")
             self.add_agent_message("🎙️ **Hands-Free Wake-Word Enabled**! Say **'Hey SpaceV'** anytime to speak.")
 
@@ -851,8 +944,15 @@ class ChatWindow(QWidget):
         self.activateWindow()
 
         clean = cmd.strip().lower()
+        EXIT_WORDS = ["thank you", "thanks", "that's all", "bye", "goodbye", "exit", "quit", "halt", "stop"]
+        if any(clean == ew or clean.startswith(ew + " ") or ew in clean for ew in EXIT_WORDS):
+            self._last_turn_was_exit = True
+        else:
+            self._last_turn_was_exit = False
+
         if clean in ["stop", "cancel", "shut up", "be quiet", "pause", "never mind", "halt"]:
             from voice.frame_pipeline import frame_pipeline
+
             frame_pipeline.interrupt(reason="user_stop_command")
             worker = getattr(self, "current_worker", None)
             if worker and worker.isRunning():
@@ -867,6 +967,7 @@ class ChatWindow(QWidget):
         # Immediate Conversational Barge-In: if SpaceV is speaking or thinking, abort previous turn
         if tts.is_speaking or (getattr(self, "current_worker", None) and self.current_worker.isRunning()):
             from voice.frame_pipeline import frame_pipeline
+
             frame_pipeline.interrupt(reason="conversational_barge_in")
             worker = getattr(self, "current_worker", None)
             if worker and worker.isRunning():
@@ -882,7 +983,7 @@ class ChatWindow(QWidget):
             self.add_user_message("activate dictation mode")
             self.add_agent_message(
                 "🎙️ **Desktop Dictation Activated**. Speak clearly—your words will be typed directly into your focused application.",
-                tool_name="dictation_mode"
+                tool_name="dictation_mode",
             )
             self.start_desktop_dictation()
             return
@@ -891,20 +992,22 @@ class ChatWindow(QWidget):
 
     def on_scheduler_timer_expired(self, label: str, duration: float):
         play_action_sound()
-        alert_text = f"⏰ **COUNTDOWN TIMER EXPIRED**\n\nYour timer for **'{label}'** ({int(duration)}s) has finished, Sir!"
+        alert_text = (
+            f"⏰ **COUNTDOWN TIMER EXPIRED**\n\nYour timer for **'{label}'** ({int(duration)}s) has finished, Sir!"
+        )
         self.add_agent_message(alert_text, tool_name="set_timer")
         tts.speak(f"Sir, your timer for {label} has finished.")
 
     def on_model_switched(self, model_name: str, role: str):
         """Dynamically updates the active model badge in the window header."""
         display_name = model_name.split(":")[0].upper()
-        if hasattr(self, 'badge'):
+        if hasattr(self, "badge"):
             self.badge.setText(display_name)
 
     def scroll_to_bottom(self):
-        QTimer.singleShot(50, lambda: self.scroll_area.verticalScrollBar().setValue(
-            self.scroll_area.verticalScrollBar().maximum()
-        ))
+        QTimer.singleShot(
+            50, lambda: self.scroll_area.verticalScrollBar().setValue(self.scroll_area.verticalScrollBar().maximum())
+        )
 
     def cleanup(self):
         """Stops background threads and releases audio hardware before exit."""
@@ -918,5 +1021,3 @@ class ChatWindow(QWidget):
             tts.shutdown()
         except Exception:
             pass
-
-

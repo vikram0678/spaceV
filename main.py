@@ -1,8 +1,7 @@
-"""
-Main Entry Point for SpaceV Cybernetic Desktop AI Agent.
-"""
 import os
 import sys
+
+
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
@@ -58,6 +57,7 @@ def main():
     OfflineWhisperSingleton.warm_up_in_background()
 
     def toggle_chat():
+        """Toggles chat window visibility on Arc Reactor click."""
         from voice.frame_pipeline import frame_pipeline
         from voice.tts_engine import tts
         if tts.is_speaking:
@@ -69,6 +69,28 @@ def main():
             chat_window.show()
             chat_window.raise_()
             chat_window.activateWindow()
+
+    def handle_voice_hotkey():
+        """
+        Global Push-to-Talk / Hotkey Summoning (Google Assistant / OpenWhispr Pattern).
+        Pressing Ctrl + Space:
+        1. Ensures the chat window is summoned and active.
+        2. Immediately triggers active microphone listening so the user can speak without extra clicks.
+        """
+        from voice.frame_pipeline import frame_pipeline
+        from voice.tts_engine import tts
+        if tts.is_speaking:
+            frame_pipeline.interrupt(reason="hotkey_barge_in")
+            tts.stop()
+
+        if not chat_window.isVisible():
+            chat_window.dock_near(floating_icon.pos())
+            chat_window.show()
+            chat_window.raise_()
+            chat_window.activateWindow()
+
+        # Trigger speech recognition immediately
+        chat_window.toggle_mic_listening()
 
     _is_exiting = False
 
@@ -101,9 +123,9 @@ def main():
     floating_icon.clear_chat_requested.connect(chat_window.clear_conversation)
     floating_icon.exit_requested.connect(clean_exit)
 
-    # Global Hotkey (Ctrl + Space)
+    # Global Hotkey (Ctrl + Space -> Summon & Listen)
     hotkey_listener = GlobalHotkeyListener()
-    hotkey_listener.toggle_requested.connect(toggle_chat)
+    hotkey_listener.toggle_requested.connect(handle_voice_hotkey)
 
     # Play futuristic startup chime
     play_startup_sound()
@@ -127,8 +149,13 @@ def main():
     tray_icon.activated.connect(lambda reason: toggle_chat() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
     tray_icon.show()
 
-    # Show floating icon initially
+    # Show floating icon and chat window immediately
     floating_icon.show()
+    floating_icon.init_position()
+    chat_window.dock_near(floating_icon.pos())
+    chat_window.show()
+    chat_window.raise_()
+    chat_window.activateWindow()
 
     # Proactive Vocal Startup Greeting ("Hello Sir, this is SpaceV...")
     def _proactive_startup():

@@ -2,11 +2,12 @@
 Cybernetic Animated Arc Reactor Floating Desktop Widget.
 Features live rotating energy rings, breathing core pulse, and state animations.
 """
+
 import math
 
 from PyQt6.QtCore import QPoint, QRectF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QPainter, QPen, QRadialGradient
-from PyQt6.QtWidgets import QMenu, QWidget
+from PyQt6.QtWidgets import QApplication, QMenu, QWidget
 
 from config import BUBBLE_SIZE, THEME
 
@@ -22,16 +23,12 @@ class FloatingIcon(QWidget):
         self.is_dragging = False
         self.drag_start_pos = QPoint()
 
-        self.state = "IDLE" # IDLE, REFLEX, REASONING, THINKING, LISTENING, SPEAKING, ALERT
+        self.state = "IDLE"  # IDLE, REFLEX, REASONING, THINKING, LISTENING, SPEAKING, ALERT
         self.angle = 0.0
         self.pulse = 0.0
 
         # Frameless, transparent, stays always on top
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.Tool
-        )
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedSize(BUBBLE_SIZE + 20, BUBBLE_SIZE + 20)
 
@@ -62,13 +59,21 @@ class FloatingIcon(QWidget):
         except KeyboardInterrupt:
             self.anim_timer.stop()
             import os
+
             os._exit(0)
 
     def init_position(self):
-        screen = self.screen().availableGeometry()
+        screen_obj = self.screen() or (QApplication.primaryScreen() if QApplication.instance() else None)
+        if screen_obj:
+            screen = screen_obj.availableGeometry()
+        else:
+            screen = QRectF(0, 0, 1920, 1080).toRect()
+        # Default to bottom-right corner, 30px from right edge, 75px from bottom edge (resting comfortably above Windows taskbar)
         x = screen.x() + screen.width() - self.width() - 30
-        y = screen.y() + screen.height() - self.height() - 30
-        self.move(x, y)
+        y = screen.y() + screen.height() - self.height() - 75
+        x = max(screen.x() + 20, min(x, screen.x() + screen.width() - self.width() - 20))
+        y = max(screen.y() + 20, min(y, screen.y() + screen.height() - self.height() - 20))
+        self.move(int(x), int(y))
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -168,10 +173,15 @@ class FloatingIcon(QWidget):
 
     def mouseMoveEvent(self, event):
         if event.buttons() == Qt.MouseButton.LeftButton:
+            drag_threshold = QApplication.startDragDistance() if QApplication.instance() else 10
             distance = (event.globalPosition().toPoint() - self.drag_start_pos).manhattanLength()
-            if distance > 4:
+            if distance > max(8, drag_threshold):
                 self.is_dragging = True
-                self.move(event.globalPosition().toPoint() - self.drag_position)
+                handle = self.windowHandle()
+                if handle and hasattr(handle, "startSystemMove") and handle.startSystemMove():
+                    pass
+                else:
+                    self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
 
     def mouseReleaseEvent(self, event):
@@ -185,9 +195,9 @@ class FloatingIcon(QWidget):
         menu = QMenu(self)
         menu.setStyleSheet(f"""
             QMenu {{
-                background-color: {THEME['bg_card']};
-                color: {THEME['text_primary']};
-                border: 1px solid {THEME['border_color']};
+                background-color: {THEME["bg_card"]};
+                color: {THEME["text_primary"]};
+                border: 1px solid {THEME["border_color"]};
                 border-radius: 8px;
                 padding: 4px;
             }}
