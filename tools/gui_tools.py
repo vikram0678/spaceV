@@ -15,6 +15,20 @@ except Exception:
     class MockPyAutoGUI:
         FAILSAFE = True
         PAUSE = 0.04
+        class FailSafeException(Exception):
+            pass
+        class ImageNotFoundException(Exception):
+            pass
+        class PyAutoGUIException(Exception):
+            pass
+        @staticmethod
+        def easeInOutQuad(n): return n
+        @staticmethod
+        def linear(n): return n
+        @staticmethod
+        def easeOutQuad(n): return n
+        @staticmethod
+        def easeInQuad(n): return n
         @staticmethod
         def size(): return (1920, 1080)
         @staticmethod
@@ -30,9 +44,15 @@ except Exception:
         @staticmethod
         def hotkey(*args, **kwargs): pass
         @staticmethod
+        def keyDown(*args, **kwargs): pass
+        @staticmethod
+        def keyUp(*args, **kwargs): pass
+        @staticmethod
         def mouseDown(*args, **kwargs): pass
         @staticmethod
         def mouseUp(*args, **kwargs): pass
+        @staticmethod
+        def screenshot(*args, **kwargs): return None
     pyautogui = MockPyAutoGUI()
 
 try:
@@ -505,6 +525,10 @@ def gui_open_and_search_app(app_name: str, text_to_type: str = "") -> str:
     Autonomously opens the Windows Start Menu, searches for an app, opens it,
     and optionally types text inside it like a human.
     """
+    from core.platform_adapter import PlatformAdapter
+    if PlatformAdapter.is_wsl() or not HAS_PYAUTOGUI:
+        return PlatformAdapter.launch_app(app_name)
+
     safety.reset()
     try:
         screen_w, screen_h = pyautogui.size()
@@ -581,6 +605,11 @@ def gui_search_google_browser(query: str) -> str:
     """
     Autonomously opens a browser via Start Menu, navigates to Google, and types the query like a human.
     """
+    from core.platform_adapter import PlatformAdapter
+    if PlatformAdapter.is_wsl() or not HAS_PYAUTOGUI:
+        from tools.web_tools import search_google
+        return search_google(query)
+
     safety.reset()
     try:
         screen_w, screen_h = pyautogui.size()
@@ -633,8 +662,13 @@ def gui_search_google_browser(query: str) -> str:
 def gui_play_youtube(video_query: str) -> str:
     """
     Autonomously opens Chrome, navigates to YouTube, searches for the video query,
-    and clicks the video to play using mouse cursor and keystrokes.
+    and plays the video using mouse cursor and keystrokes.
     """
+    from core.platform_adapter import PlatformAdapter
+    if PlatformAdapter.is_wsl() or not HAS_PYAUTOGUI:
+        from tools.web_tools import play_youtube
+        return play_youtube(video_query)
+
     import urllib.parse
     safety.reset()
     try:
@@ -659,17 +693,24 @@ def gui_play_youtube(video_query: str) -> str:
         if profile_res and ("stuck" in profile_res.lower() or "waiting at" in profile_res.lower()):
             return f"⚠️ Modal Blocker: {profile_res}"
 
+        # Resolve direct video ID for instant autoplay
+        from tools.web_tools import _resolve_youtube_top_video_id
+        top_id = _resolve_youtube_top_video_id(video_query)
+        if top_id:
+            target_url = f"https://www.youtube.com/watch?v={top_id}&autoplay=1"
+        else:
+            encoded = urllib.parse.quote_plus(video_query)
+            target_url = f"https://www.youtube.com/results?search_query={encoded}"
+
         # Focus address bar
-        print(f"  [GUI] 🌐 Navigating to YouTube search for '{video_query}'...")
+        print(f"  [GUI] 🌐 Navigating to YouTube: '{target_url}'...")
         pyautogui.hotkey("ctrl", "l")
         time.sleep(0.2)
         safety.check()
 
-        encoded = urllib.parse.quote_plus(video_query)
-        target_url = f"https://www.youtube.com/results?search_query={encoded}"
         human_type(target_url, interval=0.01, label="🔗 OPENING URL")
         pyautogui.press("enter")
-        time.sleep(2.5) # Wait for YouTube to load results
+        time.sleep(2.0)
         safety.check()
 
         # Smoothly glide cursor to the first video result and click it to start playback!
