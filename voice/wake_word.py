@@ -66,12 +66,16 @@ class WakeWordDetector(QThread):
         return self._conversational_mode
 
     def pause(self):
-        """Temporarily pauses the listener."""
+        """Temporarily pauses the listener and frees the hardware mic."""
         self._paused = True
+        self._conversational_mode = False
+        self.recorder.stop_stream()
+        self.listening_state_changed.emit("STANDBY")
 
     def resume(self):
         """Resumes the listener."""
         self._paused = False
+        self.recorder.start_stream()
 
     def stop(self):
         """Halts the continuous conversational listener thread."""
@@ -80,6 +84,7 @@ class WakeWordDetector(QThread):
 
     def run(self):
         print("[WAKE-WORD] [LISTENER] Full-Duplex Conversational Engine Active (Continuous VAD + Conversational Turns)...")
+        self.recorder.start_stream()
         while self._is_running:
             if self._paused:
                 time.sleep(0.12)
@@ -112,7 +117,10 @@ class WakeWordDetector(QThread):
                     continue
 
                 clean_lower = text.lower().strip()
-                print(f"[VOICE] [HEARD] '{text}' (mode={'CONVERSATIONAL' if self._conversational_mode else 'STANDBY'})")
+                if self._conversational_mode:
+                    print(f"[VOICE] [HEARD] '{text}' (mode=CONVERSATIONAL)")
+                else:
+                    logger.debug(f"[VOICE] [STANDBY] Heard: '{text}'")
 
                 # 1. Instant Stop / Cancellation / Barge-In Command
                 STOP_WORDS = ["stop", "cancel", "shut up", "be quiet", "pause", "hold on", "never mind", "halt"]

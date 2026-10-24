@@ -374,6 +374,8 @@ class TTSEngine(QThread):
                         engine.runAndWait()
                 except Exception as e:
                     print(f"[TTS] Speech playback notice: {e}")
+            # Acoustic Room Reflection Guard: absorb 350ms speaker reverberation in room
+            time.sleep(0.35)
             self._is_speaking = False
             try:
                 from voice.aec_guard import aec_guard

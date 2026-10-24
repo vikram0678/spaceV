@@ -160,6 +160,12 @@ class ProactiveCompanion(QThread):
 
         # Scan reply text for keywords
         text = reply_text.lower()
+        if "⏸️" in reply_text or "live clarification" in text or "remediation protocol" in text or "actionable remediation" in text:
+            return [
+                ("🔧 1: Auto-Repair", "1"),
+                ("🔄 2: Alternative", "2"),
+                ("👤 3: Fixed / Resume", "continue"),
+            ]
         if "who's using chrome" in text or "which profile" in text or "chrome profile" in text:
             return [
                 ("👤 n. vikram", "use chrome profile vikram"),

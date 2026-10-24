@@ -34,7 +34,7 @@ class AudioStreamRecorder:
         sample_rate: int = 16000,
         chunk_size: int = 512,  # 32 ms at 16kHz (Standard Silero VAD frame)
         pre_speech_chunks: int = 10,  # ~320 ms of pre-speech ring buffer (preserves initial consonants)
-        silence_debounce_chunks: int = 13,  # ~416 ms of post-speech silence for rapid conversational turn-taking
+        silence_debounce_chunks: int = 18,  # ~416 ms of post-speech silence for rapid conversational turn-taking
         vad: SileroVADDetector | None = None,
     ):
         self.sample_rate = sample_rate
@@ -59,29 +59,32 @@ class AudioStreamRecorder:
             return False
 
         with self._lock:
-            if self._is_recording:
+            if self._is_recording and self._stream is not None:
                 return True
 
             try:
-                # Suppress low-level ALSA/JACK C stderr probing messages on Linux/WSL2
-                import os
-                try:
-                    null_fd = os.open(os.devnull, os.O_RDWR)
-                    orig_stderr = os.dup(2)
-                    os.dup2(null_fd, 2)
-                    self._pa = pyaudio.PyAudio()
-                finally:
-                    os.dup2(orig_stderr, 2)
-                    os.close(orig_stderr)
-                    os.close(null_fd)
+                # Reuse existing PyAudio interface if not terminated
+                if self._pa is None:
+                    # Suppress low-level ALSA/JACK C stderr probing messages on Linux/WSL2
+                    import os
+                    try:
+                        null_fd = os.open(os.devnull, os.O_RDWR)
+                        orig_stderr = os.dup(2)
+                        os.dup2(null_fd, 2)
+                        self._pa = pyaudio.PyAudio()
+                    finally:
+                        os.dup2(orig_stderr, 2)
+                        os.close(orig_stderr)
+                        os.close(null_fd)
 
-                self._stream = self._pa.open(
-                    format=pyaudio.paInt16,
-                    channels=1,
-                    rate=self.sample_rate,
-                    input=True,
-                    frames_per_buffer=self.chunk_size,
-                )
+                if self._stream is None:
+                    self._stream = self._pa.open(
+                        format=pyaudio.paInt16,
+                        channels=1,
+                        rate=self.sample_rate,
+                        input=True,
+                        frames_per_buffer=self.chunk_size,
+                    )
                 self._is_recording = True
                 self._pre_buffer.clear()
                 self.vad.reset_state()
@@ -130,15 +133,20 @@ class AudioStreamRecorder:
         timeout: float = 6.0,
         phrase_limit: float = 12.0,
         stop_check=None,
+        auto_stop: bool = False,
     ) -> bytes | None:
         """
         Records a complete spoken phrase bounded by Silero VAD turn detection.
+        Uses a Persistent Warm Stream pattern to prevent PortAudio/PulseAudio
+        mainloop churn and assertion crashes.
+
         Returns:
             Raw PCM audio bytes of the complete utterance with pre-speech padding,
             or None if timed out without speech.
         """
-        if not self.start_stream():
-            return None
+        if not self._is_recording:
+            if not self.start_stream():
+                return None
 
         self.vad.reset_state()
         self._pre_buffer.clear()
@@ -189,13 +197,18 @@ class AudioStreamRecorder:
                     else:
                         silence_counter = 0
 
-            if not speech_started or len(recorded_frames) < 10:
+            if not speech_started or len(recorded_frames) < 16:
                 return None
 
             return b"".join(recorded_frames)
 
         finally:
-            self.stop_stream()
+            # Persistent Warm Stream: Keep stream open across turns.
+            # Only reset VAD state and pre-speech buffer between utterances.
+            self.vad.reset_state()
+            self._pre_buffer.clear()
+            if auto_stop:
+                self.stop_stream()
 
     @staticmethod
     def pcm_to_wav_bytes(pcm_bytes: bytes, sample_rate: int = 16000) -> bytes:

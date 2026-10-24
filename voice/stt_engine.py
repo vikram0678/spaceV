@@ -1,13 +1,14 @@
 """
-Modernized Speech-to-Text (STT) Engine for SpaceV.
-Integrates Silero VAD neural turn detection, pre-speech ring buffering,
-and dual-backend transcription (Local Faster-Whisper + SpeechRecognition fallback).
+Speech-to-Text (STT) Engine for SpaceV.
+Provides ultra-low latency transcription using local Faster-Whisper (offline, INT8 CPU/CUDA)
+with fallback to SpeechRecognition.
 """
 from __future__ import annotations
 
 import io
 import logging
 import sys
+from typing import Optional
 
 try:
     if hasattr(sys.stdout, "reconfigure"):
@@ -22,14 +23,12 @@ from voice.vad_detector import SileroVADDetector
 
 logger = logging.getLogger("SpaceV.STT")
 
-# Check for Faster-Whisper availability
 try:
     from faster_whisper import WhisperModel
     HAS_FASTER_WHISPER = True
 except ImportError:
     HAS_FASTER_WHISPER = False
 
-# Check for SpeechRecognition fallback
 try:
     import speech_recognition as sr
     HAS_SR = True
@@ -39,10 +38,10 @@ except ImportError:
 
 class OfflineWhisperSingleton:
     """Singleton to keep a lightweight local Whisper model in memory for instant responses."""
-    _model: WhisperModel | None = None
+    _model: Optional[WhisperModel] = None
 
     @classmethod
-    def get_model(cls, model_size: str = "tiny.en") -> WhisperModel | None:
+    def get_model(cls, model_size: str = "tiny.en") -> Optional[WhisperModel]:
         if not HAS_FASTER_WHISPER:
             return None
 
@@ -59,6 +58,7 @@ class OfflineWhisperSingleton:
                 list(test_model.transcribe(np.zeros(8000, dtype=np.float32), beam_size=1)[0])
                 cls._model = test_model
                 logger.info("[STT] ⚡ Neural GPU Whisper online (ultra-low latency).")
+                return cls._model
         except Exception as e:
             logger.info(f"[STT] CUDA runtime DLLs not loaded ({e}), using high-performance CPU INT8.")
             cls._model = None
@@ -72,6 +72,7 @@ class OfflineWhisperSingleton:
             except Exception as e:
                 logger.warning(f"[STT] Could not load Faster-Whisper model: {e}")
                 cls._model = None
+
         return cls._model
 
     @classmethod
@@ -140,6 +141,7 @@ class VoiceListener(QThread):
             logger.error(f"[STT] Unexpected error during listening: {e}")
             self.error_occurred.emit(f"Microphone notice: {e!s}")
         finally:
+            self.recorder.stop_stream()
             self.listening_finished.emit()
 
     @classmethod
@@ -147,14 +149,28 @@ class VoiceListener(QThread):
         """
         Transcribes 16kHz 16-bit mono PCM bytes using Faster-Whisper if available,
         or SpeechRecognition fallback.
+        Includes zero-hallucination RMS energy gating against background air/murmurs.
         """
+        if not pcm_bytes or len(pcm_bytes) < 3200:
+            return ""
+
+        # Zero-Hallucination Energy Gate: Drop ultra-faint room murmurs / mic hiss
+        try:
+            import numpy as np
+            samples = np.frombuffer(pcm_bytes, dtype=np.int16)
+            rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
+            if rms < 65.0:
+                logger.debug(f"[STT] Ambient noise below speech threshold (rms={rms:.1f}), dropping.")
+                return ""
+        except Exception:
+            pass
+
         # 1. Try local Faster-Whisper (100% offline, ~150ms on CPU)
         model = OfflineWhisperSingleton.get_model()
         if model is not None:
             try:
                 import numpy as np
                 audio_float = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-                # OpenAI Whisper prompt biasing lexicon: primes token probabilities for 99.9% phonetic recognition
                 initial_prompt = (
                     "SpaceV, Hey SpaceV, Ollama, Qwen, Python, VS Code, FastRouter, "
                     "terminal, desktop, laptop, applications, processes, mute, volume, timer."
@@ -191,6 +207,8 @@ class VoiceListener(QThread):
             except Exception as e:
                 logger.debug(f"[STT] SpeechRecognition fallback error: {e}")
                 return ""
+
+        return ""
 
     @classmethod
     def transcribe_pcm_draft(cls, pcm_bytes: bytes, sample_rate: int = 16000, max_seconds: float = 3.0) -> str:
