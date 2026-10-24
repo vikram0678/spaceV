@@ -28,3 +28,8 @@ spacev_vector_memory.db
 spacev_task_ledger.db
 scratch/
 temp/
+
+zplan/
+Stirling-PDF/
+.gateway_cooldowns.json
+logs/spacev_flight_recorder.jsonl

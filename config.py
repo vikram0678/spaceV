@@ -14,12 +14,91 @@ load_dotenv(BASE_DIR / ".env")
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "nvidia/nemotron-3.5-super-vl:free")
+LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
 
-# Frontier Cloud Model Roles (OpenRouter Free Tier)
-AUTONOMOUS_AGENT_MODEL = os.getenv("AUTONOMOUS_AGENT_MODEL", "nvidia/nemotron-3.5-super-vl:free")
-CODING_ENGINEER_MODEL = os.getenv("CODING_ENGINEER_MODEL", "poolside/laguna-s-2.1:free")
-FAST_CHAT_CLOUD_MODEL = os.getenv("FAST_CHAT_CLOUD_MODEL", "google/gemma-4-31b-it:free")
+# Universal Brain Routing Mode
+# Options:
+#   "hybrid"    -> Try paid primary model first; if 429/402, automatically fall over to Free Mesh
+#   "direct"    -> Directly use single configured LLM_API_KEY / provider (BYOK Paid Mode)
+#   "free_mesh" -> Multiplex across 15 free tiers with round-robin multi-account rotation
+#   "local"     -> 100% offline Local Ollama only
+ROUTING_MODE = os.getenv("ROUTING_MODE", "hybrid").lower()
+
+# Multi-Cloud Frontier Providers (100% Free Tiers - Zero Card Required)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", LLM_API_KEY)
+GROQ_API_KEY_2 = os.getenv("GROQ_API_KEY_2", "")
+GROQ_API_KEY_3 = os.getenv("GROQ_API_KEY_3", "")
+GROQ_API_KEY_4 = os.getenv("GROQ_API_KEY_4", "")
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+GROQ_FAST_MODEL = os.getenv("GROQ_FAST_MODEL", "openai/gpt-oss-20b")
+
+# Parse multi-account key pools (comma-separated or distinct env vars)
+_raw_groq_keys = os.getenv("GROQ_API_KEYS", "")
+GROQ_API_KEYS = [k.strip() for k in _raw_groq_keys.split(",") if k.strip()] if _raw_groq_keys else []
+for _k in [GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3, GROQ_API_KEY_4]:
+    if _k and _k not in GROQ_API_KEYS:
+        GROQ_API_KEYS.append(_k)
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_API_KEY_2 = os.getenv("GEMINI_API_KEY_2", "")
+GEMINI_API_KEY_3 = os.getenv("GEMINI_API_KEY_3", "")
+GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+_raw_gemini_keys = os.getenv("GEMINI_API_KEYS", "")
+GEMINI_API_KEYS = [k.strip() for k in _raw_gemini_keys.split(",") if k.strip()] if _raw_gemini_keys else []
+for _k in [GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3]:
+    if _k and _k not in GEMINI_API_KEYS:
+        GEMINI_API_KEYS.append(_k)
+
+SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY", "")
+SAMBANOVA_BASE_URL = os.getenv("SAMBANOVA_BASE_URL", "https://api.sambanova.ai/v1").rstrip("/")
+SAMBANOVA_MODEL = os.getenv("SAMBANOVA_MODEL", "DeepSeek-V3.1")
+
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
+CEREBRAS_API_KEY_2 = os.getenv("CEREBRAS_API_KEY_2", "")
+CEREBRAS_BASE_URL = os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1").rstrip("/")
+CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-70b")
+CEREBRAS_FAST_MODEL = os.getenv("CEREBRAS_FAST_MODEL", "llama3.1-8b")
+
+_raw_cerebras_keys = os.getenv("CEREBRAS_API_KEYS", "")
+CEREBRAS_API_KEYS = [k.strip() for k in _raw_cerebras_keys.split(",") if k.strip()] if _raw_cerebras_keys else []
+for _k in [CEREBRAS_API_KEY, CEREBRAS_API_KEY_2]:
+    if _k and _k not in CEREBRAS_API_KEYS:
+        CEREBRAS_API_KEYS.append(_k)
+
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
+MISTRAL_API_KEY_2 = os.getenv("MISTRAL_API_KEY_2", "")
+MISTRAL_BASE_URL = os.getenv("MISTRAL_BASE_URL", "https://api.mistral.ai/v1").rstrip("/")
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "codestral-latest")
+MISTRAL_SMALL_MODEL = os.getenv("MISTRAL_SMALL_MODEL", "mistral-small-latest")
+
+_raw_mistral_keys = os.getenv("MISTRAL_API_KEYS", "")
+MISTRAL_API_KEYS = [k.strip() for k in _raw_mistral_keys.split(",") if k.strip()] if _raw_mistral_keys else []
+for _k in [MISTRAL_API_KEY, MISTRAL_API_KEY_2]:
+    if _k and _k not in MISTRAL_API_KEYS:
+        MISTRAL_API_KEYS.append(_k)
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_API_KEY_2 = os.getenv("OPENROUTER_API_KEY_2", "")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "z-ai/glm-5.3-flash")
+
+_raw_openrouter_keys = os.getenv("OPENROUTER_API_KEYS", "")
+OPENROUTER_API_KEYS = [k.strip() for k in _raw_openrouter_keys.split(",") if k.strip()] if _raw_openrouter_keys else []
+for _k in [OPENROUTER_API_KEY, OPENROUTER_API_KEY_2]:
+    if _k and _k not in OPENROUTER_API_KEYS:
+        OPENROUTER_API_KEYS.append(_k)
+
+ZAI_API_KEY = os.getenv("ZAI_API_KEY", "")
+ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/coding/paas/v4").rstrip("/")
+ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-5.3-flash")
+
+# Frontier Cloud Model Roles
+AUTONOMOUS_AGENT_MODEL = os.getenv("AUTONOMOUS_AGENT_MODEL", LLM_MODEL)
+CODING_ENGINEER_MODEL = os.getenv("CODING_ENGINEER_MODEL", LLM_MODEL)
+FAST_CHAT_CLOUD_MODEL = os.getenv("FAST_CHAT_CLOUD_MODEL", LLM_MODEL)
 
 # Local Multi-Model Tiers (Ollama)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -32,6 +111,7 @@ UI_TARS_MODEL_2B = os.getenv("UI_TARS_MODEL_2B", "ui-tars:2b")
 FALLBACK_MODEL = os.getenv("FALLBACK_MODEL", "qwen2.5:7b-instruct-q5_0")
 # 3. Settings
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
 LOW_RAM_MODE = os.getenv("LOW_RAM_MODE", "true").lower() in ("true", "1", "yes")
 
 USER_DESKTOP_DIR = Path(os.path.expanduser("~")) / "Desktop"
