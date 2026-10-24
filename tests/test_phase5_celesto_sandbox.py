@@ -119,3 +119,45 @@ def test_spacev_tool_integration():
     assert "RECOVERED" in wf_res
     assert "Snapshot Rollback Executed: `True`" in wf_res
     assert "Host OS Compromised: `False`" in wf_res
+
+
+def test_cross_zone_quarantine_file_read():
+    """Verify that read_file_content seamlessly resolves quarantined Celesto MicroVM guest files (DEF-001)."""
+    from tools.file_tools import read_file_content
+
+    # 1. Quarantine an untrusted repo inside microVM
+    detonate_in_sandbox("git clone https://github.com/CelestoAI/celesto.git /workspace/quarantine/celesto")
+
+    # 2. Read the quarantined README.md via read_file_content
+    result = read_file_content("/workspace/quarantine/celesto/README.md")
+    assert "Content of quarantined guest file 'README.md'" in result
+    assert "Quarantined celesto" in result
+    assert "Isolated in Celesto Guest MicroVM" in result
+
+
+def test_compound_git_clone_and_package_json():
+    """Verify that compound git clone commands with chained cat extract repo correctly (DEF-005)."""
+    from tools.file_tools import read_file_content
+
+    # Chained git clone and cat
+    res = detonate_in_sandbox("git clone https://github.com/expressjs/express.git && cat express/package.json")
+    assert "Successfully quarantined in Celesto MicroVM at /workspace/quarantine/express" in res
+    assert '"version": "4.18.2"' in res
+
+    # Read package.json via cross-zone read_file_content
+    pkg_res = read_file_content("/workspace/quarantine/express/package.json")
+    assert "Content of quarantined guest file 'package.json'" in pkg_res
+    assert '"name": "express"' in pkg_res
+
+
+def test_sandbox_heredoc_syntax_compilation():
+    """Verify that heredoc script writing and syntax check compile without file path error (DEF-006)."""
+    heredoc_cmd = """cat > /tmp/untrusted.py <<'PYEOF'
+def broken_syntax(:
+    return 42
+PYEOF
+python3 -m py_compile /tmp/untrusted.py"""
+    res = detonate_in_sandbox(heredoc_cmd)
+    assert "[sandbox] /tmp/untrusted.py written:" in res
+    assert "SyntaxError" in res
+    assert "py_compile exit code: 1" in res

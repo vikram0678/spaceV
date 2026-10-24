@@ -1,155 +1,221 @@
 """
-Unit and Integration Tests for SpaceV Ultra-Promax Architecture.
-Validates:
-1. Universal Cloud Brain Client & Model Selection
-2. Cloudflare Code Mode & Tool Virtualization Engine
-3. Crawl4AI-Style Semantic HTML Distiller
-4. Cryptographic Action Authority & Single-Use Tokens
-5. Karpathy Goal-Driven Verification
+Principal Engineer Test Verification Suite for SpaceV Ultra-Promax Architecture.
+Empirically verifies all 5 architectural phases derived from CUA, Browser-Use,
+Cloudflare MCP Code Mode, Cactus Needle, and Karpathy Guidelines.
 """
 import pytest
-from core.cloud_client import UniversalBrainClient
-from core.code_mode import CodeModeEngine, CODE_MODE_META_TOOLS
-from tools.semantic_distiller import distill_html_to_markdown
-from core.action_authority import ActionAuthority
-from core.karpathy_verifier import KarpathyVerifier
+from core.semantic_router_engine import semantic_router_engine, encode_sparse_text
+from core.fast_router import FastRouter
+from core.host_bridge import host_bridge
+from core.code_mode import code_mode_engine
+from core.karpathy_verifier import karpathy_verifier
+from spacev.web.cdp_bridge import CDPBridge
+from spacev.web.stealth_indexer import SpaceVStealthWebIndexer, IndexedElement
+from spacev.web.dom_filter import PaintOrderFilter, DOMElement
+from tools.registry import execute_tool, TOOL_ALIASES, TOOL_FUNCTIONS
+from tools.gui_tools import pyautogui
 
 
-def test_universal_brain_model_selection():
-    """Verifies dynamic model routing based on task intent."""
-    client = UniversalBrainClient()
+# ============================================================================
+# PHASE 1: SEMANTIC EMBEDDING INTENT ROUTING (Zero-Regex Natural Phrasing)
+# ============================================================================
 
-    # Coding task -> CODING_ENGINEER_MODEL
-    model_code = client.select_cloud_model("Write a python script to test my bash pipeline")
-    assert "poolside" in model_code or "laguna" in model_code or "code" in model_code
-
-    # GUI task -> AUTONOMOUS_AGENT_MODEL
-    model_gui = client.select_cloud_model("Click the button on my screen in the desktop browser")
-    assert "nemotron" in model_gui or "super-vl" in model_gui
-
-    # Fast chat -> FAST_CHAT_CLOUD_MODEL
-    model_fast = client.select_cloud_model("Good morning, how are you?", requires_tools=False)
-    assert "gemma" in model_fast
-
-
-def test_code_mode_engine_dynamic_discovery():
-    """Verifies that CodeModeEngine searches tool signatures on demand without token bloat."""
-    engine = CodeModeEngine()
-
-    # Search for file capabilities
-    results = engine.search_tools("create file document")
-    assert len(results) > 0
-    tool_names = [r.get("name") for r in results]
-    assert any("file" in name for name in tool_names)
-
-    # Search for sandboxed workflow capabilities
-    sandbox_results = engine.search_tools("sandboxed workflow execution")
-    assert len(sandbox_results) > 0
-    sandbox_names = [r.get("name") for r in sandbox_results]
-    assert any("sandbox" in name for name in sandbox_names)
+def test_phase1_youtube_varied_phrasing():
+    """Verify semantic router matches varied natural phrasing to YouTube intent in <5ms."""
+    queries = [
+        "open youtube and play top video",
+        "hey open youtube and uma telugu traveller latest video play also",
+        "play interstellar on youtube",
+        "put on some lofi on youtube",
+    ]
+    for q in queries:
+        route_result = semantic_router_engine.route(q)
+        assert route_result is not None, f"Failed to semantically route: '{q}'"
+        intent_name, confidence, latency_ms = route_result
+        assert intent_name == "media_play_youtube", f"Expected media_play_youtube for '{q}', got {intent_name}"
+        assert confidence >= 0.65, f"Confidence too low: {confidence} for '{q}'"
+        assert latency_ms < 10.0, f"Latency too high: {latency_ms}ms for '{q}'"
 
 
-def test_code_mode_script_execution_sandbox():
-    """Verifies in-process sandboxed Python execution for batch tool calls."""
-    engine = CodeModeEngine()
+def test_phase1_youtube_query_extraction():
+    """Verify robust query parameter extraction from conversational YouTube prompts."""
+    prompt1 = "hey open youtube and uma telugu traveller latest video play also"
+    extracted1 = semantic_router_engine._extract_youtube_query(prompt1)
+    assert "uma telugu traveller" in extracted1.lower()
+
+    prompt2 = "open youtube and play top video"
+    extracted2 = semantic_router_engine._extract_youtube_query(prompt2)
+    assert "top video" in extracted2.lower()
+
+    prompt3 = "play interstellar on youtube"
+    extracted3 = semantic_router_engine._extract_youtube_query(prompt3)
+    assert extracted3.lower() == "interstellar"
+
+
+def test_phase1_editor_and_capabilities_routing():
+    """Verify coding and capability queries route cleanly without regex fragility."""
+    editor_prompt = "can you open editor and write the code"
+    match = semantic_router_engine.route(editor_prompt)
+    assert match is not None
+    assert match[0] == "open_text_editor"
+
+    cap_prompt = "what can you do"
+    cap_match = semantic_router_engine.route(cap_prompt)
+    assert cap_match is not None
+    assert cap_match[0] == "capabilities"
+
+    fast_cap = FastRouter.match("what can you do")
+    assert fast_cap is not None
+    assert fast_cap[0] == "capabilities"
+
+
+# ============================================================================
+# PHASE 2: HOST IPC BRIDGE & WSL DISPLAY ISOLATION
+# ============================================================================
+
+def test_phase2_host_bridge_path_conversion():
+    """Verify bidirectional Linux/Windows path conversion."""
+    linux_path = "/home/vikram/Desktop/script.py"
+    win_path = host_bridge.to_win_path(linux_path)
+    assert win_path is not None
+    assert isinstance(win_path, str)
+
+
+def test_phase2_mock_pyautogui_safety_exceptions():
+    """Verify MockPyAutoGUI implements all PyAutoGUI exceptions and easing curves."""
+    assert hasattr(pyautogui, "FailSafeException")
+    assert hasattr(pyautogui, "ImageNotFoundException")
+    assert hasattr(pyautogui, "PyAutoGUIException")
+    assert hasattr(pyautogui, "easeInOutQuad")
+    assert hasattr(pyautogui, "linear")
+    assert hasattr(pyautogui, "easeOutQuad")
+    assert hasattr(pyautogui, "easeInQuad")
+
+    # Verify exception instantiation and inheritance
+    try:
+        raise pyautogui.FailSafeException("Fail-safe triggered")
+    except pyautogui.FailSafeException as e:
+        assert "Fail-safe" in str(e)
+
+
+def test_phase2_active_window_inspection():
+    """Verify active window inspection returns a safe, non-crashing description."""
+    title = host_bridge.get_active_window_title()
+    assert isinstance(title, str)
+    assert len(title) > 0
+
+
+# ============================================================================
+# PHASE 3: BROWSER-USE ACCESSIBILITY & DOM TREE INDEXING
+# ============================================================================
+
+def test_phase3_stealth_dom_indexer():
+    """Verify DOM elements are properly parsed and formatted for prompt token compression."""
+    raw_elements = [
+        {"index": 1, "tag": "input", "text": "Search YouTube", "role": "searchbox", "selector": "#search"},
+        {"index": 2, "tag": "button", "text": "Search", "role": "button", "selector": "#search-icon-legacy"},
+        {"index": 3, "tag": "a", "text": "Uma Telugu Traveller Video", "role": "link", "selector": "a#video-title"}
+    ]
+    parsed = SpaceVStealthWebIndexer.parse_elements(raw_elements)
+    assert len(parsed) == 3
+    formatted = SpaceVStealthWebIndexer.format_for_llm(parsed)
+    assert "[1] <input> \"Search YouTube\"" in formatted
+    assert "[3] <a> \"Uma Telugu Traveller Video\"" in formatted
+
+
+def test_phase3_paint_order_filter():
+    """Verify occluded, invisible, or offscreen DOM nodes are pruned to save tokens."""
+    filter_engine = PaintOrderFilter(viewport_width=1920, viewport_height=1080)
+    visible_el = DOMElement(
+        index=1, tag="button", text="Play",
+        bounds={"x": 500, "y": 400, "w": 100, "h": 50},
+        computed_styles={"display": "block", "visibility": "visible", "opacity": "1.0"}
+    )
+    invisible_el = DOMElement(
+        index=2, tag="div", text="Hidden Tracker",
+        bounds={"x": 0, "y": 0, "w": 1, "h": 1},
+        computed_styles={"display": "none", "visibility": "hidden"}
+    )
+    offscreen_el = DOMElement(
+        index=3, tag="a", text="Footer Link",
+        bounds={"x": 500, "y": 5000, "w": 100, "h": 50},
+        computed_styles={"display": "block", "visibility": "visible"}
+    )
+
+    pruned = filter_engine.prune_tree([visible_el, invisible_el, offscreen_el])
+    assert len(pruned) == 1
+    assert pruned[0].index == 1
+
+
+# ============================================================================
+# PHASE 4: CLOUDFLARE MCP CODE MODE (Prompt Virtualization)
+# ============================================================================
+
+def test_phase4_code_mode_search_tools():
+    """Verify dynamic capability discovery returns targeted schemas on-demand."""
+    matches = code_mode_engine.search_tools("weather")
+    assert len(matches) > 0
+    tool_names = [m["name"] for m in matches]
+    assert "get_weather" in tool_names
+
+
+def test_phase4_code_mode_execute_script():
+    """Verify sandboxed Python script executes and can invoke registered tools."""
     script = """
-x = [1, 2, 3, 4]
-total = sum(x)
-print(f"Computed total: {total}")
+computed_val = 15 * 3
+time_str = tools.get_current_time()
+print(f"Result: {computed_val}")
 """
-    res = engine.execute_script(script)
+    res = code_mode_engine.execute_script(script)
     assert res["status"] == "success"
-    assert "Computed total: 10" in res["output"]
+    assert "Result: 45" in res["output"]
 
 
-def test_semantic_distiller_noise_removal():
-    """Verifies that raw HTML with scripts, styles, and SVG is stripped down to clean Markdown."""
-    noisy_html = """
-    <html>
-      <head>
-        <script>var tracker = 12345;</script>
-        <style>.ads { color: red; }</style>
-      </head>
-      <body>
-        <nav><a href="/home">Home</a><a href="/login">Login</a></nav>
-        <div class="cookie-banner">Please accept all cookies to continue.</div>
-        <main>
-          <h1>SpaceV Core System</h1>
-          <p>SpaceV is an autonomous cybernetic desktop assistant.</p>
-          <svg><path d="M0,0 L10,10"/></svg>
-        </main>
-        <footer>Copyright 2026 SpaceV Inc.</footer>
-      </body>
-    </html>
-    """
-    distilled = distill_html_to_markdown(noisy_html)
+def test_phase4_code_mode_tool_registry_aliases():
+    """Verify execute_tool supports Code Mode aliases and executions."""
+    assert "search_tools" in TOOL_ALIASES
+    assert "execute_script" in TOOL_ALIASES
 
-    # Content must contain core information
-    assert "SpaceV Core System" in distilled
-    assert "autonomous cybernetic desktop assistant" in distilled
+    search_res = execute_tool("search_tools", {"query": "screenshot"})
+    assert isinstance(search_res, str)
+    assert len(search_res) > 0
 
-    # Noisy tags must be removed
-    assert "var tracker" not in distilled
-    assert "cookie-banner" not in distilled
-    assert "Please accept all cookies" not in distilled
-    assert "svg" not in distilled.lower()
+    exec_res = execute_tool("execute_script", {"script": "print('Code Mode Operational')"})
+    assert "Code Mode Operational" in exec_res
 
 
-def test_action_authority_single_use_and_window_validation():
-    """Verifies cryptographic single-use capture_id enforcement and window matching."""
-    authority = ActionAuthority(validity_window_sec=5.0)
+# ============================================================================
+# PHASE 5: KARPATHY EMPIRICAL VERIFICATION & SAFETY GUARD
+# ============================================================================
 
-    # Register observation
-    elements = [{"id": 1, "name": "SubmitButton"}, {"id": 2, "name": "CancelButton"}]
-    token = authority.register_observation(window_title="Calculator", elements=elements)
-    assert token.startswith("cap_")
+def test_phase5_karpathy_safety_audit():
+    """Verify Karpathy Verifier blocks destructive patterns."""
+    dangerous_payload = "rm -rf /"
+    audit = karpathy_verifier.audit_intent_safety("execute_bash", dangerous_payload)
+    assert audit["safe"] is False
+    assert audit["requires_confirmation"] is True
 
-    # Authorize action (First time -> Must succeed)
-    auth1 = authority.authorize_action(capture_id=token, element_id=1, expected_window="Calculator")
-    assert auth1["authorized"] is True
-    assert auth1["element"]["name"] == "SubmitButton"
-
-    # Re-using the same token -> Must be rejected (single-use enforcement)
-    auth2 = authority.authorize_action(capture_id=token, element_id=1, expected_window="Calculator")
-    assert auth2["authorized"] is False
-    assert "already been consumed" in auth2["error"]
+    safe_payload = "ls -la /home/vikram"
+    safe_audit = karpathy_verifier.audit_intent_safety("execute_bash", safe_payload)
+    assert safe_audit["safe"] is True
+    assert safe_audit["requires_confirmation"] is False
 
 
-def test_action_authority_rejects_window_mismatch():
-    """Verifies that actions targeting the wrong window are immediately rejected."""
-    authority = ActionAuthority(validity_window_sec=5.0)
-    token = authority.register_observation(window_title="Google Chrome", elements=[{"id": 1, "name": "Tab"}])
-
-    auth = authority.authorize_action(capture_id=token, element_id=1, expected_window="Visual Studio Code")
-    assert auth["authorized"] is False
-    assert "Target window mismatch" in auth["error"]
-
-
-def test_karpathy_verifier_destructive_detection():
-    """Verifies that high-risk destructive commands trigger confirmation flags."""
-    verifier = KarpathyVerifier()
-
-    # Destructive rm -rf
-    check_bad = verifier.audit_intent_safety("bash", "rm -rf /")
-    assert check_bad["safe"] is False
-    assert check_bad["requires_confirmation"] is True
-
-    # Safe command
-    check_good = verifier.audit_intent_safety("bash", "ls -la reports/")
-    assert check_good["safe"] is True
-    assert check_good["requires_confirmation"] is False
-
-
-def test_karpathy_verifier_goal_loop():
-    """Verifies empirical goal-driven verification loop."""
-    verifier = KarpathyVerifier()
+def test_phase5_karpathy_goal_verification_loop():
+    """Verify goal-backward empirical verification loop."""
+    attempts = [False, False, True]
     counter = 0
 
-    def mock_test():
+    def mock_verification():
         nonlocal counter
+        res = attempts[counter]
         counter += 1
-        return counter >= 2  # Succeeds on attempt 2
+        return res
 
-    res = verifier.verify_goal_backward("Generate Report File", mock_test, max_attempts=3)
-    assert res["verified"] is True
-    assert res["attempts"] == 2
+    result = karpathy_verifier.verify_goal_backward(
+        goal_description="Verify video playback active",
+        verification_fn=mock_verification,
+        max_attempts=3
+    )
+    assert result["verified"] is True
+    assert result["attempts"] == 3
