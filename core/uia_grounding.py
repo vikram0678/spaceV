@@ -166,10 +166,20 @@ def gui_click_control(target_name: str) -> str:
         if uia_match:
             cx, cy, matched_name, ctrl_type = uia_match
             print(f"  [UIA FAST-PATH] ⚡ Found native {ctrl_type} '{matched_name}' at ({cx}, {cy})")
-            human_move_to(cx, cy, duration=0.4, label=f"⚡ CLICKING {ctrl_type.upper()} '{matched_name}'", mode="clicking")
-            safety.check()
-            time.sleep(0.08)
-            pyautogui.click()
+            from core.host_bridge import HostBridge
+            if HostBridge.is_wsl():
+                HostBridge.click_host_coordinate(cx, cy)
+            else:
+                try:
+                    human_move_to(cx, cy, duration=0.4, label=f"⚡ CLICKING {ctrl_type.upper()} '{matched_name}'", mode="clicking")
+                    safety.check()
+                    time.sleep(0.08)
+                    pyautogui.click()
+                except Exception as click_err:
+                    if HostBridge.is_wsl() or "xauthority" in str(click_err).lower():
+                        HostBridge.click_host_coordinate(cx, cy)
+                    else:
+                        raise
             try:
                 from ui.cursor_overlay import hide_cursor_hud
                 hide_cursor_hud()

@@ -98,7 +98,18 @@ def capture_desktop_pil() -> Image.Image | None:
 
 
 def _gdi_capture_fallback() -> Image.Image | None:
-    """Fallback capture using PIL ImageGrab or PyAutoGUI GDI screenshot."""
+    """Fallback capture using HostBridge (WSL host capture), PIL ImageGrab, or PyAutoGUI."""
+    try:
+        from core.host_bridge import HostBridge
+        if HostBridge.is_wsl():
+            tmp_path = "/tmp/spacev_host_screen.png"
+            if HostBridge.capture_host_screen(tmp_path):
+                img = Image.open(tmp_path)
+                img.load()
+                return img
+    except Exception as e:
+        logger.debug(f"[ScreenCapture] HostBridge WSL capture attempt bypassed: {e}")
+
     try:
         from PIL import ImageGrab
         return ImageGrab.grab()

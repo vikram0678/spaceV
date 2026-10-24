@@ -102,22 +102,35 @@ def find_text_coordinates(
 
 def read_screen_text(image: Image.Image | None = None) -> str:
     """
-    Performs full-screen OCR transcription, returning all visible on-screen text.
+    Performs screen text and element inspection, returning active window title,
+    visible text, or OmniParser UI element labels.
     """
-    ocr_engine = _get_winocr()
-    if ocr_engine is None:
-        return "Windows OCR engine is not initialized."
-
     img = image or capture_screen_pil()
-    if img is None:
-        return "Unable to capture desktop screen for OCR."
+    ocr_engine = _get_winocr()
 
+    if ocr_engine is not None and img is not None:
+        try:
+            res = ocr_engine.recognize_pil_sync(img, lang="en-US")
+            text = res.get("text", "").strip()
+            if text:
+                return text
+        except Exception:
+            pass
+
+    # Resilient Fallback: OmniParser Element & Window Title Recognition (Cross-Platform / WSL2)
     try:
-        res = ocr_engine.recognize_pil_sync(img, lang="en-US")
-        text = res.get("text", "").strip()
-        return text if text else "No legible text detected on screen."
+        from core.host_bridge import HostBridge
+        from core.omniparser import omniparser
+
+        window_title = HostBridge.get_active_window_title() if HostBridge.is_wsl() else "Active Window"
+        if img is not None:
+            elements = omniparser.parse_screen(img)
+            labels = [f"'{e.label}' ({e.element_type} at {e.center})" for e in elements if e.label and e.label != "widget"]
+            labels_summary = ", ".join(labels[:15]) if labels else "No distinct icons detected"
+            return f"Active Window: '{window_title}' | On-Screen Elements (OmniParser): {labels_summary}"
+        return f"Active Window: '{window_title}' (Desktop display capture unavailable)"
     except Exception as e:
-        return f"OCR inspection failed: {e!s}"
+        return f"Screen inspection fallback failed: {e!s}"
 
 
 def gui_click_text(target_text: str) -> str:
@@ -135,10 +148,20 @@ def gui_click_text(target_text: str) -> str:
         print(f"  [VISION OCR] 🎯 Found '{matched_word}' at ({cx}, {cy}) (Confidence: {int(score * 100)}%)")
 
         # Glide cursor smoothly to text center
-        human_move_to(cx, cy, duration=0.45, label=f"🎯 CLICKING '{matched_word}'", mode="clicking")
-        safety.check()
-        time.sleep(0.1)
-        pyautogui.click()
+        from core.host_bridge import HostBridge
+        if HostBridge.is_wsl():
+            HostBridge.click_host_coordinate(cx, cy)
+        else:
+            try:
+                human_move_to(cx, cy, duration=0.45, label=f"🎯 CLICKING '{matched_word}'", mode="clicking")
+                safety.check()
+                time.sleep(0.1)
+                pyautogui.click()
+            except Exception as click_err:
+                if HostBridge.is_wsl() or "xauthority" in str(click_err).lower():
+                    HostBridge.click_host_coordinate(cx, cy)
+                else:
+                    raise
 
         try:
             from ui.cursor_overlay import hide_cursor_hud

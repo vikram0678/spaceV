@@ -268,11 +268,21 @@ class OmniParserEngine:
 
             cx, cy, label, conf = match
             print(f"  [OMNIPARSER] 🎯 Found '{label}' at ({cx}, {cy}) (Confidence: {int(conf * 100)}%)")
-            human_move_to(cx, cy, duration=0.45, label=f"🎯 CLICKING '{label.upper()}'", mode="clicking")
-            safety.check()
-            time.sleep(0.08)
-            import pyautogui
-            pyautogui.click()
+            from core.host_bridge import HostBridge
+            if HostBridge.is_wsl():
+                HostBridge.click_host_coordinate(cx, cy)
+            else:
+                try:
+                    human_move_to(cx, cy, duration=0.45, label=f"🎯 CLICKING '{label.upper()}'", mode="clicking")
+                    safety.check()
+                    time.sleep(0.08)
+                    import pyautogui
+                    pyautogui.click()
+                except Exception as click_err:
+                    if HostBridge.is_wsl() or "xauthority" in str(click_err).lower():
+                        HostBridge.click_host_coordinate(cx, cy)
+                    else:
+                        raise
 
             try:
                 from ui.cursor_overlay import hide_cursor_hud

@@ -2,8 +2,6 @@
 Screen Vision and Active Window Inspector for SpaceV.
 Allows SpaceV to perceive what is on your screen and read the clipboard.
 """
-import ctypes
-
 from config import USER_DESKTOP_DIR
 
 try:
@@ -20,21 +18,14 @@ except Exception:
 
 def get_active_window_info() -> str:
     """
-    Returns the title and process of the currently focused/active window on Windows.
+    Returns the title and process of the currently focused/active window cross-platform.
     """
     try:
-        title = ""
-        if hasattr(ctypes, "windll"):
-            user32 = ctypes.windll.user32
-            hwnd = user32.GetForegroundWindow()
-            length = user32.GetWindowTextLengthW(hwnd)
-            buff = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buff, length + 1)
-            title = buff.value.strip()
-
+        from core.host_bridge import host_bridge
+        title = host_bridge.get_active_window_title()
         screen_w, screen_h = pyautogui.size() if HAS_PYAUTOGUI else (1920, 1080)
 
-        if title:
+        if title and title != "Unknown Desktop Window":
             return f"Active Window: '{title}' (Screen Resolution: {screen_w}x{screen_h})"
         return f"Desktop / Windows Shell (Resolution: {screen_w}x{screen_h})"
     except Exception as e:
