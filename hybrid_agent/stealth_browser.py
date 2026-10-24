@@ -46,6 +46,15 @@ class StealthBrowserController:
         self._page: Page | None = None
         self._current_elements: list[DOMElement] = []
 
+    def is_available(self) -> bool:
+        """Checks if a browser session can be successfully started."""
+        if not HAS_PLAYWRIGHT:
+            return False
+        if self._page is not None:
+            return True
+        p = self.start()
+        return p is not None
+
     def start(self) -> Page | None:
         """Launches the stealth browser session."""
         if not HAS_PLAYWRIGHT:
@@ -55,116 +64,125 @@ class StealthBrowserController:
         if self._page:
             return self._page
 
-        self._playwright = sync_playwright().start()
-
-        user_agent = random.choice(USER_AGENTS)
-
-        # Launch options with anti-bot evasion arguments
-        launch_args = [
-            "--disable-blink-features=AutomationControlled",
-            "--disable-infobars",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-extensions",
-            "--start-maximized"
-        ]
-
-        # Prefer system's existing Chrome or Edge to avoid downloading extra browsers
-        browser_channel = None
         try:
-            self._browser = self._playwright.chromium.launch(
-                channel="msedge",
-                headless=self.headless,
-                args=launch_args
-            )
-            browser_channel = "msedge"
-        except Exception:
+            self._playwright = sync_playwright().start()
+
+            user_agent = random.choice(USER_AGENTS)
+
+            # Launch options with anti-bot evasion arguments
+            launch_args = [
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-extensions",
+                "--start-maximized"
+            ]
+
+            # Prefer system's existing Chrome or Edge to avoid downloading extra browsers
+            browser_channel = None
             try:
                 self._browser = self._playwright.chromium.launch(
-                    channel="chrome",
+                    channel="msedge",
                     headless=self.headless,
                     args=launch_args
                 )
-                browser_channel = "chrome"
+                browser_channel = "msedge"
             except Exception:
-                # Fallback to standard chromium
-                self._browser = self._playwright.chromium.launch(
-                    headless=self.headless,
-                    args=launch_args
-                )
-                browser_channel = "bundled"
+                try:
+                    self._browser = self._playwright.chromium.launch(
+                        channel="chrome",
+                        headless=self.headless,
+                        args=launch_args
+                    )
+                    browser_channel = "chrome"
+                except Exception:
+                    try:
+                        self._browser = self._playwright.chromium.launch(
+                            headless=self.headless,
+                            args=launch_args
+                        )
+                        browser_channel = "bundled"
+                    except Exception as e:
+                        logger.warning(f"[StealthBrowser] Could not launch Playwright browser: {e}")
+                        self._page = None
+                        return None
 
-        logger.info(f"[StealthBrowser] 🚀 Launched browser using channel: '{browser_channel}'")
+            logger.info(f"[StealthBrowser] 🚀 Launched browser using channel: '{browser_channel}'")
 
-        # Create context with realistic viewport and device scale factor
-        self._context = self._browser.new_context(
-            user_agent=user_agent,
-            viewport={"width": 1366, "height": 768},
-            device_scale_factor=1.0,
-            has_touch=False,
-            is_mobile=False,
-            permissions=["geolocation", "notifications"]
-        )
+            # Create context with realistic viewport and device scale factor
+            self._context = self._browser.new_context(
+                user_agent=user_agent,
+                viewport={"width": 1366, "height": 768},
+                device_scale_factor=1.0,
+                has_touch=False,
+                is_mobile=False,
+                permissions=["geolocation", "notifications"]
+            )
 
-        # Inject Camoufox anti-detect stealth scripts into every new document before page JS executes
-        self._context.add_init_script("""
-            // 1. Mask navigator.webdriver and automation flags
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            delete navigator.__proto__.webdriver;
+            # Inject Camoufox anti-detect stealth scripts into every new document before page JS executes
+            self._context.add_init_script("""
+                // 1. Mask navigator.webdriver and automation flags
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                delete navigator.__proto__.webdriver;
 
-            // 2. Coherent Hardware Concurrency & Memory
-            Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-            Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+                // 2. Coherent Hardware Concurrency & Memory
+                Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+                Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
 
-            // 3. Mock Chrome runtime
-            window.chrome = {
-                runtime: {},
-                loadTimes: function() {},
-                csi: function() {},
-                app: {}
-            };
+                // 3. Mock Chrome runtime
+                window.chrome = {
+                    runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {}
+                };
 
-            // 4. Mock plugins & languages
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [
-                    { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-                    { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' }
-                ]
-            });
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                // 4. Mock plugins & languages
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [
+                        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' }
+                    ]
+                });
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
 
-            // 5. Camoufox WebGL Vendor & Renderer Spoofing
-            const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function(param) {
-                if (param === 37445) return 'Google Inc. (NVIDIA)';
-                if (param === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)';
-                return getParameter.apply(this, arguments);
-            };
-            if (typeof WebGL2RenderingContext !== 'undefined') {
-                const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
-                WebGL2RenderingContext.prototype.getParameter = function(param) {
+                // 5. Camoufox WebGL Vendor & Renderer Spoofing
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(param) {
                     if (param === 37445) return 'Google Inc. (NVIDIA)';
                     if (param === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)';
-                    return getParameter2.apply(this, arguments);
+                    return getParameter.apply(this, arguments);
                 };
-            }
-
-            // 6. Camoufox Canvas Deterministic Noise
-            const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-            HTMLCanvasElement.prototype.toDataURL = function(type) {
-                const ctx = this.getContext('2d');
-                if (ctx && this.width > 0 && this.height > 0) {
-                    const imgData = ctx.getImageData(0, 0, Math.min(this.width, 10), Math.min(this.height, 10));
-                    for (let i = 0; i < imgData.data.length; i += 4) {
-                        imgData.data[i] = imgData.data[i] ^ 1; // 1-bit subtle noise
-                    }
+                if (typeof WebGL2RenderingContext !== 'undefined') {
+                    const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
+                    WebGL2RenderingContext.prototype.getParameter = function(param) {
+                        if (param === 37445) return 'Google Inc. (NVIDIA)';
+                        if (param === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+                        return getParameter2.apply(this, arguments);
+                    };
                 }
-                return originalToDataURL.apply(this, arguments);
-            };
-        """)
 
-        self._page = self._context.new_page()
-        return self._page
+                // 6. Camoufox Canvas Deterministic Noise
+                const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+                HTMLCanvasElement.prototype.toDataURL = function(type) {
+                    const ctx = this.getContext('2d');
+                    if (ctx && this.width > 0 && this.height > 0) {
+                        const imgData = ctx.getImageData(0, 0, Math.min(this.width, 10), Math.min(this.height, 10));
+                        for (let i = 0; i < imgData.data.length; i += 4) {
+                            imgData.data[i] = imgData.data[i] ^ 1; // 1-bit subtle noise
+                        }
+                    }
+                    return originalToDataURL.apply(this, arguments);
+                };
+            """)
+
+            self._page = self._context.new_page()
+            return self._page
+        except Exception as e:
+            logger.warning(f"[StealthBrowser] Browser initialization failed: {e}")
+            self._page = None
+            return None
 
     @property
     def page(self) -> Page:
@@ -175,6 +193,9 @@ class StealthBrowserController:
     def navigate(self, url: str) -> tuple[str, str]:
         """Navigates to URL and waits for network idle."""
         page = self.page
+        if page is None:
+            raise RuntimeError("Stealth browser engine is offline (no compatible browser binaries available on this host).")
+
         if not url.startswith("http"):
             url = f"https://{url}"
 
@@ -242,6 +263,28 @@ class StealthBrowserController:
             logger.debug(f"[StealthBrowser] Type error: {e}")
             return False
 
+    # Contract alias for DOM typing consistency
+    type_into_element = type_element_by_index
+
+    def navigate_or_fallback(self, url: str) -> str:
+        """
+        Supervised dual-plane navigation: attempts stealth browser rendering with CDP DOM.
+        If browser cannot start, times out, or fails, immediately falls back to Crawl4AI
+        raw HTTP markdown distillation without crashing the agent.
+        """
+        try:
+            p = self.page
+            if p is None:
+                raise RuntimeError("Stealth browser engine is offline.")
+            if not url.startswith("http"):
+                url = f"https://{url}"
+            p.goto(url, wait_until="domcontentloaded", timeout=15000)
+            return p.content()
+        except Exception as e:
+            logger.warning(f"[StealthBrowser] Live navigation failed ({e}); activating Crawl4AI fallback for: {url}")
+            from tools.scraper_tools import scrape_web_page_crawl4ai
+            return scrape_web_page_crawl4ai(url=url)
+
     def scroll(self, direction: str = "down", amount: int = 500) -> None:
         """Scrolls page up or down."""
         scroll_val = amount if direction == "down" else -amount
@@ -268,3 +311,19 @@ class StealthBrowserController:
         self._context = None
         self._browser = None
         self._playwright = None
+
+
+class ResilientBrowserSupervisor:
+    """
+    Session supervisor for high-reliability web perception (Milestone 3).
+    Ensures zero 'NoneType object has no attribute goto' crashes by falling back
+    to Crawl4AI raw HTTP extraction when live Playwright/CDP fails.
+    """
+    def __init__(self, headless: bool = False):
+        self.controller = StealthBrowserController(headless=headless)
+
+    def navigate_or_fallback(self, url: str) -> str:
+        return self.controller.navigate_or_fallback(url)
+
+    def close(self):
+        self.controller.close()

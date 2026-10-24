@@ -170,3 +170,35 @@ def get_wikipedia_summary(query: str) -> str:
             return f"No Wikipedia article found for '{query}'."
     except Exception as e:
         return f"Failed to search Wikipedia: {e!s}"
+
+
+def scrape_web_page_crawl4ai(url: str, max_chars: int = 12000) -> str:
+    """
+    High-throughput resilient web extraction inspired by crawl4ai.
+    Uses clean HTTP fetching with anti-bot headers and semantic markdown distillation.
+    Provides immediate zero-crash fallback when full Playwright headless browsers are offline or blocked.
+    """
+    import urllib.request
+    from tools.semantic_distiller import distill_html_to_markdown
+
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "https://" + url
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "DNT": "1"
+    }
+
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=12) as response:
+            html = response.read().decode("utf-8", errors="replace")
+
+        md = distill_html_to_markdown(html, max_chars=max_chars)
+        if md:
+            return md
+        return f"Retrieved web page from {url}, but no readable content was found."
+    except Exception as e:
+        return f"HTTP web extraction failed for {url}: {e!s}"
