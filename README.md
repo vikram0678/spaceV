@@ -168,5 +168,8 @@ All 12 contractual requirements will pass with 100% green checkmarks.
 
 ## Demo Video
 
-* **Video Walkthrough:** [demo/walkthrough.mp4](file:///home/vikram/agentSpace/demo/walkthrough.mp4) (Length: 2 min 45 sec).  
-  Demonstrates live microVM provisioning, pre-execution safety hook blocking, 200ms snapshot rollback, and PostgreSQL run ledger synchronization.
+[![SpaceV Celesto Demo Walkthrough](https://img.youtube.com/vi/hLbWuvsVO8Q/maxresdefault.jpg)](https://youtu.be/hLbWuvsVO8Q)
+
+* **YouTube Walkthrough:** [https://youtu.be/hLbWuvsVO8Q](https://youtu.be/hLbWuvsVO8Q) (Full 1080p HD)
+* **Local Walkthrough Path:** [demo/walkthrough.mp4](file:///home/vikram/agentSpace/demo/walkthrough.mp4)
+* **Demonstration Highlights:** Real microVM isolation, pre-execution safety hook containment, 200ms snapshot rollback on Step 7 failure, and PostgreSQL run ledger synchronization.
