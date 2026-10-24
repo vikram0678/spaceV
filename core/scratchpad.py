@@ -49,9 +49,20 @@ class SpaceVScratchpad:
         self.max_steps: int = 10
 
     def set_goal(self, goal: str):
-        """Sets or updates the primary task goal."""
+        """Sets or updates the primary task goal. Resets checklist when goal changes."""
+        clean_new = goal.strip().lower() if goal else ""
+        clean_old = self.goal.strip().lower() if self.goal else ""
+        if clean_old and clean_new != clean_old:
+            # Goal has changed: clean up previous turn's plan checklist
+            self.plan = []
+            self.current_step_index = 0
         self.goal = goal
         self.is_active = bool(goal)
+
+    def clear_plan(self):
+        """Clears the active plan checklist while preserving working memory notes."""
+        self.plan = []
+        self.current_step_index = 0
 
     def create_plan(self, steps: list[str]):
         """
