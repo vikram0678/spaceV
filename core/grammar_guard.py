@@ -39,6 +39,12 @@ class CreateFileSchema(BaseModel):
     file_name: str = Field(..., min_length=1, description="File path or name to create.")
     content: str = Field("", description="Initial content to write into the file.")
 
+class OpenTextEditorSchema(BaseModel):
+    file_name: str = Field("notes.txt", description="File name or relative/absolute path to open in editor.")
+    content: str = Field("", description="Initial content or code to write into the file.")
+    editor: str = Field("notepad", description="Text editor to use (notepad, code, gedit, etc.).")
+    location: str = Field("Desktop", description="Directory location (Desktop, Downloads, etc.).")
+
 class SetTimerSchema(BaseModel):
     minutes: float = Field(..., gt=0.0, le=1440.0, description="Duration of timer in minutes.")
 
@@ -77,6 +83,7 @@ TOOL_INPUT_SCHEMAS: dict[str, type[BaseModel]] = {
     "search_memory": SearchMemorySchema,
     "create_folder": CreateFolderSchema,
     "create_file": CreateFileSchema,
+    "open_text_editor": OpenTextEditorSchema,
     "set_timer": SetTimerSchema,
     "media_control": MediaControlSchema,
     "get_weather": GetWeatherSchema,

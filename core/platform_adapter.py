@@ -133,7 +133,8 @@ class PlatformAdapter:
         """
         Opens a URL in the user's default browser across Windows, WSL, macOS, and Linux.
         """
-        if not url.startswith("http://") and not url.startswith("https://"):
+        uri_schemes = ("http://", "https://", "ms-settings:", "file:", "mailto:", "about:", "chrome:")
+        if not any(url.lower().startswith(s) for s in uri_schemes):
             url = "https://" + url
 
         # 1. WSL: Bridge to Host Windows Browser
@@ -155,6 +156,100 @@ class PlatformAdapter:
             return f"Opened website: {url}"
         except Exception as e:
             return f"Failed to open URL '{url}': {e}"
+
+    @classmethod
+    def open_file(cls, file_path: str | Path, editor: str | None = None) -> str:
+        """
+        Opens a local file in the desktop editor cross-platform (WSL, Windows, macOS, Linux).
+        """
+        p = Path(file_path).resolve()
+        editor_str = (editor or "").strip().lower()
+
+        # 1. WSL: Bridge to Host Windows GUI
+        if cls.is_wsl():
+            try:
+                # Convert Linux path to Windows path using wslpath
+                res = subprocess.run(["wslpath", "-w", str(p)], capture_output=True, text=True, check=True)
+                win_path = res.stdout.strip()
+
+                if editor_str:
+                    clean_editor = WINDOWS_APP_MAP.get(editor_str, editor_str)
+                    subprocess.Popen(
+                        ["cmd.exe", "/c", "start", "", clean_editor, win_path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                    return f"Opened '{p.name}' in Windows {clean_editor}."
+                else:
+                    # Check for notepad.exe in WSL PATH as direct fast-path
+                    notepad_bin = shutil.which("notepad.exe")
+                    if notepad_bin:
+                        subprocess.Popen([notepad_bin, str(p)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        return f"Opened '{p.name}' in Notepad."
+
+                    subprocess.Popen(
+                        ["cmd.exe", "/c", "start", "", win_path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                    return f"Opened '{p.name}' on Windows desktop."
+            except Exception as e:
+                logger.warning(f"[PlatformAdapter] WSL open_file bridge failed: {e}")
+                # Fallback to direct notepad.exe in WSL PATH if present
+                notepad_bin = shutil.which("notepad.exe")
+                if notepad_bin:
+                    try:
+                        subprocess.Popen([notepad_bin, str(p)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        return f"Opened '{p.name}' in Notepad."
+                    except Exception:
+                        pass
+
+        # 2. Native Windows
+        if sys.platform == "win32":
+            try:
+                if editor_str:
+                    clean_editor = WINDOWS_APP_MAP.get(editor_str, editor_str)
+                    subprocess.Popen(f'start "" {clean_editor} "{p}"', shell=True)
+                    return f"Opened '{p.name}' in {clean_editor}."
+                import os
+                if hasattr(os, "startfile"):
+                    os.startfile(str(p))
+                else:
+                    subprocess.Popen(f'start "" "{p}"', shell=True)
+                return f"Opened '{p.name}' on Windows."
+            except Exception as e:
+                return f"Failed to open '{p.name}': {e}"
+
+        # 3. macOS
+        if sys.platform == "darwin":
+            try:
+                cmd = ["open", "-a", editor_str, str(p)] if editor_str else ["open", str(p)]
+                subprocess.Popen(cmd)
+                return f"Opened '{p.name}' on macOS."
+            except Exception as e:
+                return f"Failed to open '{p.name}': {e}"
+
+        # 4. Native Linux
+        if editor_str:
+            linux_bins = LINUX_APP_MAP.get(editor_str, [editor_str])
+            for b in linux_bins:
+                found = shutil.which(b)
+                if found:
+                    try:
+                        subprocess.Popen([found, str(p)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        return f"Opened '{p.name}' in Linux {b}."
+                    except Exception:
+                        pass
+
+        # Fallback to xdg-open
+        if shutil.which("xdg-open"):
+            try:
+                subprocess.Popen(["xdg-open", str(p)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return f"Opened '{p.name}' via xdg-open."
+            except Exception as e:
+                return f"Failed to open '{p.name}': {e}"
+
+        return f"File '{p.name}' prepared, but no GUI editor could be launched."
 
 
 platform_adapter = PlatformAdapter()

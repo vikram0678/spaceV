@@ -11,12 +11,12 @@ from typing import Any
 import requests
 
 from config import (
+    LLM_API_KEY,
+    LLM_BASE_URL,
+    LLM_MODEL,
+    LLM_PROVIDER,
     OLLAMA_BASE_URL,
     PRIMARY_MODEL,
-    LLM_PROVIDER,
-    LLM_BASE_URL,
-    LLM_API_KEY,
-    LLM_MODEL,
 )
 from core.cloud_client import UniversalBrainClient
 from core.code_mode import code_mode_engine
@@ -37,41 +37,103 @@ Key Persona & Interactivity Guidelines:
 5. Continuous Conversational Partnership: Keep the interaction smooth, lively, highly intelligent, and effortlessly collaborative.
 6. GUI & Canvas Mastery: If asked to draw or type on screen, leverage the autonomous GUI and Paint tools with surgical precision.
 7. Voice Pacing & Conciseness: Deliver responses in 1-3 crisp, natural, conversational sentences. Never output dense walls of text, raw markdown tables, or code syntax into conversational replies, ensuring seamless voice synthesis.
+8. Software Development & Editor Pipelines: When instructed to write a program, script, or algorithm in an editor (e.g. "write the anagram program in python3 in the vscode"):
+   - ALWAYS use `create_file` first to write the complete, functional, well-commented code to a file (e.g., 'anagram.py').
+   - Then use `open_text_editor(file_name='anagram.py', editor='code')` or `open_application('vscode')` to open the file in the editor for the user.
+   - Never open an empty editor or pretend to write code without creating the file on disk.
+9. Script Execution & Workstation Pipelines: When instructed to run, execute, or test a script, code file, or program (e.g. "now execute that program", "run the python script", "execute that in vscode"):
+   - Resolve the target file from the conversation context, working memory notes (e.g. `last_file_name`), or recent file creations.
+   - Use `run_python_script(file_name_or_path='...')` to execute Python scripts or `execute_terminal_command(command='...')` for shell/CLI execution.
+   - If the user specifically requested executing or viewing it in an editor like VS Code, call `open_text_editor(file_name='...', editor='code')` to bring the file into focus alongside execution.
+   - Do NOT repeatedly loop inspecting the scratchpad (`scratchpad_view`). Execute the action decisively.
+10. Celesto Sandbox Containment Policy (MANDATORY):
+   - When asked to clone external repositories (git clone), install untrusted packages (pip install), or execute downloaded scripts (curl | bash), ALWAYS call `detonate_in_sandbox` instead of `execute_terminal_command`.
+   - External code must NEVER touch the host filesystem directly; all untrusted code is quarantined inside the Celesto microVM.
+11. Workspace & Repository Exploration:
+   - When asked to inspect, list, explore, or examine the SpaceV codebase, repository, or project files (e.g. "what files are in this project", "inspect my SpaceV project", "check main.py"):
+   - ALWAYS use `list_workspace_files` to discover project files, and `read_file_content(file_name_or_path='...', location='Workspace')` to inspect project code.
+   - Do NOT restrict repository or project queries to Desktop files.
 """
 
 def parse_fallback_tool_calls(content: str) -> tuple[list[dict[str, Any]], str]:
     """
     Extracts tool calls from XML tags (<tools>, <tool_call>) or Markdown JSON blocks
-    emitted by local LLMs into the content field when native API parsing is bypassed.
+    emitted by LLMs into the content field when native API parsing is bypassed.
     Returns: (extracted_tool_calls, cleaned_content)
     """
     if not content or not isinstance(content, str):
         return [], content
 
     from core.grammar_guard import GrammarGuard, repair_json_syntax
-    from tools.registry import TOOL_FUNCTIONS
+    from tools.registry import TOOL_ALIASES, TOOL_FUNCTIONS
     extracted = []
 
-    def _validate_and_append(t_name: str, t_args: dict[str, Any]):
-        if t_name in TOOL_FUNCTIONS:
-            ok, valid_args, _ = GrammarGuard.recover_tool_arguments(t_name, t_args)
-            if ok:
-                extracted.append({"function": {"name": t_name, "arguments": valid_args}})
-            else:
-                extracted.append({"function": {"name": t_name, "arguments": t_args}})
+    def _validate_and_append(t_name: str, t_args: dict[str, Any], is_xml: bool = False):
+        canonical = TOOL_ALIASES.get(t_name, t_name)
+        if canonical in TOOL_FUNCTIONS:
+            ok, valid_args, _ = GrammarGuard.recover_tool_arguments(canonical, t_args)
+            entry = {
+                "id": f"call_{uuid.uuid4().hex[:8]}",
+                "type": "function",
+                "function": {"name": canonical, "arguments": valid_args if ok else t_args},
+                "intercepted_from_xml": is_xml
+            }
+            extracted.append(entry)
 
-    # 1. <tools>...</tools> or <tool_call>...</tool_call>
-    tag_matches = re.findall(r"<(?:tools|tool_call)>(.*?)</(?:tools|tool_call)>", content, re.DOTALL)
+    # 0. Qwen / Llama XML function tag format:
+    # <tool_call>\n<function=read_file>\n<parameter=file_path>main.py</parameter>\n</function>\n</tool_call>
+    # Also handles variant: <function name="read_file"><parameter name="file_path">main.py</parameter></function>
+    qwen_tool_blocks = re.findall(r"<function(?:=|\s+name=[\"']?)([a-zA-Z0-9_]+)[\"']?>(.*?)</function>", content, re.DOTALL)
+    for t_name, body in qwen_tool_blocks:
+        t_args = {}
+        param_matches = re.findall(r"<parameter(?:=|\s+name=[\"']?)([a-zA-Z0-9_]+)[\"']?>(.*?)</parameter>", body, re.DOTALL)
+        for p_name, p_val in param_matches:
+            val_clean = p_val.strip()
+            if (val_clean.startswith("{") and val_clean.endswith("}")) or (val_clean.startswith("[") and val_clean.endswith("]")):
+                try:
+                    val_clean = json.loads(val_clean)
+                except Exception:
+                    pass
+            t_args[p_name] = val_clean
+        if t_name:
+            _validate_and_append(t_name, t_args, is_xml=True)
+
+    # 1. <tools>...</tools> or <tool_call>...</tool_call> (handles both closed and unclosed tags)
+    tag_matches = re.findall(r"<(?:tools|tool_call)>(.*?)(?:</(?:tools|tool_call)>|$)", content, re.DOTALL)
     for block in tag_matches:
+        block_str = block.strip()
+        if not block_str:
+            continue
         try:
-            repaired = repair_json_syntax(block)
+            # Check for prefix style: e.g. open_text_editor\n{"file_name": "script.py"}
+            prefix_match = re.match(r"^([a-zA-Z0-9_]+)\s*(\{.*\})$", block_str, re.DOTALL)
+            if prefix_match:
+                t_name = prefix_match.group(1).strip()
+                t_json = repair_json_syntax(prefix_match.group(2))
+                t_args = json.loads(t_json)
+                if isinstance(t_args, dict):
+                    _validate_and_append(t_name, t_args, is_xml=True)
+                    continue
+
+            repaired = repair_json_syntax(block_str)
             data = json.loads(repaired)
-            if isinstance(data, dict) and data.get("name"):
-                _validate_and_append(data.get("name"), data.get("arguments", {}))
+            if isinstance(data, dict):
+                name = data.get("name") or data.get("tool") or data.get("function", {}).get("name")
+                args = data.get("arguments") or data.get("args") or data.get("function", {}).get("arguments", {})
+                if name:
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except Exception:
+                            args = {"raw_input": args}
+                    _validate_and_append(name, args, is_xml=True)
             elif isinstance(data, list):
                 for item in data:
-                    if isinstance(item, dict) and item.get("name"):
-                        _validate_and_append(item.get("name"), item.get("arguments", {}))
+                    if isinstance(item, dict):
+                        name = item.get("name") or item.get("tool") or item.get("function", {}).get("name")
+                        args = item.get("arguments") or item.get("args") or item.get("function", {}).get("arguments", {})
+                        if name:
+                            _validate_and_append(name, args, is_xml=True)
         except Exception:
             pass
 
@@ -82,8 +144,11 @@ def parse_fallback_tool_calls(content: str) -> tuple[list[dict[str, Any]], str]:
             try:
                 repaired = repair_json_syntax(block)
                 data = json.loads(repaired)
-                if isinstance(data, dict) and data.get("name"):
-                    _validate_and_append(data.get("name"), data.get("arguments", {}))
+                if isinstance(data, dict):
+                    name = data.get("name") or data.get("tool")
+                    args = data.get("arguments") or data.get("args") or {}
+                    if name:
+                        _validate_and_append(name, args, is_xml=False)
             except Exception:
                 pass
 
@@ -95,13 +160,15 @@ def parse_fallback_tool_calls(content: str) -> tuple[list[dict[str, Any]], str]:
                 repaired = repair_json_syntax(block)
                 data = json.loads(repaired)
                 if isinstance(data, dict) and data.get("name"):
-                    _validate_and_append(data.get("name"), data.get("arguments", {}))
+                    _validate_and_append(data.get("name"), data.get("arguments", {}), is_xml=False)
             except Exception:
                 pass
 
-    clean_content = re.sub(r"<(?:tools|tool_call)>.*?</(?:tools|tool_call)>", "", content, flags=re.DOTALL)
+    clean_content = re.sub(r"<function(?:=|\s+name=[\"']?)[a-zA-Z0-9_]+[\"']?>.*?</function>", "", content, flags=re.DOTALL)
+    clean_content = re.sub(r"<(?:tools|tool_call)>.*?(?:</(?:tools|tool_call)>|$)", "", clean_content, flags=re.DOTALL)
     clean_content = re.sub(r"```(?:json)?\s*\{.*?\"name\"\s*:\s*\"[a-zA-Z0-9_]+\".*?\}\s*```", "", clean_content, flags=re.DOTALL)
-    clean_content = re.sub(r"\{\s*\"name\"\s*:\s*\"[a-zA-Z0-9_]+\"\s*,\s*\"arguments\"\s*:\s*\{.*?\}\s*\}", "", clean_content, flags=re.DOTALL).strip()
+    clean_content = re.sub(r"\{\s*\"name\"\s*:\s*\"[a-zA-Z0-9_]+\"\s*,\s*\"arguments\"\s*:\s*\{.*?\}\s*\}", "", clean_content, flags=re.DOTALL)
+    clean_content = re.sub(r"</?(?:tools|tool_call|function|parameter)[^>]*>", "", clean_content).strip()
     return extracted, clean_content
 
 class OllamaAgent:
@@ -121,6 +188,7 @@ class OllamaAgent:
             fallback_base_url=self.base_url,
             fallback_model=PRIMARY_MODEL
         )
+        self.active_paused_frame: dict[str, Any] | None = None
         self._verify_model()
 
     def _verify_model(self):
@@ -136,6 +204,7 @@ class OllamaAgent:
     def reset_conversation(self):
         """Clears chat history while keeping the system prompt."""
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.active_paused_frame = None
 
     def chat_stream(self, user_prompt: str, tool_callback: Callable | None = None, token_callback: Callable | None = None) -> str:
         """
