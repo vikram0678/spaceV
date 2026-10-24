@@ -3,6 +3,7 @@ SpaceV Celesto MicroVM Engine & Lifecycle Driver.
 Orchestrates hardware-isolated sandboxes with snapshot checkpoints,
 200ms rollbacks, network policies, and zero-leak lifecycle hygiene.
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,19 +22,14 @@ class SandboxExecutionResult:
         self.exit_code = exit_code
         self.stdout = stdout
         self.stderr = stderr
-        self.ok = (exit_code == 0)
+        self.ok = exit_code == 0
 
 
 class CelestoSandboxInstance:
     """Represents an active, isolated Celesto MicroVM sandbox."""
 
     def __init__(
-        self,
-        name: str,
-        os_type: str = "alpine",
-        memory_mb: int = 512,
-        disk_mb: int = 2048,
-        network_mode: str = "on"
+        self, name: str, os_type: str = "alpine", memory_mb: int = 512, disk_mb: int = 2048, network_mode: str = "on"
     ):
         if not re.match(r"^sbx-[a-z0-9]{8,}$", name):
             raise ValueError(f"Sandbox name must match '^sbx-[a-z0-9]{{8,}}$': {name}")
@@ -54,13 +50,10 @@ class CelestoSandboxInstance:
         """Attempts to initialize via Celesto SDK if live KVM/cloud is available."""
         try:
             from celesto import Computer
+
             # If running locally with KVM or cloud provider
             if settings.celesto_provider == "cloud":
-                self._live_computer = Computer(
-                    name=self.name,
-                    provider="cloud",
-                    api_key=settings.celesto_api_key
-                )
+                self._live_computer = Computer(name=self.name, provider="cloud", api_key=settings.celesto_api_key)
             else:
                 # Local Firecracker
                 self._live_computer = Computer.get(self.name, local=True)
@@ -99,11 +92,7 @@ class CelestoSandboxInstance:
 
     def snapshot(self, snapshot_id: str) -> bool:
         """Captures hardware state (RAM + Copy-on-Write disk) in ~200ms."""
-        self.snapshots[snapshot_id] = {
-            "snapshot_id": snapshot_id,
-            "created_at": time.time(),
-            "state": "saved"
-        }
+        self.snapshots[snapshot_id] = {"snapshot_id": snapshot_id, "created_at": time.time(), "state": "saved"}
         if self._live_computer and hasattr(self._live_computer, "snapshot"):
             try:
                 self._live_computer.snapshot(snapshot_id=snapshot_id, resume_source=True)
@@ -146,11 +135,7 @@ class CelestoFleetManager:
     def __init__(self):
         self.active_sandboxes: dict[str, CelestoSandboxInstance] = {}
 
-    def create(
-        self,
-        name: str,
-        network_mode: str = "on"
-    ) -> CelestoSandboxInstance:
+    def create(self, name: str, network_mode: str = "on") -> CelestoSandboxInstance:
         sbx = CelestoSandboxInstance(name=name, network_mode=network_mode)
         self.active_sandboxes[name] = sbx
         return sbx

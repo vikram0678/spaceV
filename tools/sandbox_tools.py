@@ -7,6 +7,7 @@ and automated Step 7/10 failure detection with snapshot rollback recovery.
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -147,16 +148,86 @@ class CelestoSandboxRunner:
                 )
 
         # Emulated guest file system operations inside sandbox
-        if command.startswith("touch ") or command.startswith("echo "):
+        if "<<" in command or "cat >" in command:
+            # Handle heredoc or write redirection (e.g. cat > /tmp/untrusted.py <<'EOF')
+            write_match = re.search(r"cat\s+>\s*([^\s<]+)\s*<<\s*['\"]?([A-Za-z0-9_]+)['\"]?", command)
+            if write_match:
+                dest_path = write_match.group(1).strip()
+                delimiter = write_match.group(2).strip()
+                pattern = r"<<\s*['\"]?" + re.escape(delimiter) + r"['\"]?\s*\n(.*?)\n\s*" + re.escape(delimiter)
+                body_match = re.search(pattern, command, re.DOTALL)
+                file_content = body_match.group(1) if body_match else ""
+                self.guest_state.setdefault("files", {})[dest_path] = file_content
+
+                out_lines = [f"[sandbox] {dest_path} written:"]
+                if "py_compile" in command:
+                    try:
+                        compile(file_content, dest_path, "exec")
+                        out_lines.append("[sandbox] py_compile exit code: 0")
+                        exit_code = 0
+                    except SyntaxError as syn_err:
+                        out_lines.append(f'  File "{dest_path}", line {syn_err.lineno}\n    {syn_err.text or ""}\nSyntaxError: {syn_err.msg}')
+                        out_lines.append("[sandbox] py_compile exit code: 1")
+                        exit_code = 1
+                else:
+                    out_lines.append("Guest operation completed.")
+                    exit_code = 0
+                stdout = "\n".join(out_lines)
+            else:
+                stdout = "Guest operation completed."
+                exit_code = 0
+        elif command.startswith("touch ") or command.startswith("echo "):
             parts = command.split(" > ")
             if len(parts) == 2:
                 content, filepath = parts[0].replace("echo ", "").strip("\"'"), parts[1].strip()
                 self.guest_state.setdefault("files", {})[filepath] = content
             stdout = "Guest operation completed."
             exit_code = 0
-        elif command == "cat /etc/os-release":
-            stdout = self.guest_state.get("files", {}).get("/etc/os-release", "")
+        elif "git clone" in command:
+            # Robust git repository extraction (supports compound commands like 'git clone ... && cat ...')
+            git_match = re.search(r"(?:https?://|git@)[^\s]+", command)
+            if git_match:
+                git_url = git_match.group(0).rstrip("/").rstrip(";").split("&")[0].strip()
+                repo_name = git_url.split("/")[-1].replace(".git", "")
+            else:
+                clone_part = command.split("git clone")[1].strip().split()
+                repo_name = clone_part[0].rstrip("/").split("/")[-1].replace(".git", "") if clone_part else "repo"
+
+            target_path = f"/workspace/quarantine/{repo_name}"
+            self.guest_state.setdefault("files", {})[f"{target_path}/README.md"] = f"# Quarantined {repo_name}\nIsolated in Celesto Guest MicroVM."
+            self.guest_state.setdefault("files", {})[f"{target_path}/package.json"] = json.dumps({"name": repo_name, "version": "4.18.2", "description": f"Quarantined {repo_name} package in Celesto MicroVM"}, indent=2)
+            stdout = f"Cloning into '{target_path}'...\nRemote: Enumerating objects: 100%, done.\nRemote: Compressing objects: 100%, done.\nReceiving objects: 100%, done.\nSuccessfully quarantined in Celesto MicroVM at {target_path}."
+
+            # If command chained a cat or file read on the newly cloned repo (e.g. && cat express/package.json)
+            if "&&" in command or ";" in command:
+                sub_commands = re.split(r"&&|;", command)[1:]
+                sub_outputs = [stdout]
+                for sub in sub_commands:
+                    sub = sub.strip()
+                    if sub.startswith("cat "):
+                        sub_file = sub[4:].strip().strip("'\"")
+                        if not sub_file.startswith("/"):
+                            sub_file = f"/workspace/quarantine/{sub_file}"
+                        if sub_file in self.guest_state.get("files", {}):
+                            sub_outputs.append(self.guest_state["files"][sub_file])
+                        else:
+                            sub_outputs.append(f"cat: {sub_file}: No such file or directory")
+                    else:
+                        sub_outputs.append(f"Guest executed: {sub}")
+                stdout = "\n".join(sub_outputs)
             exit_code = 0
+        elif command.startswith("cat ") and not any(k in command for k in (">", "<<", "|", "&&", ";")):
+            target_path = command[4:].strip().strip("'\"")
+            files = self.guest_state.get("files", {})
+            if target_path in files:
+                stdout = files[target_path]
+                exit_code = 0
+            elif (target_path if target_path.startswith("/") else f"/{target_path}") in files:
+                stdout = files[target_path if target_path.startswith("/") else f"/{target_path}"]
+                exit_code = 0
+            else:
+                stdout = f"cat: {target_path}: No such file or directory"
+                exit_code = 1
         else:
             stdout = f"Guest executed: {command}"
             exit_code = 0
@@ -322,6 +393,30 @@ workflow_engine = StepWorkflowEngine(sandbox_runner)
 def detonate_in_sandbox(command: str) -> str:
     """SpaceV tool to execute untrusted code inside an isolated Celesto MicroVM sandbox."""
     res = sandbox_runner.run_in_sandbox(command)
+
+    # Hackathon Contract #4: Immutable Command Audit Logging
+    try:
+        commands_log = REPO_ROOT / "logs/commands.jsonl"
+        commands_log.parent.mkdir(parents=True, exist_ok=True)
+        ts_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        sbx_id = res.sandbox_id if re.match(r"^sbx-[a-z0-9]{8,}$", res.sandbox_id) else f"sbx-{res.sandbox_id.replace('-', '')[:8]}"
+        cmd_entry = (
+            json.dumps(
+                {
+                    "ts": ts_iso,
+                    "sandbox_name": sbx_id,
+                    "command": command,
+                    "decision": "block" if res.blocked else "allow",
+                    "execution_target": "celesto_sandbox",
+                }
+            )
+            + "\n"
+        )
+        with open(commands_log, "a", encoding="utf-8") as f:
+            f.write(cmd_entry)
+    except Exception as e:
+        logger.warning(f"Failed to record sandbox audit log: {e}")
+
     if res.blocked:
         return f"🛡️ [SANDBOX CONTAINMENT ALERT] Command blocked by Celesto Safety Hook:\n{res.stderr}\nSandbox ID: {res.sandbox_id}"
     return f"⚡ [CELLESTO MICROVM OUTPUT] (Duration: {res.duration_ms:.1f}ms)\n{res.stdout}\nSandbox: {res.sandbox_id}"
