@@ -2,23 +2,23 @@
   "jobs": [
     {
       "sandbox_name": "sbx-parall01",
-      "started_at": "2026-10-22T09:15:25.497996+00:00"
+      "started_at": "2026-10-23T03:26:30.866932+00:00"
     },
     {
       "sandbox_name": "sbx-parall02",
-      "started_at": "2026-10-22T09:15:25.498033+00:00"
+      "started_at": "2026-10-23T03:26:30.866989+00:00"
     },
     {
       "sandbox_name": "sbx-parall03",
-      "started_at": "2026-10-22T09:15:25.498037+00:00"
+      "started_at": "2026-10-23T03:26:30.866994+00:00"
     },
     {
       "sandbox_name": "sbx-parall04",
-      "started_at": "2026-10-22T09:15:25.498039+00:00"
+      "started_at": "2026-10-23T03:26:30.866997+00:00"
     },
     {
       "sandbox_name": "sbx-parall05",
-      "started_at": "2026-10-22T09:15:25.498041+00:00"
+      "started_at": "2026-10-23T03:26:30.867001+00:00"
     }
   ],
   "breakage_notes": "Observed KVM vCPU scheduler latency when scaling past 5 concurrent microVMs due to host thread contention; memory and disk I/O remained stable under 3.5GB total allocation with zero port collision."
