@@ -29,6 +29,12 @@ class FastRouter:
         """
         text = user_prompt.strip().lower()
 
+        # Cognitive Reflex Gatekeeper (Kahneman System 1 vs System 2 Separation)
+        # Prevents generative programming, composite workflows, or deep research from false reflex hijacking
+        from core.reflex_gatekeeper import ReflexGatekeeper
+        if ReflexGatekeeper.should_bypass_fast_router(user_prompt):
+            return None
+
         # 0. Instant Greetings, What's Up & Casual Chit-Chat (0ms)
         greeting_pattern = (
             r"^(?:hello|hi|hey|yo|sup|howdy|good\s+(?:morning|afternoon|evening|night))"
@@ -77,6 +83,19 @@ class FastRouter:
                         return ("resolve_disambiguation", opt_val, f"Understood, Sir. Saved **'{label}'** for {domain.capitalize()} in memory.\n\nResuming your suspended request: **'{suspended_task}'**...")
 
                 return ("resolve_disambiguation", opt_val, f"Understood, Sir. Saved preference **'{label}'** for {domain.capitalize()}. I will automatically remember this choice.")
+
+        # Tier 1: Aurelio Semantic-Router / SpaceV Vector Centroid Fast-Path (<0.1ms)
+        # Bypasses LLM and brittle regex sprawl for natural phrasing across all core desktop actions
+        try:
+            from core.semantic_router_engine import semantic_router_engine
+            semantic_match = semantic_router_engine.route(user_prompt)
+            if semantic_match:
+                intent_name, _confidence, _latency_ms = semantic_match
+                dispatched = semantic_router_engine.dispatch(intent_name, user_prompt=user_prompt)
+                if dispatched:
+                    return dispatched
+        except Exception:
+            pass
 
         # 0.1 Gratitude & Politeness (0ms)
         if re.search(r"^(?:thank\s+you|thanks(?:\s+a\s+lot)?|appreciate\s+it|good\s+job|great\s+job|nice\s+work|awesome|well\s+done)(?:\s+(?:spacev|space\s+v|buddy|bro))?$", text):
@@ -146,6 +165,16 @@ class FastRouter:
             snap = take_screen_snapshot()
             return ("take_screen_snapshot", snap, "Captured full screen snapshot for you, Sir. Saved safely to your Desktop.")
 
+                # 6.5 System Display Brightness Fast-Path (Deterministic WMI)
+        bright_match = re.search(r"(?:brightness|display brightness).*?(\d{1,3})%?|(\d{1,3})%?.*?(?:brightness)", text)
+        if bright_match and any(w in text for w in ["set", "decrease", "increase", "change", "to", "dim", "lower"]):
+            val_str = bright_match.group(1) or bright_match.group(2)
+            if val_str and val_str.isdigit():
+                val = int(val_str)
+                from tools.system_tools import set_system_brightness
+                res = set_system_brightness(val)
+                return ("set_system_brightness", res, f"Adjusted primary display brightness to {val}%, Sir.")
+
         # 7. Media & Volume Controls (Instant Physical Keys)
         if re.search(r"^(pause|pause music|resume|resume music|play music|play pause|toggle music)$", text):
             res = media_control("play_pause")
@@ -170,6 +199,21 @@ class FastRouter:
         if re.search(r"^(volume down|vol down|decrease volume|quieter|lower volume|turn down volume)$", text):
             res = media_control("volume_down")
             return ("media_control", res, "Decreased volume level, Sir.")
+
+        # 7.5 Display Brightness Control ("decrease brightness to 50%", "open settings and decrease brightness to 50%", "set brightness 60")
+        bright_match = re.search(
+            r"^(?:(?:please|can\s+you|could\s+you|hey|spacev)\s+)?(?:open\s+settings\s+(?:and\s+)?|go\s+to\s+settings\s+(?:and\s+)?)?"
+            r"(?:decrease|increase|set|change|lower|turn|dim|boost|adjust)?\s*(?:the\s+)?brightness\s*(?:to|at|by|=)?\s*(\d{1,3})?%?$",
+            text
+        )
+        if bright_match:
+            from tools.system_tools import set_system_brightness
+            raw_val = bright_match.group(1)
+            target_level = int(raw_val) if raw_val is not None else (
+                30 if any(w in text for w in ["dim", "lower", "decrease"]) else 80
+            )
+            res = set_system_brightness(target_level)
+            return ("set_system_brightness", res, res)
 
         # 8. Lock Workstation
         if re.search(r"^(lock screen|lock pc|lock workstation|lock computer|lock windows)$", text):
@@ -236,17 +280,24 @@ class FastRouter:
 
         # 16. YouTube Video & Music Playback ("open chrome open youtube play...", "play ... on youtube", "search youtube for...")
         yt_query = None
-        m_yt1 = re.match(r"^(?:please\s+)?(?:open\s+(?:chrome|browser|web\s+browser)\s+)?open\s+youtube\s+(?:and\s+)?(?:play\s+|search\s+for\s+)?(.+)$", text)
+        m_yt1 = re.match(
+            r"^(?:(?:hey|hi|hello|please)\s+)?(?:open\s+(?:chrome|browser|web\s+browser)\s+)?(?:open\s+)?youtube\s+(?:and\s+)?(?:play\s+|search\s+(?:for\s+)?)?(.+?)(?:\s+(?:play(?:\s+also)?|video|song))?$",
+            text
+        )
         if m_yt1:
-            yt_query = m_yt1.group(1).strip()
+            raw_q = m_yt1.group(1).strip()
+            raw_q = re.sub(r"^(?:play|search\s+for|search)\s+", "", raw_q).strip()
+            raw_q = re.sub(r"\s+(?:play(?:\s+also)?|video|song)$", "", raw_q).strip()
+            if raw_q:
+                yt_query = raw_q
         else:
-            m_yt2 = re.match(r"^(?:please\s+)?play\s+(.+?)(?:\s+(?:on|in)\s+youtube|\s+video|\s+song)?$", text)
+            m_yt2 = re.match(r"^(?:(?:hey|hi|hello|please)\s+)?play\s+(.+?)(?:\s+(?:on|in)\s+youtube|\s+video|\s+song)?$", text)
             if m_yt2:
                 candidate = m_yt2.group(1).strip()
                 if candidate not in ["music", "song", "audio", "pause", ""]:
                     yt_query = candidate
             else:
-                m_yt3 = re.match(r"^(?:please\s+)?(?:search\s+youtube\s+for|youtube\s+(?:play|search))\s+(.+)$", text)
+                m_yt3 = re.match(r"^(?:(?:hey|hi|hello|please)\s+)?(?:search\s+youtube\s+for|youtube\s+(?:play|search))\s+(.+)$", text)
                 if m_yt3:
                     yt_query = m_yt3.group(1).strip()
 
@@ -339,8 +390,8 @@ class FastRouter:
             from core.semantic_router_engine import semantic_router_engine
             semantic_match = semantic_router_engine.route(user_prompt)
             if semantic_match:
-                intent_name, confidence, latency_ms = semantic_match
-                dispatched = semantic_router_engine.dispatch(intent_name)
+                intent_name, _confidence, _latency_ms = semantic_match
+                dispatched = semantic_router_engine.dispatch(intent_name, user_prompt=user_prompt)
                 if dispatched:
                     return dispatched
         except Exception:
