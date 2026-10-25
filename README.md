@@ -8,6 +8,11 @@ SpaceV is an autonomous cybernetic operating copilot and security detonator. Pow
 
 ---
 
+
+[![SpaceV Live Demo](demo/walkthrough.gif)](https://youtu.be/hLbWuvsVO8Q)
+
+---
+
 ## Architecture Diagram
 
 ```mermaid
@@ -124,15 +129,22 @@ SpaceV handles mid-task crashes through a deterministic state machine:
 * **Rollback (Our Choice):** Restores clean RAM and copy-on-write disk state in **$< 200\text{ ms}$**, eliminating tainted files while avoiding a cold reboot.
 
 ---
-
 ## Setup
 
-Follow these steps to reproduce the evaluation and start the SpaceV control plane in **under 10 minutes**:
+Follow these steps to reproduce the evaluation and start SpaceV in **under 10 minutes**:
 
-### 1. Prerequisites
-* Linux host with KVM enabled (or Windows 11 with WSL2).
-* Docker Desktop or Docker Engine with Docker Compose.
-* Python 3.11+.
+### Prerequisites
+* **Any OS:** Windows 10/11, macOS, or Linux (or Windows with WSL2).
+* **Docker:** Docker Desktop or Docker Engine with Docker Compose.
+* **Python:** Version 3.11+.
+
+---
+
+### 1. Clone & Configure
+```bash
+git clone https://github.com/vikram0678/spaceV.git
+cd spaceV
+```
 
 ### 2. Configure Environment
 ```bash
@@ -140,7 +152,7 @@ cp .env.example .env
 # Edit .env placeholders if using Celesto Cloud or hosted LLM endpoints
 ```
 
-### 3. Launch Trusted Control Plane
+### 3. Launch Trusted Control Plane (Docker)
 ```bash
 docker-compose up --build -d
 ```
@@ -148,7 +160,7 @@ Both `spacev-ledger` (Postgres) and `spacev-api` (FastAPI) will become healthy w
 
 ### 4. Verify API Health & Seed Row
 ```bash
-# Verify health
+# Verify API health
 curl -s http://localhost:8080/health
 # Expected: {"status": "ok"}
 
@@ -159,17 +171,23 @@ curl -s http://localhost:8080/api/runs
 
 ### 5. Run the Automated Contract Test Suite
 ```bash
+# 1. Create and activate virtual environment
+python -m venv .venv
+
+# On Linux / macOS / WSL:
+source .venv/bin/activate   
+
+# On Windows:
+.venv\Scripts\activate
+
+# 2. Install dependencies & run tests
 pip install -r requirements.txt
 pytest tests/test_reports.py -v
 ```
 All 12 contractual requirements will pass with 100% green checkmarks.
 
----
-
-## Demo Video
-
-[![SpaceV Celesto Demo Walkthrough](https://img.youtube.com/vi/hLbWuvsVO8Q/maxresdefault.jpg)](https://youtu.be/hLbWuvsVO8Q)
-
-* **YouTube Walkthrough:** [https://youtu.be/hLbWuvsVO8Q](https://youtu.be/hLbWuvsVO8Q) (Full 1080p HD)
-* **Local Walkthrough Path:** [demo/walkthrough.mp4](file:///home/vikram/agentSpace/demo/walkthrough.mp4)
-* **Demonstration Highlights:** Real microVM isolation, pre-execution safety hook containment, 200ms snapshot rollback on Step 7 failure, and PostgreSQL run ledger synchronization.
+### 6. Launch Desktop Assistant (GUI & Voice Mode)
+```bash
+python main.py
+```
+*(On Windows, you can also simply double-click `run_spacev.bat`)*.

@@ -1,0 +1,46 @@
+# 1. Virtual Environments (Prevents copying 500MB+ of local laptop packages)
+.venv/
+
+# 2. Git History & Configuration
+.git/
+.gitignore
+
+# 3. Python Cache & Test Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+
+# 4. Heavy Video & Media Files
+demo/
+*.mp4
+*.mkv
+*.png
+*.jpg
+
+# 5. Secrets & Live Local Configurations (Strict Security)
+.env
+.env.*
+!.env.example
+
+# 6. Local Database Files & Temporary Memory
+*.db
+*.sqlite3
+spacev_temporal_memory.db
+spacev_vector_memory.db
+spacev_task_ledger.db
+
+# 7. Local Drafts, Scratchpads & Notes
+zplan/
+scratch/
+temp/
+Stirling-PDF/
+etools/
+
+
+# 8. OS and IDE Temp Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

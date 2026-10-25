@@ -33,3 +33,5 @@ zplan/
 Stirling-PDF/
 .gateway_cooldowns.json
 logs/spacev_flight_recorder.jsonl
+
+eto/
