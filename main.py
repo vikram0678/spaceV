@@ -8,8 +8,10 @@ from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from config import APP_NAME, PRIMARY_MODEL
+from core.brain_orchestrator import HybridBrainAgent, SpaceVAgent
+# Backward-compatibility alias
+OllamaAgent = HybridBrainAgent
 from core.hotkey_listener import GlobalHotkeyListener
-from core.ollama_client import OllamaAgent
 from ui.audio_effects import play_startup_sound
 from ui.chat_window import ChatWindow
 from ui.floating_icon import FloatingIcon
