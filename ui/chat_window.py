@@ -541,6 +541,29 @@ class ChatWindow(QWidget):
         self.state_changed.emit("IDLE")
         # Continuous Conversational Loop (Google Assistant / Siri Style)
         # Suppress loop if muted, if paused, or if the user ended the conversation ('bye', 'thank you', etc.)
+
+        # if (
+        #     AUTO_LISTEN_FOLLOWUP
+        #     and tts.is_enabled
+        #     and not getattr(self, "_last_turn_was_exit", False)
+        #     and self.wake_detector
+        #     and self.wake_detector.isRunning()
+        #     and not getattr(self.wake_detector, "_paused", False)
+        # ):
+
+        #     def _activate_clean_conversational_turn():
+        #         if self.wake_detector:
+        #             if hasattr(self.wake_detector, "recorder") and self.wake_detector.recorder:
+        #                 self.wake_detector.recorder.flush()
+        #             self.wake_detector.start_conversational_turn(timeout_sec=7.5)
+
+        #     QTimer.singleShot(350, _activate_clean_conversational_turn)
+        # elif self._pending_auto_listen and self.companion.is_enabled:
+        #     self._pending_auto_listen = False
+        #     QTimer.singleShot(400, self.toggle_mic_listening)
+        # Only open conversational window when assistant has completely finished speaking all queued sentences
+        if tts.is_speaking:
+            return
         if (
             AUTO_LISTEN_FOLLOWUP
             and tts.is_enabled
@@ -549,10 +572,15 @@ class ChatWindow(QWidget):
             and self.wake_detector.isRunning()
             and not getattr(self.wake_detector, "_paused", False)
         ):
-            QTimer.singleShot(350, lambda: self.wake_detector.start_conversational_turn(timeout_sec=7.5))
-        elif self._pending_auto_listen and self.companion.is_enabled:
-            self._pending_auto_listen = False
-            QTimer.singleShot(400, self.toggle_mic_listening)
+
+            def _activate_clean_conversational_turn():
+                # Only open conversational turn if user has NOT paused/muted the mic!
+                if self.wake_detector and not tts.is_speaking and not getattr(self.wake_detector, "_paused", False):
+                    if hasattr(self.wake_detector, "recorder") and self.wake_detector.recorder:
+                        self.wake_detector.recorder.flush()
+                    self.wake_detector.start_conversational_turn(timeout_sec=7.5)
+
+            QTimer.singleShot(350, _activate_clean_conversational_turn)
 
     def on_error(self, error_message: str):
         self.status_label.hide()
@@ -764,16 +792,29 @@ class ChatWindow(QWidget):
         tts.stop()
         self.companion.record_activity()
 
-        # If conversational wake engine is running and active:
-        if self.wake_detector and self.wake_detector.isRunning() and not getattr(self.wake_detector, "_paused", False):
-            if getattr(self.wake_detector, "is_conversational_mode", False):
-                # Clicking mic while listening halts the turn
-                self.wake_detector.end_conversational_turn()
+        # True Hardware Toggle:
+        if self.wake_detector and self.wake_detector.isRunning():
+            is_paused = getattr(self.wake_detector, "_paused", False)
+            if not is_paused:
+                # If mic is currently active -> Shut it down completely (True STOP)
+                self.wake_detector.pause()
+                self.btn_mic.setProperty("listening", "false")
+                self.btn_mic.setText("🎙️")
+                self.btn_mic.style().unpolish(self.btn_mic)
+                self.btn_mic.style().polish(self.btn_mic)
                 self.on_conversational_state_changed("STANDBY")
+                print("[MIC] 🔇 Microphone hardware stopped by user.")
                 return
             else:
-                self.wake_detector.start_conversational_turn(timeout_sec=8.5)
+                # If mic is currently stopped -> Turn it ON and start conversational listening
+                self.wake_detector.resume()
+                self.wake_detector.start_conversational_turn(timeout_sec=7.5)
+                self.btn_mic.setProperty("listening", "true")
+                self.btn_mic.setText("🎙️...")
+                self.btn_mic.style().unpolish(self.btn_mic)
+                self.btn_mic.style().polish(self.btn_mic)
                 self.on_conversational_state_changed("LISTENING")
+                print("[MIC] 🎙️ Microphone hardware activated by user.")
                 return
 
         listener = getattr(self, "voice_listener", None)
