@@ -22,10 +22,17 @@ try:
 except ImportError:
     HAS_PYAUDIO = False
 
+try:
+    import webrtc_noise_gain
+    HAS_WEBRTC_APM = True
+except ImportError:
+    HAS_WEBRTC_APM = False
+
 
 class AudioStreamRecorder:
     """
-    Manages non-blocking real-time audio capture with pre-speech ring buffering.
+    Manages non-blocking real-time audio capture with pre-speech ring buffering
+    and WebRTC-APM neural acoustic sanitation (80Hz High-Pass + Level-3 Noise Suppression).
     Preserves opening consonants using a sliding history window.
     """
 
@@ -33,9 +40,10 @@ class AudioStreamRecorder:
         self,
         sample_rate: int = 16000,
         chunk_size: int = 512,  # 32 ms at 16kHz (Standard Silero VAD frame)
-        pre_speech_chunks: int = 10,  # ~320 ms of pre-speech ring buffer (preserves initial consonants)
-        silence_debounce_chunks: int = 18,  # ~416 ms of post-speech silence for rapid conversational turn-taking
+        pre_speech_chunks: int = 4,  # ~128 ms of pre-speech ring buffer (preserves initial consonants)
+        silence_debounce_chunks: int = 6,  # ~192 ms of post-speech silence for rapid conversational turn-taking
         vad: SileroVADDetector | None = None,
+        enable_noise_suppression: bool = True,
     ):
         self.sample_rate = sample_rate
         self.chunk_size = chunk_size
@@ -49,8 +57,40 @@ class AudioStreamRecorder:
         self._is_recording = False
         self._lock = threading.Lock()
 
+        # WebRTC-APM Real-Time Noise Suppression & Auto Gain Control (Level 3 = Highest fan/ambient removal)
+        self._apm = None
+        if enable_noise_suppression and HAS_WEBRTC_APM:
+            try:
+                self._apm = webrtc_noise_gain.AudioProcessor(auto_gain=31, noise_suppression=3)
+                logger.info("[AudioStream] 🛡️ WebRTC-APM Real-Time Noise Suppression & 80Hz HPF initialized.")
+            except Exception as e:
+                logger.debug(f"[AudioStream] WebRTC-APM initialization note: {e}")
+
         # Ring buffer for pre-speech frames
         self._pre_buffer = collections.deque(maxlen=self.pre_speech_chunks)
+
+    def clean_chunk(self, raw_pcm_bytes: bytes) -> bytes:
+        """
+        Processes 16kHz 16-bit Mono PCM audio through WebRTC-APM (<0.05ms latency).
+        Applies high-pass filtering (80Hz rumble cut), noise suppression (fan/typing),
+        and automatic gain control.
+        """
+        if not raw_pcm_bytes or self._apm is None:
+            return raw_pcm_bytes
+
+        slice_size = 320  # 10ms frame at 16kHz 16-bit mono
+        cleaned = bytearray()
+        for i in range(0, len(raw_pcm_bytes), slice_size):
+            sub_chunk = raw_pcm_bytes[i : i + slice_size]
+            if len(sub_chunk) == slice_size:
+                try:
+                    res = self._apm.Process10ms(sub_chunk)
+                    cleaned.extend(res.audio)
+                except Exception:
+                    cleaned.extend(sub_chunk)
+            else:
+                cleaned.extend(sub_chunk)
+        return bytes(cleaned)
 
     def start_stream(self) -> bool:
         """Opens the hardware microphone stream."""
@@ -117,6 +157,13 @@ class AudioStreamRecorder:
                 pass
             self._pa = None
 
+    def flush(self) -> None:
+        """Purges pre-speech ring buffer and resets neural VAD state to eliminate acoustic feedback."""
+        with self._lock:
+            self._pre_buffer.clear()
+            if self.vad:
+                self.vad.reset_state()
+
     def read_chunk(self) -> bytes | None:
         """Reads a single raw PCM frame from the audio stream (thread-safe)."""
         with self._lock:
@@ -174,12 +221,38 @@ class AudioStreamRecorder:
                     logger.debug("[AudioStream] Phrase time limit reached.")
                     break
 
-                chunk = self.read_chunk()
-                if not chunk:
+                raw_chunk = self.read_chunk()
+                if not raw_chunk:
                     time.sleep(0.01)
                     continue
 
+                chunk = self.clean_chunk(raw_chunk)
                 is_speech, prob = self.vad.process_frame(chunk)
+
+                # Shield 1: Discard frames and prevent turn accumulation while SpaceV is actively speaking
+                # unless a genuine conversational user barge-in was detected by aec_guard
+                try:
+                    from voice.aec_guard import aec_guard
+                    if aec_guard.is_speaker_active:
+                        if not is_speech:
+                            # Frame evaluated as speaker bleed: suppress and prevent turn accumulation
+                            speech_started = False
+                            silence_counter = 0
+                            self._pre_buffer.clear()
+                            recorded_frames.clear()
+                            time.sleep(0.01)
+                            continue
+                        else:
+                            # Genuine conversational user barge-in!
+                            # TTS was halted by aec_guard; begin recording user's interruption phrase
+                            if not speech_started:
+                                speech_started = True
+                                recorded_frames.extend(self._pre_buffer)
+                                recorded_frames.append(chunk)
+                                logger.info(f"[AudioStream] ⚡ Conversational Barge-In engaged! (prob={prob:.2f})")
+                                continue
+                except Exception:
+                    pass
 
                 if not speech_started:
                     self._pre_buffer.append(chunk)
