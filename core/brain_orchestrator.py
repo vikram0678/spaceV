@@ -28,6 +28,7 @@ from core.cloud_client import UniversalBrainClient
 from core.code_mode import CODE_MODE_META_TOOLS, code_mode_engine
 from core.model_router import model_router
 from core.scratchpad import active_scratchpad
+from core.token_optimizer import token_optimizer
 from tools.registry import OLLAMA_TOOLS_SCHEMA, execute_tool, get_scoped_tools
 
 SYSTEM_PROMPT = """You are SpaceV (System Protocol Autonomous Cybernetic Engine Version V), the elite, cosmic-tier AI desktop companion and autonomous workstation copilot.
@@ -315,13 +316,15 @@ class HybridBrainAgent:
                     if tool_callback:
                         tool_callback(tool_name, args, tool_result)
 
+                    compressed_result = token_optimizer.compress_tool_result(tool_name, tool_result)
                     call_id = tool_call.get("id") or f"call_{uuid.uuid4().hex[:8]}"
                     self.messages.append({
                         "role": "tool",
                         "tool_call_id": call_id,
-                        "content": str(tool_result),
+                        "content": str(compressed_result),
                     })
 
+                self.messages = token_optimizer.optimize_messages_for_cache(self.messages)
                 synth_dict = self.cloud_client.chat(
                     messages=self.messages,
                     tools=None,
@@ -458,11 +461,13 @@ class HybridBrainAgent:
                     if tool_callback:
                         tool_callback(tool_name, args, tool_result)
 
+                    compressed_result = token_optimizer.compress_tool_result(tool_name, tool_result)
                     self.messages.append({
                         "role": "tool",
-                        "content": str(tool_result),
+                        "content": str(compressed_result),
                     })
 
+                self.messages = token_optimizer.optimize_messages_for_cache(self.messages)
                 print(f"[{timestamp}] [BRAIN]: Streaming synthesized reply...")
 
                 stream_payload = {

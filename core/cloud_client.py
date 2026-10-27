@@ -55,6 +55,8 @@ from config import (
     ZAI_MODEL,
 )
 from core.context_compressor import compress_tool_output
+from core.rate_limiter import rate_limiter
+from core.token_optimizer import token_optimizer
 
 
 class UniversalBrainClient:
@@ -403,6 +405,9 @@ class UniversalBrainClient:
             else:
                 sanitized_messages[idx]["content"] = compress_tool_output(raw_content, max_chars=400)
 
+        # CacheAligner & ContextToolCleanup: Anchor system prompt & replace stale intermediate tool blobs
+        sanitized_messages = token_optimizer.optimize_messages_for_cache(sanitized_messages)
+
         payload: dict[str, Any] = {
             "model": active_model,
             "messages": sanitized_messages,
@@ -434,6 +439,11 @@ class UniversalBrainClient:
 
         for provider in pipeline:
             provider_name = provider["name"]
+            # Pre-emptive rate limit check (OmniRoute + WeKnora pattern)
+            if not rate_limiter.acquire_slot(provider_name, estimated_tokens=1500, max_wait_sec=0.0):
+                print(f"[CLOUD-BRAIN] ⏳ {provider_name} at RPM/TPM limit. Pre-emptively failing over to next provider.")
+                continue
+
             url = f"{provider['base_url']}/chat/completions"
             provider_key = provider["api_key"]
             provider_model = provider["model"]
@@ -479,7 +489,8 @@ class UniversalBrainClient:
                     cooldown_sec = 86400.0 if is_daily else 35.0
                     cooldown_label = "24h daily quota" if is_daily else "35s sliding-window TPM"
 
-                    # Trip circuit breaker for this key
+                    # Trip circuit breaker for this key and rate limiter
+                    rate_limiter.record_429(provider_name, retry_after=cooldown_sec)
                     if provider_key:
                         self._save_cooldown(provider_key, cooldown_sec)
                     else:
@@ -564,6 +575,7 @@ class UniversalBrainClient:
                     continue
 
                 self.last_used_provider = provider_name
+                rate_limiter.record_consumption(provider_name, 1500)
 
                 if use_stream:
                     full_content = ""

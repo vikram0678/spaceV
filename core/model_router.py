@@ -146,9 +146,21 @@ class MultiModelRouter:
         return PRIMARY_MODEL, "default"
 
     @staticmethod
-    def get_keep_alive() -> str:
-        """Returns the configured Ollama keep_alive parameter to release memory."""
-        return OLLAMA_KEEP_ALIVE
+    def get_cloud_provider_fallback_chain() -> list[str]:
+        """Returns the priority cloud provider fallback chain."""
+        from core.provider_failover import DEFAULT_FAILOVER_CASCADE
+        return list(DEFAULT_FAILOVER_CASCADE)
+
+    def select_healthy_cloud_provider(self, preferred: str = "groq") -> str:
+        """Selects the first cloud provider in the fallback chain that is currently under rate limits."""
+        from core.rate_limiter import rate_limiter
+        chain = self.get_cloud_provider_fallback_chain()
+        if preferred in chain and rate_limiter.is_available(preferred):
+            return preferred
+        for provider in chain:
+            if rate_limiter.is_available(provider):
+                return provider
+        return "ollama"
 
 # Global singleton router
 model_router = MultiModelRouter()
