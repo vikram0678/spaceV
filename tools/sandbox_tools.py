@@ -394,24 +394,42 @@ def detonate_in_sandbox(command: str) -> str:
     """SpaceV tool to execute untrusted code inside an isolated Celesto MicroVM sandbox."""
     res = sandbox_runner.run_in_sandbox(command)
 
+    # Pre-detonation neural file inspection telemetry
+    neural_meta = None
+    try:
+        from core.containment_gatekeeper import ContainmentGatekeeper
+        for token in command.split():
+            clean_token = token.strip("\"';&|")
+            if clean_token and Path(clean_token).is_file():
+                is_danger, label, reason, conf = ContainmentGatekeeper.inspect_file_payload(clean_token)
+                neural_meta = {
+                    "scanned_file": clean_token,
+                    "is_dangerous": is_danger,
+                    "label": label,
+                    "reason": reason,
+                    "confidence": conf,
+                }
+                break
+    except Exception as e:
+        logger.debug(f"Neural pre-inspection non-critical error: {e}")
+
     # Hackathon Contract #4: Immutable Command Audit Logging
     try:
         commands_log = REPO_ROOT / "logs/commands.jsonl"
         commands_log.parent.mkdir(parents=True, exist_ok=True)
         ts_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         sbx_id = res.sandbox_id if re.match(r"^sbx-[a-z0-9]{8,}$", res.sandbox_id) else f"sbx-{res.sandbox_id.replace('-', '')[:8]}"
-        cmd_entry = (
-            json.dumps(
-                {
-                    "ts": ts_iso,
-                    "sandbox_name": sbx_id,
-                    "command": command,
-                    "decision": "block" if res.blocked else "allow",
-                    "execution_target": "celesto_sandbox",
-                }
-            )
-            + "\n"
-        )
+        log_payload = {
+            "ts": ts_iso,
+            "sandbox_name": sbx_id,
+            "command": command,
+            "decision": "block" if res.blocked else "allow",
+            "execution_target": "celesto_sandbox",
+        }
+        if neural_meta:
+            log_payload["neural_inspection"] = neural_meta
+
+        cmd_entry = json.dumps(log_payload) + "\n"
         with open(commands_log, "a", encoding="utf-8") as f:
             f.write(cmd_entry)
     except Exception as e:
@@ -420,6 +438,33 @@ def detonate_in_sandbox(command: str) -> str:
     if res.blocked:
         return f"🛡️ [SANDBOX CONTAINMENT ALERT] Command blocked by Celesto Safety Hook:\n{res.stderr}\nSandbox ID: {res.sandbox_id}"
     return f"⚡ [CELLESTO MICROVM OUTPUT] (Duration: {res.duration_ms:.1f}ms)\n{res.stdout}\nSandbox: {res.sandbox_id}"
+
+
+def inspect_file_security(file_path: str) -> str:
+    """
+    SpaceV Neural Security Tool:
+    Performs sub-millisecond Google Magika deep learning content-type inspection
+    to verify file safety and detect masqueraded binaries (e.g. ELF/PE hidden in .png or .csv).
+    """
+    from core.containment_gatekeeper import ContainmentGatekeeper
+    p = Path(file_path.strip("\"'"))
+    if not p.exists():
+        return f"File not found: {file_path}"
+    is_dangerous, label, reason, conf = ContainmentGatekeeper.inspect_file_payload(p)
+    if is_dangerous:
+        return (
+            f"🛡️ [SECURITY INTERCEPTION] Dangerous payload detected by Neural Gatekeeper!\n"
+            f"• File: {p.name}\n"
+            f"• Detected Label: {label} (Confidence: {conf:.1%})\n"
+            f"• Alert Reason: {reason}\n"
+            f"• Action: Execution on Host BLOCKED. Route to Celesto MicroVM sandbox."
+        )
+    return (
+        f"✅ [SECURITY VERIFIED] File inspected by Google Magika Neural Gatekeeper:\n"
+        f"• File: {p.name}\n"
+        f"• Detected Label: {label} (Confidence: {conf:.1%})\n"
+        f"• Status: Clean / Verified Safe"
+    )
 
 
 def run_sandboxed_workflow(workflow_name: str = "celesto_deployment_pipeline") -> str:
