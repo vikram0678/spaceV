@@ -4,6 +4,7 @@ Powered by Silero VAD local acoustic gating:
 Runs 100% locally with zero continuous network traffic. Only transcribes when actual
 neural human speech is detected.
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,6 +17,8 @@ from config import WAKE_WORDS
 from voice.audio_stream import AudioStreamRecorder
 from voice.stt_engine import VoiceListener
 from voice.vad_detector import SileroVADDetector
+from voice.tts_engine import tts
+from voice.aec_guard import aec_guard
 
 logger = logging.getLogger("SpaceV.WakeWord")
 
@@ -30,6 +33,7 @@ class WakeWordDetector(QThread):
     - Instant Conversational Barge-In: cuts TTS speech in <10ms when user speaks
     - Graceful conversational expiration to standby upon silence or completion phrases
     """
+
     wake_word_detected = pyqtSignal()
     command_detected = pyqtSignal(str)
     listening_state_changed = pyqtSignal(str)  # "STANDBY", "LISTENING", "PROCESSING"
@@ -59,7 +63,8 @@ class WakeWordDetector(QThread):
         """Returns SpaceV to passive 'Hey SpaceV' standby mode."""
         self._conversational_mode = False
         self._conversational_deadline = 0.0
-        self.listening_state_changed.emit("STANDBY")
+        self.pause()  # Shuts down hardware stream completely
+        self.listening_state_changed.emit("MUTED")
 
     @property
     def is_conversational_mode(self) -> bool:
@@ -83,15 +88,20 @@ class WakeWordDetector(QThread):
         self.recorder.stop_stream()
 
     def run(self):
-        print("[WAKE-WORD] [LISTENER] Full-Duplex Conversational Engine Active (Continuous VAD + Conversational Turns)...")
+        print(
+            "[WAKE-WORD] [LISTENER] Full-Duplex Conversational Engine Active (Continuous VAD + Conversational Turns)..."
+        )
         self.recorder.start_stream()
         while self._is_running:
             if self._paused:
                 time.sleep(0.12)
                 continue
 
-            # Check conversational timeout: gracefully drop back to standby if user stayed quiet
-            if self._conversational_mode and time.time() > self._conversational_deadline:
+            is_assistant_busy = tts.is_speaking or aec_guard.is_speaker_active
+            if is_assistant_busy:
+                # Keep conversational window open while assistant is actively speaking
+                self._conversational_deadline = time.time() + 7.5
+            elif self._conversational_mode and time.time() > self._conversational_deadline:
                 print("[WAKE-WORD] [IDLE] Conversational turn expired -> Reverting to 'Hey SpaceV' standby.")
                 self.end_conversational_turn()
 
@@ -101,7 +111,7 @@ class WakeWordDetector(QThread):
                 pcm_data = self.recorder.record_utterance(
                     timeout=3.5 if self._conversational_mode else 4.0,
                     phrase_limit=7.0,
-                    stop_check=lambda: not self._is_running or self._paused
+                    stop_check=lambda: not self._is_running or self._paused,
                 )
 
                 if not self._is_running:
@@ -116,6 +126,16 @@ class WakeWordDetector(QThread):
                 if not text:
                     continue
 
+                # Shield 3: Semantic Self-Echo Rejection Filter
+                try:
+                    if tts.is_self_echo(text):
+                        logger.info(
+                            f"[AEC] 🔇 Discarded self-echo transcription: '{text}' (matches recent SpaceV output)"
+                        )
+                        continue
+                except Exception as e:
+                    logger.debug(f"[AEC] Echo check error: {e}")
+
                 clean_lower = text.lower().strip()
                 if self._conversational_mode:
                     print(f"[VOICE] [HEARD] '{text}' (mode=CONVERSATIONAL)")
@@ -127,9 +147,14 @@ class WakeWordDetector(QThread):
                 if any(clean_lower == sw or clean_lower.startswith(sw + " ") for sw in STOP_WORDS):
                     print("[VOICE] [INTERRUPT] User commanded STOP -> Halting voice & tasks immediately.")
                     from voice.frame_pipeline import frame_pipeline
-                    from voice.tts_engine import tts
-                    tts.stop()
+
+                    if hasattr(tts, "duck_volume"):
+                        tts.duck_volume(target_gain=0.0, duration_ms=25.0)
+                    else:
+                        tts.stop()
+
                     frame_pipeline.interrupt(reason="user_stop_command")
+                    self.start_conversational_turn(timeout_sec=7.5)
                     self.command_detected.emit("stop")
                     continue
 
@@ -142,7 +167,13 @@ class WakeWordDetector(QThread):
                     continue
 
                 # 3. Conversational Mode (Continuous talk & listen without saying wake word again)
-                if self._conversational_mode:
+                if self._conversational_mode or is_assistant_busy:
+                    # If assistant was speaking, smoothly duck volume or cut speech immediately
+                    if hasattr(tts, "duck_volume"):
+                        tts.duck_volume(target_gain=0.0, duration_ms=25.0)
+                    else:
+                        tts.stop()
+
                     clean_cmd = text
                     for w in WAKE_WORDS:
                         clean_cmd = re.sub(rf"\b{re.escape(w)}\b", "", clean_cmd, flags=re.IGNORECASE)
