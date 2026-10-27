@@ -6,9 +6,11 @@ and bounded retries for autonomous workforce execution.
 
 from __future__ import annotations
 
+import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger("SpaceV.TaskStateMachine")
@@ -68,6 +70,50 @@ class TaskStateMachine:
         ]
         self.steps: Dict[str, TaskStep] = {}
 
+    def sync_to_disk(self, state_dir: str | Path = ".spacev") -> bool:
+        """Persists the full state machine audit ledger to durable disk storage."""
+        try:
+            p = Path(state_dir)
+            p.mkdir(parents=True, exist_ok=True)
+            fsm_file = p / f"fsm_{self.task_id}.json"
+            data = {
+                "task_id": self.task_id,
+                "objective": self.objective,
+                "current_state": self.current_state,
+                "max_retries": self.max_retries,
+                "retry_count": self.retry_count,
+                "created_at": self.created_at,
+                "finished_at": self.finished_at,
+                "history": self.history,
+                "steps": {k: asdict(v) for k, v in self.steps.items()}
+            }
+            fsm_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to persist state machine {self.task_id} to disk: {e}")
+            return False
+
+    @classmethod
+    def load_from_disk(cls, task_id: str, state_dir: str | Path = ".spacev") -> Optional["TaskStateMachine"]:
+        """Reconstructs state machine instance from durable disk storage."""
+        try:
+            fsm_file = Path(state_dir) / f"fsm_{task_id}.json"
+            if not fsm_file.exists():
+                return None
+            data = json.loads(fsm_file.read_text(encoding="utf-8"))
+            inst = cls(task_id=data["task_id"], objective=data["objective"], max_retries=data.get("max_retries", 2))
+            inst.current_state = data.get("current_state", "CREATED")
+            inst.retry_count = data.get("retry_count", 0)
+            inst.created_at = data.get("created_at", inst.created_at)
+            inst.finished_at = data.get("finished_at")
+            inst.history = data.get("history", [])
+            for k, s_dict in data.get("steps", {}).items():
+                inst.steps[k] = TaskStep(**s_dict)
+            return inst
+        except Exception as e:
+            logger.warning(f"Failed to load state machine {task_id} from disk: {e}")
+            return None
+
     def transition_to(self, new_state: str, reason: str = "") -> bool:
         """
         Attempts a transition to new_state.
@@ -99,6 +145,7 @@ class TaskStateMachine:
             self.finished_at = ts
 
         logger.info(f"Task {self.task_id} transitioned: {old_state} -> {new_state} ({reason})")
+        self.sync_to_disk()
         return True
 
     def can_retry(self) -> bool:
@@ -112,11 +159,13 @@ class TaskStateMachine:
             return False
         self.retry_count += 1
         self.transition_to("RETRY_PENDING", f"Retry attempt {self.retry_count}: {reason}")
+        self.sync_to_disk()
         return True
 
     def add_step(self, step_id: str, name: str) -> TaskStep:
         step = TaskStep(step_id=step_id, name=name)
         self.steps[step_id] = step
+        self.sync_to_disk()
         return step
 
     def update_step(self, step_id: str, status: str, error: Optional[str] = None, evidence: Optional[Dict[str, Any]] = None):
@@ -128,6 +177,7 @@ class TaskStateMachine:
                 s.verification_evidence.update(evidence)
             if status in ("COMPLETED", "FAILED", "ROLLED_BACK"):
                 s.finished_at = datetime.now(timezone.utc).isoformat()
+            self.sync_to_disk()
 
     def is_terminal(self) -> bool:
         return self.current_state in ("COMPLETED", "FAILED", "CANCELLED")
