@@ -11,6 +11,7 @@ import os
 import queue
 import re
 import sys
+import threading
 import time
 from collections.abc import Callable
 from typing import Optional
@@ -128,6 +129,8 @@ class TTSEngine(QThread):
         self._spk = None
         self._session_active = False
         self._stream_closed = False
+        self.last_spoken_text: str = ""
+        self.last_spoken_time: float = 0.0
 
         if HAS_PYGAME:
             try:
@@ -275,6 +278,8 @@ class TTSEngine(QThread):
                 self._queue.task_done()
                 continue
 
+            self.last_spoken_text = clean
+
             # Start of speaking session
             if not self._session_active:
                 self._session_active = True
@@ -377,6 +382,7 @@ class TTSEngine(QThread):
             # Acoustic Room Reflection Guard: absorb 350ms speaker reverberation in room
             time.sleep(0.35)
             self._is_speaking = False
+            self.last_spoken_time = time.time()
             try:
                 from voice.aec_guard import aec_guard
                 aec_guard.set_speaker_active(False)
@@ -390,6 +396,36 @@ class TTSEngine(QThread):
                 self.speech_finished.emit()
 
             self._queue.task_done()
+
+    def is_self_echo(self, text: str, max_age_sec: float = 4.5) -> bool:
+        """
+        Semantic Self-Echo Rejection Filter (Shield 3).
+        Determines if a recognized speech phrase is an acoustic reflection of SpaceV's recent TTS output.
+        """
+        if not text or not self.last_spoken_text:
+            return False
+
+        if self.last_spoken_time > 0 and (time.time() - self.last_spoken_time > max_age_sec):
+            return False
+
+        t_clean = re.sub(r'[^\w\s]', '', text.lower()).strip()
+        s_clean = re.sub(r'[^\w\s]', '', self.last_spoken_text.lower()).strip()
+
+        if not t_clean or not s_clean:
+            return False
+
+        # 1. Direct or substring containment
+        if t_clean in s_clean or s_clean in t_clean:
+            return True
+
+        # 2. Token overlap ratio (Jaccard similarity)
+        t_tokens = set(t_clean.split())
+        s_tokens = set(s_clean.split())
+        if not t_tokens:
+            return False
+
+        overlap = len(t_tokens.intersection(s_tokens)) / len(t_tokens)
+        return overlap >= 0.50
 
     def speak(self, text: str):
         """Enqueues full text for speaking, clearing any backlog."""
@@ -419,6 +455,35 @@ class TTSEngine(QThread):
             on_sentence_ready=self.stream_sentence,
             on_stream_finished=self.finish_stream
         )
+
+    def duck_volume(self, target_gain: float = 0.0, duration_ms: float = 25.0):
+        """
+        Smoothly attenuates playback volume (Apple AUVoiceIO dynamic ducking style)
+        to prevent audio clicks/pops upon conversational interruption.
+        """
+        if not self._is_speaking:
+            return
+
+        def _fade():
+            if HAS_PYGAME and pygame.mixer.get_init():
+                try:
+                    steps = 5
+                    sleep_step = (duration_ms / 1000.0) / steps
+                    start_vol = pygame.mixer.music.get_volume()
+                    for step in range(steps):
+                        factor = start_vol - ((step + 1) / steps) * (start_vol - target_gain)
+                        pygame.mixer.music.set_volume(max(0.0, min(1.0, factor)))
+                        time.sleep(sleep_step)
+                except Exception:
+                    pass
+            self.stop()
+            if HAS_PYGAME and pygame.mixer.get_init():
+                try:
+                    pygame.mixer.music.set_volume(1.0)
+                except Exception:
+                    pass
+
+        threading.Thread(target=_fade, daemon=True).start()
 
     def stop(self):
         """Immediately halts active speech with 0ms latency."""
