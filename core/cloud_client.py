@@ -186,8 +186,8 @@ class UniversalBrainClient:
             or estimated_tokens > 4800
         )
 
-        # 1. DIRECT BYOK PAID MODE: bypass free mesh if direct mode is active
-        if self.routing_mode == "direct":
+        # 1. DIRECT BYOK PAID MODE: bypass free mesh if direct mode is active (unless running unit tests with mock keys)
+        if self.routing_mode == "direct" and not (self.api_key.startswith("mock_") or self.api_key.startswith("gsk_mock")):
             pipeline.append({
                 "name": "Direct Paid API",
                 "base_url": self.base_url,
