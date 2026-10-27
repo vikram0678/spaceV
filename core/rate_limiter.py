@@ -11,10 +11,11 @@ Guarantees:
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger("SpaceV.RateLimiter")
 
@@ -212,5 +213,124 @@ class ProviderRateLimiter:
                 data["backoff_until"] = 0.0
 
 
-# Global singleton instance
+# ═══════════════════════════════════════════════════════════════════
+# TIER 4: OMNIROUTE TOKEN BUCKET & SPACEV RATE LIMITER
+# ═══════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class TokenBucket:
+    """A single token bucket for proactive rate limiting."""
+    provider_name: str
+    capacity: int              # Max tokens (= TPM limit)
+    tokens: float              # Current available tokens
+    refill_rate: float         # Tokens per second (= capacity / 60)
+    last_refill: float = 0.0   # Last refill timestamp
+    rpm_limit: int = 30        # Requests per minute
+    requests_this_minute: int = 0
+    minute_start: float = 0.0
+
+    def __post_init__(self):
+        if self.last_refill == 0.0:
+            self.last_refill = time.time()
+        if self.minute_start == 0.0:
+            self.minute_start = time.time()
+
+    def refill(self):
+        """Refills the bucket based on elapsed time."""
+        now = time.time()
+        elapsed = now - self.last_refill
+        self.tokens = min(float(self.capacity), self.tokens + elapsed * self.refill_rate)
+        self.last_refill = now
+
+        if now - self.minute_start >= 60.0:
+            self.requests_this_minute = 0
+            self.minute_start = now
+
+    def can_consume(self, token_count: int) -> bool:
+        self.refill()
+        return (
+            self.tokens >= token_count
+            and self.requests_this_minute < self.rpm_limit
+        )
+
+    def consume(self, token_count: int) -> bool:
+        self.refill()
+        if not self.can_consume(token_count):
+            return False
+        self.tokens -= token_count
+        self.requests_this_minute += 1
+        return True
+
+    @property
+    def utilization_percent(self) -> float:
+        self.refill()
+        return max(0.0, (1 - self.tokens / max(self.capacity, 1)) * 100.0)
+
+
+PROVIDER_LIMITS: dict[str, dict[str, int]] = {
+    "groq": {"tpm": 6000, "rpm": 30},
+    "gemini": {"tpm": 32000, "rpm": 15},
+    "cerebras": {"tpm": 60000, "rpm": 30},
+    "sambanova": {"tpm": 100000, "rpm": 30},
+    "mistral": {"tpm": 500000, "rpm": 60},
+    "openrouter": {"tpm": 200000, "rpm": 200},
+}
+
+
+class SpaceVRateLimiter:
+    """
+    Multi-provider token-bucket rate limiter.
+    """
+
+    def __init__(self):
+        self.buckets: dict[str, TokenBucket] = {}
+        self._init_buckets()
+
+    def _init_buckets(self):
+        for provider, limits in PROVIDER_LIMITS.items():
+            tpm = limits["tpm"]
+            self.buckets[provider] = TokenBucket(
+                provider_name=provider,
+                capacity=tpm,
+                tokens=float(tpm),
+                refill_rate=tpm / 60.0,
+                rpm_limit=limits["rpm"],
+            )
+
+    def can_send(self, provider: str, estimated_tokens: int) -> bool:
+        bucket = self.buckets.get(provider.lower())
+        if not bucket:
+            return True
+        return bucket.can_consume(estimated_tokens)
+
+    def consume(self, provider: str, actual_tokens: int) -> bool:
+        bucket = self.buckets.get(provider.lower())
+        if bucket:
+            return bucket.consume(actual_tokens)
+        return True
+
+    def get_best_provider(self, estimated_tokens: int, preferred_order: list[str] | None = None) -> str | None:
+        order = preferred_order or list(PROVIDER_LIMITS.keys())
+        for provider in order:
+            if self.can_send(provider, estimated_tokens):
+                return provider
+        return None
+
+    def get_status(self) -> dict[str, Any]:
+        status = {}
+        for name, bucket in self.buckets.items():
+            bucket.refill()
+            status[name] = {
+                "available_tokens": int(bucket.tokens),
+                "capacity": bucket.capacity,
+                "utilization": f"{bucket.utilization_percent:.1f}%",
+                "rpm_used": bucket.requests_this_minute,
+                "rpm_limit": bucket.rpm_limit,
+            }
+        return status
+
+
+# Global instances
 rate_limiter = ProviderRateLimiter()
+spacev_rate_limiter = SpaceVRateLimiter()

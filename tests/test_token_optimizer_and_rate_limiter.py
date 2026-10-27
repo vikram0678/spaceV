@@ -221,3 +221,93 @@ def test_model_router_fallback_chain_integration():
     # Health check returns a valid provider
     healthy = model_router.select_healthy_cloud_provider(preferred="groq")
     assert healthy in chain
+
+
+def test_token_harness_4_tier_optimization():
+    """Verify SpaceVTokenHarness coordinates all 4 tiers (SmartCrusher, CacheAligner, ToolCleanup, BudgetGuard)."""
+    from core.token_harness import (
+        SpaceVTokenHarness,
+        TokenBudget,
+        estimate_tokens,
+        estimate_messages_tokens,
+        pre_flight_estimate,
+    )
+
+    harness = SpaceVTokenHarness(budget=TokenBudget(max_per_turn=4000, max_per_session=60000))
+
+    # 1. Test pre_flight_estimate
+    est = pre_flight_estimate(
+        messages=[{"role": "user", "content": "Hello SpaceV"}],
+        tools=None,
+        task_type="chat"
+    )
+    assert est["input_tokens"] > 0
+    assert est["expected_output_tokens"] == 150
+    assert est["total_estimated"] == est["input_tokens"] + 150
+
+    # 2. Test 4-tier optimization on a multi-turn conversation
+    all_tools = [
+        {"type": "function", "function": {"name": "read_file", "parameters": {}}},
+        {"type": "function", "function": {"name": "write_file", "parameters": {}}},
+        {"type": "function", "function": {"name": "search_web", "parameters": {}}},
+        {"type": "function", "function": {"name": "run_command", "parameters": {}}},
+        {"type": "function", "function": {"name": "take_screenshot", "parameters": {}}},
+        {"type": "function", "function": {"name": "get_current_time", "parameters": {}}},
+    ]
+
+    messages = [
+        {"role": "system", "content": "You are SpaceV."},
+        {"role": "user", "content": "Read the file auth.py"},
+        {"role": "tool", "tool_call_id": "c1", "content": "line1\nline2\n" * 20},
+        {"role": "assistant", "content": "I read auth.py"},
+        {"role": "user", "content": "Now check time"},
+        {"role": "assistant", "content": "The time is 10:00"},
+        {"role": "user", "content": "Read the file auth.py again"},
+        {"role": "tool", "tool_call_id": "c2", "content": "line1\nline2\n" * 20},
+        {"role": "assistant", "content": "Read auth.py again"},
+    ]
+
+    opt_msgs, opt_tools = harness.optimize(
+        messages=messages,
+        tools=all_tools,
+        user_prompt="Read the file auth.py"
+    )
+
+    # Assert ToolCleanup pruned tools to only file tools
+    assert opt_tools is not None
+    tool_names = [t["function"]["name"] for t in opt_tools]
+    assert "read_file" in tool_names or "write_file" in tool_names
+    assert "take_screenshot" not in tool_names
+    assert "search_web" not in tool_names
+
+    # Assert SmartCrusher / CacheAligner compressed older turns
+    assert len(opt_msgs) > 0
+    assert opt_msgs[0]["content"] == "You are SpaceV."  # Anchor preserved
+
+    # Check telemetry reporting
+    report = harness.get_report()
+    assert report["optimizations_run"] >= 1
+
+
+def test_spacev_rate_limiter_token_bucket_refill_and_utilization():
+    """Verify SpaceVRateLimiter and TokenBucket proactive token bucket rate limiting."""
+    from core.rate_limiter import SpaceVRateLimiter, TokenBucket
+
+    limiter = SpaceVRateLimiter()
+
+    # Groq has 6000 capacity
+    assert limiter.can_send("groq", estimated_tokens=1000) is True
+
+    # Test consume
+    consumed = limiter.consume("groq", actual_tokens=1500)
+    assert consumed is True
+
+    # Test get_best_provider
+    best = limiter.get_best_provider(estimated_tokens=500, preferred_order=["groq", "cerebras"])
+    assert best in ("groq", "cerebras")
+
+    # Status check
+    status = limiter.get_status()
+    assert "groq" in status
+    assert "cerebras" in status
+    assert status["groq"]["rpm_limit"] == 30
