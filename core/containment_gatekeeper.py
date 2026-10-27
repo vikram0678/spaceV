@@ -17,14 +17,17 @@ from __future__ import annotations
 import logging
 import re
 import shlex
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger("SpaceV.ContainmentGatekeeper")
 
 
 class ContainmentGatekeeper:
     """
-    Production-grade POSIX lexical gatekeeper for terminal commands.
+    Production-grade POSIX lexical gatekeeper and Google Magika neural inspector.
     Decomposes shell commands into AST token streams, inspects real executables,
+    performs sub-millisecond deep learning byte-level inspection to detect masqueraded malware,
     and deterministically routes untrusted code to Celesto MicroVM sandboxes.
     """
 
@@ -37,6 +40,131 @@ class ContainmentGatekeeper:
     PIPELINE_DELIMITERS = {";", "&&", "||", "|", "&"}
 
     FLAGS_WITH_ARGS = {"-c", "-c", "-u", "-o", "-m", "-r", "--config", "--directory", "-C"}
+
+    DANGEROUS_BINARIES = {"elf", "pebin", "mach-o", "dex", "apk", "jar", "so"}
+    DANGEROUS_SCRIPTS = {"shell", "powershell", "batch", "vbs"}
+    INNOCENT_EXTENSIONS = {
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg",
+        ".csv", ".tsv", ".json", ".txt", ".md", ".pdf", ".xml",
+        ".yaml", ".yml", ".html", ".css", ".mp3", ".mp4", ".wav"
+    }
+
+    _magika: Any = None
+
+    @classmethod
+    def get_magika(cls) -> Any:
+        """Lazy-loads and caches Google Magika deep learning content-type engine."""
+        if cls._magika is None:
+            try:
+                from magika import Magika
+                cls._magika = Magika()
+            except Exception as e:
+                logger.warning(f"Could not initialize Google Magika neural detector: {e}")
+                cls._magika = None
+        return cls._magika
+
+    @classmethod
+    def inspect_file_payload(
+        cls,
+        target: str | Path | bytes,
+        declared_name: str | None = None
+    ) -> tuple[bool, str, str, float]:
+        """
+        Performs sub-millisecond neural deep learning content-type inspection via Google Magika.
+        Inspects actual byte streams to detect binary executables and disguised malware masquerading
+        under innocent file extensions (e.g. ELF/PE/Mach-O hidden in .png, .csv, .pdf, .txt).
+
+        Returns:
+            (is_dangerous, detected_label, reason, confidence_score)
+        """
+        file_ext = ""
+        file_name = declared_name or "unknown_payload"
+        raw_bytes = b""
+
+        if isinstance(target, bytes):
+            raw_bytes = target
+            if declared_name:
+                file_ext = Path(declared_name).suffix.lower()
+        elif isinstance(target, (str, Path)):
+            p = Path(target)
+            if not p.exists() or not p.is_file():
+                return False, "unknown", "file_not_found", 0.0
+            file_name = p.name
+            file_ext = p.suffix.lower()
+            try:
+                with open(p, "rb") as f:
+                    raw_bytes = f.read(65536)
+            except Exception as e:
+                logger.warning(f"Could not read file {p} for neural inspection: {e}")
+                return True, "unreadable", f"read_error:{e}", 0.0
+        else:
+            return False, "unknown", "invalid_target_type", 0.0
+
+        if not raw_bytes:
+            return False, "empty", "empty_file", 1.0
+
+        # Heuristic header checks (absolute ground-truth signatures)
+        is_elf = raw_bytes.startswith(b"\x7fELF")
+        is_pe = raw_bytes.startswith(b"MZ")
+        is_macho = raw_bytes.startswith((b"\xca\xfe\xba\xbe", b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe"))
+        is_shebang = raw_bytes.startswith(b"#!")
+
+        # Google Magika neural classification
+        label = "unknown"
+        mime = "application/octet-stream"
+        score = 0.5
+        magika = cls.get_magika()
+        if magika is not None:
+            try:
+                res = magika.identify_bytes(raw_bytes)
+                label = res.output.label.lower()
+                mime = res.output.mime_type.lower()
+                if hasattr(res, "score") and res.score is not None:
+                    score = float(res.score)
+                else:
+                    score = 0.95
+            except Exception as e:
+                logger.warning(f"Magika identification error: {e}")
+
+        # Enforce canonical ground truth for headers if detected
+        if is_elf:
+            label = "elf"
+            mime = "application/x-executable"
+            score = max(score, 0.99)
+        elif is_pe:
+            label = "pebin"
+            mime = "application/x-dosexec"
+            score = max(score, 0.99)
+        elif is_macho:
+            label = "mach-o"
+            mime = "application/x-mach-binary"
+            score = max(score, 0.99)
+
+        is_binary = label in cls.DANGEROUS_BINARIES or "executable" in mime or "sharedlib" in mime
+        is_script = label in cls.DANGEROUS_SCRIPTS or "shellscript" in mime or (is_shebang and ("sh" in raw_bytes[:50].decode(errors="ignore") or "bash" in raw_bytes[:50].decode(errors="ignore")))
+
+        # Check 1: Masqueraded binary/script detection
+        if file_ext in cls.INNOCENT_EXTENSIONS:
+            if is_binary:
+                reason = f"masqueraded_binary_{label}"
+                logger.warning(
+                    f"[CONTAINMENT GATEKEEPER] Neural alert: Masqueraded binary detected! "
+                    f"'{file_name}' declared as '{file_ext}' but is {label} (confidence: {score:.1%})"
+                )
+                return True, label, reason, score
+            if is_script and (is_shebang or score > 0.85):
+                reason = f"masqueraded_script_{label}"
+                logger.warning(
+                    f"[CONTAINMENT GATEKEEPER] Neural alert: Masqueraded script detected! "
+                    f"'{file_name}' declared as '{file_ext}' but contains executable {label} code."
+                )
+                return True, label, reason, score
+
+        # Check 2: Direct dangerous binary executable
+        if is_binary:
+            return True, label, f"executable_binary_{label}", score
+
+        return False, label, "safe", score
 
     @classmethod
     def _split_into_commands(cls, tokens: list[str]) -> list[list[str]]:
@@ -146,6 +274,20 @@ class ContainmentGatekeeper:
         if "|" in tokens and has_network_downloader and has_shell_interpreter:
             logger.info(f"[CONTAINMENT] Intercepted remote code execution pipeline: {cmd_clean[:80]}")
             return True, "remote_code_exec"
+
+        # Check 0: Pre-detonation neural file payload inspection for referenced files
+        # Intercepts commands executing masqueraded binaries (e.g. 'python payload.png', 'bash data.csv', './malware.txt')
+        for token in tokens:
+            if token and not token.startswith("-") and token not in cls.PIPELINE_DELIMITERS:
+                try:
+                    tp = Path(token)
+                    if tp.is_file():
+                        is_dangerous, _detected_label, reason, _ = cls.inspect_file_payload(tp)
+                        if is_dangerous:
+                            logger.info(f"[CONTAINMENT] Neural inspection intercepted unsafe payload: {token} ({reason})")
+                            return True, f"neural_inspection_flagged:{reason}"
+                except (OSError, ValueError):
+                    pass
 
         # Split into individual command segments across pipeline operators (&&, ||, ;, |)
         segments = cls._split_into_commands(tokens)
