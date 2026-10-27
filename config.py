@@ -123,6 +123,9 @@ USE_NEURAL_TTS = True                      # Uses high-fidelity realistic Azure 
 TTS_NEURAL_VOICE = "en-US-AriaNeural"      # High-fidelity natural lady AI voice (warm, conversational, Gemini/Siri style)
 
 
+# Tool Virtualization & Code Mode (Cloudflare MCP Pattern: 81% token reduction)
+ENABLE_CODE_MODE = os.getenv("SPACEV_CODE_MODE", "true").lower() == "true"
+
 # UI & Agent Configuration
 APP_NAME = "SpaceV"
 WAKE_WORDS = ["hey spacev", "spacev", "space v", "hey space v", "hey space"]
