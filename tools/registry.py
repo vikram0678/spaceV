@@ -165,6 +165,7 @@ TOOL_FUNCTIONS: dict[str, Callable] = {
     "execute_terminal_command": execute_terminal_command,
     "execute_in_vscode_terminal": execute_in_vscode_terminal,
     "detonate_in_sandbox": lambda command: __import__("tools.sandbox_tools", fromlist=["detonate_in_sandbox"]).detonate_in_sandbox(command),
+    "inspect_file_security": lambda file_path: __import__("tools.sandbox_tools", fromlist=["inspect_file_security"]).inspect_file_security(file_path),
     "run_sandboxed_workflow": lambda workflow_name="celesto_deployment_pipeline": __import__("tools.sandbox_tools", fromlist=["run_sandboxed_workflow"]).run_sandboxed_workflow(workflow_name),
     "get_run_ledger_summary": lambda: __import__("core.run_ledger", fromlist=["get_run_ledger_summary"]).get_run_ledger_summary(),
     "spacev_search_tools": lambda query="": __import__("core.code_mode", fromlist=["code_mode_engine"]).code_mode_engine.search_tools(query),
@@ -243,6 +244,9 @@ TOOL_ALIASES: dict[str, str] = {
     "install_package": "detonate_in_sandbox",
     "run_untrusted": "detonate_in_sandbox",
     "sandbox_detonate": "detonate_in_sandbox",
+    "verify_file_security": "inspect_file_security",
+    "scan_file_security": "inspect_file_security",
+    "check_file_security": "inspect_file_security",
 }
 
 # Standard Ollama JSON Tool Schemas
@@ -979,6 +983,23 @@ OLLAMA_TOOLS_SCHEMA = [
                     }
                 },
                 "required": ["command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "inspect_file_security",
+            "description": "Performs sub-millisecond Google Magika deep learning content-type inspection to verify file safety and detect masqueraded malware (e.g. ELF/PE disguised as .png, .csv, .txt).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to the target file to inspect with Google Magika neural network."
+                    }
+                },
+                "required": ["file_path"]
             }
         }
     },
