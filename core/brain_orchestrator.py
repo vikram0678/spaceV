@@ -29,6 +29,8 @@ from core.code_mode import CODE_MODE_META_TOOLS, code_mode_engine
 from core.model_router import model_router
 from core.scratchpad import active_scratchpad
 from core.token_optimizer import token_optimizer
+from core.workflow_engine import workflow_engine
+from core.workflow_state import DAGNode, NodeStatus, Workflow, WorkflowStatus
 from tools.registry import OLLAMA_TOOLS_SCHEMA, execute_tool, get_scoped_tools
 
 SYSTEM_PROMPT = """You are SpaceV (System Protocol Autonomous Cybernetic Engine Version V), the elite, cosmic-tier AI desktop companion and autonomous workstation copilot.
@@ -509,6 +511,65 @@ class HybridBrainAgent:
             err = f"An unexpected error occurred: {e!s}"
             print(f"[{timestamp}] [ERROR]: {err}")
             return err
+
+    def is_complex_workflow(self, user_prompt: str) -> bool:
+        """
+        Determines whether a user prompt represents a complex multi-step task
+        requiring the DAG workflow engine (Volume I §7 & Volume III §22).
+        """
+        prompt_lower = user_prompt.lower()
+        workflow_triggers = [
+            "workflow", "pipeline", "dag", "multi-step", "in parallel",
+            "first", "then", "finally", "step 1", "step 2", "build and test"
+        ]
+        if "in parallel" in prompt_lower or "workflow" in prompt_lower or "dag" in prompt_lower:
+            return True
+        count = sum(1 for trigger in workflow_triggers if trigger in prompt_lower)
+        return count >= 2
+
+    def create_workflow_from_plan(
+        self,
+        goal: str,
+        steps: list[dict[str, Any]],
+        workflow_name: str = "",
+        max_total_tokens: int = 10000,
+    ) -> Workflow:
+        """
+        Converts a list of planned steps into an executable DAG Workflow.
+        """
+        nodes: list[DAGNode] = []
+        for i, s in enumerate(steps):
+            node_id = s.get("id") or s.get("node_id") or f"step_{i+1}"
+            node = DAGNode(
+                node_id=node_id,
+                name=s.get("name") or s.get("action") or f"Step {i+1}",
+                description=s.get("description", ""),
+                agent=s.get("agent", "default"),
+                action=s.get("action", ""),
+                action_args=s.get("args") or s.get("action_args") or {},
+                depends_on=s.get("depends_on", []),
+                requires_approval=s.get("requires_approval", False),
+                condition=s.get("condition", ""),
+                timeout_sec=float(s.get("timeout_sec", 120.0)),
+                max_retries=int(s.get("max_retries", 2)),
+                status=NodeStatus.PENDING,
+            )
+            nodes.append(node)
+
+        wf = Workflow(
+            name=workflow_name or f"Workflow: {goal[:40]}",
+            goal=goal,
+            nodes=nodes,
+            status=WorkflowStatus.CREATED,
+            max_total_tokens=max_total_tokens,
+        )
+        return wf
+
+    async def execute_workflow(self, workflow: Workflow) -> Workflow:
+        """
+        Executes a workflow through the SpaceVWorkflowEngine with durable state persistence.
+        """
+        return await workflow_engine.execute_workflow(workflow)
 
 
 # Universal Aliases for Seamless Backward Compatibility
