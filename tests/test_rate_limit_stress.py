@@ -8,6 +8,7 @@ Validates:
 5. Browser-Use visual grounding & Crawl4AI web extraction.
 6. Scratchpad goal-backward verification.
 """
+
 from __future__ import annotations
 
 import time
@@ -51,6 +52,7 @@ def test_50_rapid_calls_rate_limiter_prevents_429():
 
     # Verify fallback provider selection engages when primary is throttled
     from core.provider_failover import ProviderFailoverRouter
+
     router = ProviderFailoverRouter()
     eligible = router.get_eligible_providers("groq")
     assert len(eligible) > 1
@@ -120,7 +122,7 @@ def test_scratchpad_goal_backward_verification():
     verified = scratchpad.verify_and_complete_step(
         step_id=1,
         evidence="Schema defined in core/schemas/auth.py with UserModel and TokenModel dataclasses.",
-        tool_name="write_file"
+        tool_name="write_file",
     )
     assert verified is True
     assert scratchpad.plan[0].status == StepStatus.COMPLETED
@@ -173,6 +175,7 @@ def test_browser_use_and_crawl4ai_enhancements():
 
     # 4. Test scrape_web_page_crawl4ai
     from unittest.mock import patch
+
     with patch("urllib.request.urlopen") as mock_urlopen:
         mock_resp = MagicMock()
         mock_resp.read.return_value = b"<html><head><title>Test Page</title></head><body><p>Hello world</p><a href='https://example.com/link1'>Link</a></body></html>"
