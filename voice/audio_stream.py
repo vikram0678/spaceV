@@ -106,16 +106,32 @@ class AudioStreamRecorder:
                 # Reuse existing PyAudio interface if not terminated
                 if self._pa is None:
                     # Suppress low-level ALSA/JACK C stderr probing messages on Linux/WSL2
-                    import os
+                    null_fd = None
+                    orig_stderr = None
                     try:
+                        import os
                         null_fd = os.open(os.devnull, os.O_RDWR)
                         orig_stderr = os.dup(2)
                         os.dup2(null_fd, 2)
+                    except Exception:
+                        pass
+
+                    try:
                         self._pa = pyaudio.PyAudio()
                     finally:
-                        os.dup2(orig_stderr, 2)
-                        os.close(orig_stderr)
-                        os.close(null_fd)
+                        if orig_stderr is not None:
+                            try:
+                                import os
+                                os.dup2(orig_stderr, 2)
+                                os.close(orig_stderr)
+                            except Exception:
+                                pass
+                        if null_fd is not None:
+                            try:
+                                import os
+                                os.close(null_fd)
+                            except Exception:
+                                pass
 
                 if self._stream is None:
                     self._stream = self._pa.open(

@@ -643,6 +643,15 @@ class UniversalBrainClient:
                         parsed_tool_calls = extracted
                         content = clean
 
+                usage = data.get("usage", {})
+                in_tok = int(usage.get("prompt_tokens", 0) or 1000)
+                out_tok = int(usage.get("completion_tokens", 0) or 200)
+                try:
+                    from core.token_harness import token_harness
+                    token_harness.record_usage(provider_name, in_tok, out_tok, model=provider_model)
+                except Exception:
+                    pass
+
                 return {
                     "role": "assistant",
                     "content": content,

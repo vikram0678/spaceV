@@ -5,11 +5,18 @@ import pytest
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-# Mock audio stream to prevent contention with running agent
-mock_stream = MagicMock()
-mock_stream.is_running = False
-mock_stream.read_chunk.return_value = b"\x00" * 1024
-sys.modules["voice.audio_stream"] = MagicMock(audio_stream=mock_stream)
+@pytest.fixture(scope="module", autouse=True)
+def _mock_audio_stream_scoped():
+    orig = sys.modules.get("voice.audio_stream")
+    mock_stream = MagicMock()
+    mock_stream.is_running = False
+    mock_stream.read_chunk.return_value = b"\x00" * 1024
+    sys.modules["voice.audio_stream"] = MagicMock(audio_stream=mock_stream)
+    yield
+    if orig is not None:
+        sys.modules["voice.audio_stream"] = orig
+    else:
+        sys.modules.pop("voice.audio_stream", None)
 
 from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QApplication

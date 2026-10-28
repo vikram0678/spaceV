@@ -516,9 +516,27 @@ class SpaceVTokenHarness:
         if self.budget_guard:
             self.budget_guard.record_agent_usage(role, tokens)
 
-    def record_usage(self, provider: str, input_tokens: int, output_tokens: int):
+    def record_usage(
+        self,
+        provider: str,
+        input_tokens: int,
+        output_tokens: int,
+        model: str = "default",
+        agent: str = "direct",
+    ):
         if self.budget_guard:
             self.budget_guard.record_usage(provider, input_tokens, output_tokens)
+        try:
+            from core.token_ledger import token_ledger
+            token_ledger.record_turn(
+                provider=provider,
+                model=model,
+                agent=agent,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+        except Exception as e:
+            logger.debug(f"[TOKEN_HARNESS] Could not record to token ledger: {e}")
 
     def get_report(self) -> dict[str, Any]:
         report: dict[str, Any] = {

@@ -146,6 +146,11 @@ class MultiModelRouter:
         return PRIMARY_MODEL, "default"
 
     @staticmethod
+    def get_keep_alive() -> str:
+        """Returns the configured Ollama keep-alive duration."""
+        return OLLAMA_KEEP_ALIVE
+
+    @staticmethod
     def get_cloud_provider_fallback_chain() -> list[str]:
         """Returns the priority cloud provider fallback chain."""
         from core.provider_failover import DEFAULT_FAILOVER_CASCADE

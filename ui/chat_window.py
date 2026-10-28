@@ -1056,6 +1056,10 @@ class ChatWindow(QWidget):
             50, lambda: self.scroll_area.verticalScrollBar().setValue(self.scroll_area.verticalScrollBar().maximum())
         )
 
+    def closeEvent(self, event):
+        self.cleanup()
+        super().closeEvent(event)
+
     def cleanup(self):
         """Stops background threads and releases audio hardware before exit."""
         try:
