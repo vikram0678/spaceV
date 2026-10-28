@@ -11,10 +11,10 @@ Guarantees:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger("SpaceV.RateLimiter")
@@ -30,7 +30,7 @@ class ProviderRateLimiter:
         self._lock = threading.Lock()
 
         # Provider configurations: (RPM limit, TPM limit)
-        self.limits: Dict[str, Dict[str, Any]] = {
+        self.limits: dict[str, dict[str, Any]] = {
             "groq": {
                 "rpm": 30,
                 "tpm": 15000,
@@ -82,6 +82,22 @@ class ProviderRateLimiter:
             },
         }
 
+    def set_provider_limits(self, provider: str, rpm: int, tpm: int) -> None:
+        """Dynamically configures rate and token limits for a provider."""
+        key = self._normalize_provider(provider)
+        with self._lock:
+            if key in self.limits:
+                self.limits[key]["rpm"] = rpm
+                self.limits[key]["tpm"] = tpm
+            else:
+                self.limits[key] = {
+                    "rpm": rpm,
+                    "tpm": tpm,
+                    "calls": [],
+                    "token_usage": [],
+                    "backoff_until": 0.0,
+                }
+
     def _normalize_provider(self, provider: str) -> str:
         prov = provider.lower().strip()
         for key in self.limits:
@@ -89,7 +105,7 @@ class ProviderRateLimiter:
                 return key
         return "groq"
 
-    def _prune_expired(self, data: Dict[str, Any], now: float) -> None:
+    def _prune_expired(self, data: dict[str, Any], now: float) -> None:
         """Removes entries older than the sliding window."""
         cutoff = now - self.window_sec
         data["calls"] = [t for t in data["calls"] if t > cutoff]
@@ -180,7 +196,7 @@ class ProviderRateLimiter:
             self.limits[key]["backoff_until"] = time.time() + backoff
             logger.warning(f"[RATE_LIMITER] 429 recorded for {key}. Locked for {backoff:.1f}s")
 
-    def get_provider_status(self, provider: str) -> Dict[str, Any]:
+    def get_provider_status(self, provider: str) -> dict[str, Any]:
         """Returns diagnostic telemetry for the provider."""
         key = self._normalize_provider(provider)
         with self._lock:
@@ -334,3 +350,4 @@ class SpaceVRateLimiter:
 # Global instances
 rate_limiter = ProviderRateLimiter()
 spacev_rate_limiter = SpaceVRateLimiter()
+OmniRouteRateLimiter = ProviderRateLimiter

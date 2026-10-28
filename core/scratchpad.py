@@ -28,6 +28,8 @@ class ScratchpadStep:
     status: str = StepStatus.PENDING
     action_tool: str | None = None
     result_summary: str | None = None
+    acceptance_criteria: str | None = None
+    verification_evidence: str | None = None
     updated_at: str = field(default_factory=lambda: datetime.datetime.now().strftime("%H:%M:%S"))
 
     def to_dict(self) -> dict[str, Any]:
@@ -244,6 +246,61 @@ class SpaceVScratchpad:
 
         self.sync_to_disk()
 
+    def verify_and_complete_step(self, step_id: int, evidence: str, tool_name: str | None = None) -> bool:
+        """
+        Goal-backward empirical verification (Planning-with-Files pattern):
+        A step is strictly rejected from COMPLETED status unless explicit,
+        verifiable proof is provided.
+        """
+        step = next((s for s in self.plan if s.id == step_id), None)
+        if not step:
+            logger.warning(f"[SCRATCHPAD] Step {step_id} not found for verification.")
+            return False
+
+        clean_evidence = str(evidence).strip()
+        if not clean_evidence or len(clean_evidence) < 5:
+            logger.warning(f"[SCRATCHPAD] Goal-backward verification rejected: insufficient evidence for Step {step_id}.")
+            step.status = StepStatus.FAILED
+            step.result_summary = "Verification failed: no empirical evidence provided"
+            self.sync_to_disk()
+            return False
+
+        step.verification_evidence = clean_evidence[:300]
+        step.result_summary = clean_evidence[:200]
+        step.status = StepStatus.COMPLETED
+        if tool_name:
+            step.action_tool = tool_name
+        step.updated_at = datetime.datetime.now().strftime("%H:%M:%S")
+
+        # Auto-advance current_step_index to next pending step
+        for idx, s in enumerate(self.plan):
+            if s.status == StepStatus.PENDING:
+                self.current_step_index = idx
+                s.status = StepStatus.IN_PROGRESS
+                break
+        else:
+            self.current_step_index = len(self.plan)
+
+        self._log(f"Step {step_id} empirically verified: {clean_evidence[:80]}")
+        self.sync_to_disk()
+        return True
+
+    def goal_backward_audit(self) -> tuple[bool, list[str]]:
+        """
+        Traverses plan from goal backward to ensure all completed steps
+        have empirical verification evidence recorded.
+        Returns (is_valid, list_of_gaps).
+        """
+        gaps: list[str] = []
+        for s in reversed(self.plan):
+            if s.status == StepStatus.COMPLETED and not s.verification_evidence:
+                gaps.append(f"Step {s.id} ('{s.description}') marked completed without empirical evidence")
+            elif s.status in (StepStatus.FAILED, StepStatus.PENDING, StepStatus.IN_PROGRESS):
+                gaps.append(f"Step {s.id} ('{s.description}') is not completed (status={s.status})")
+
+        is_passed = len(gaps) == 0 and len(self.plan) > 0
+        return is_passed, gaps
+
     def record_tool_action(self, tool_name: str, args: dict[str, Any], result: str):
         """
         Records tool execution telemetry into scratchpad working memory.
@@ -409,3 +466,25 @@ def scratchpad_clear_disk() -> str:
     """Cleans up persisted scratchpad files on disk."""
     active_scratchpad.clear_disk_state()
     return "Scratchpad disk state cleared."
+
+
+def scratchpad_verify_step(step_id: int, evidence: str) -> str:
+    """
+    Goal-backward empirical verification (Planning-with-Files pattern):
+    Verifies that a step has empirical proof before completing it.
+    """
+    success = active_scratchpad.verify_and_complete_step(step_id, evidence)
+    if success:
+        return f"Step {step_id} empirically verified and completed, Sir."
+    return f"Verification rejected for Step {step_id}: insufficient empirical evidence provided."
+
+
+def scratchpad_goal_audit() -> str:
+    """
+    Audits the scratchpad plan backward from the goal to verify that
+    every milestone has verifiable empirical proof.
+    """
+    passed, gaps = active_scratchpad.goal_backward_audit()
+    if passed:
+        return "Goal-backward audit PASSED: all steps verified with empirical evidence, Sir."
+    return "Goal-backward audit gaps:\n" + "\n".join(f"- {g}" for g in gaps)

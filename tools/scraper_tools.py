@@ -2,8 +2,12 @@
 Web Scraping & Live Intelligence Tools for SpaceV.
 Scrapes jobs, news headlines, weather, and encyclopedia summaries.
 """
+from __future__ import annotations
+
 import csv
 import urllib.parse
+from dataclasses import asdict, dataclass
+from typing import Any
 
 import requests
 
@@ -172,12 +176,28 @@ def get_wikipedia_summary(query: str) -> str:
         return f"Failed to search Wikipedia: {e!s}"
 
 
-def scrape_web_page_crawl4ai(url: str, max_chars: int = 12000) -> str:
+@dataclass
+class CrawlResult:
+    """Structured extraction result inspired by crawl4ai."""
+    url: str
+    title: str
+    markdown: str
+    links: list[str]
+    status_code: int = 200
+    success: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def scrape_web_page_crawl4ai(url: str, max_chars: int = 12000, return_json: bool = False) -> str:
     """
     High-throughput resilient web extraction inspired by crawl4ai.
-    Uses clean HTTP fetching with anti-bot headers and semantic markdown distillation.
+    Uses clean HTTP fetching with anti-bot headers, link extraction,
+    and semantic markdown distillation.
     Provides immediate zero-crash fallback when full Playwright headless browsers are offline or blocked.
     """
+    import re
     import urllib.request
     from tools.semantic_distiller import distill_html_to_markdown
 
@@ -195,10 +215,37 @@ def scrape_web_page_crawl4ai(url: str, max_chars: int = 12000) -> str:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=12) as response:
             html = response.read().decode("utf-8", errors="replace")
+            status_code = getattr(response, "status", 200)
+
+        # Extract title
+        title_match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+        title = title_match.group(1).strip() if title_match else url
+
+        # Extract top hyperlinks (crawl4ai pattern)
+        raw_links = re.findall(r'href=[\'"](https?://[^\'">\s]+)[\'"]', html, re.IGNORECASE)
+        unique_links = list(dict.fromkeys(raw_links))[:10]
 
         md = distill_html_to_markdown(html, max_chars=max_chars)
-        if md:
-            return md
-        return f"Retrieved web page from {url}, but no readable content was found."
+        content = md if md else f"Retrieved web page from {url}, but no readable content was found."
+
+        result = CrawlResult(
+            url=url,
+            title=title,
+            markdown=content,
+            links=unique_links,
+            status_code=status_code,
+            success=True,
+        )
+
+        if return_json:
+            import json
+            return json.dumps(result.to_dict())
+
+        links_section = "\n\n🔗 **Extracted Links:**\n" + "\n".join(f"- {link}" for link in unique_links[:5]) if unique_links else ""
+        return f"# {title}\n\n{content}{links_section}"
+
     except Exception as e:
+        if return_json:
+            import json
+            return json.dumps({"url": url, "error": str(e), "success": False})
         return f"HTTP web extraction failed for {url}: {e!s}"

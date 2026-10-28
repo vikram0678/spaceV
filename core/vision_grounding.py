@@ -295,3 +295,123 @@ def gui_click_som_index(element_index: int, som_elements: list[dict[str, Any]] |
         return f"Autonomously clicked Set-of-Mark [{element_index}] ('{label}') at ({cx}, {cy})."
     except Exception as e:
         return f"Failed clicking mark [{element_index}]: {e!s}"
+
+
+# ============================================================================
+# BROWSER-USE VISION GROUNDING & INTERACTIVE ELEMENT DETECTION (§31.1)
+# ============================================================================
+
+from dataclasses import asdict, dataclass
+
+
+@dataclass
+class BrowserGroundingElement:
+    """Represents a grounded interactive UI element identified via vision & DOM geometry."""
+    element_id: int
+    label: str
+    role: str                  # "button" | "input" | "link" | "text" | "icon" | "widget"
+    bbox: tuple[int, int, int, int]  # (x1, y1, x2, y2)
+    center: tuple[int, int]    # (cx, cy)
+    interactivity_score: float = 1.0
+    is_interactive: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def ground_interactive_elements(image: Image.Image | None = None) -> list[BrowserGroundingElement]:
+    """
+    Discovers, scores, and ranks interactive UI components on the interactive display
+    inspired by Browser-Use's perceptual grounding engine.
+    """
+    img = image or capture_screen_pil()
+    if img is None:
+        return []
+
+    from core.omniparser import OmniParserEngine
+    parser = OmniParserEngine()
+    raw_elements = parser.parse_screen(img)
+
+    grounded: list[BrowserGroundingElement] = []
+    for idx, el in enumerate(raw_elements, 1):
+        el_type = str(el.element_type).lower()
+        role = "button" if "button" in el_type else ("input" if "input" in el_type else ("icon" if "icon" in el_type else "widget"))
+        score = el.confidence
+        if role in ("button", "input"):
+            score = min(1.0, score + 0.15)
+
+        grounded.append(BrowserGroundingElement(
+            element_id=idx,
+            label=el.label or f"{role}_{idx}",
+            role=role,
+            bbox=el.bbox,
+            center=el.center,
+            interactivity_score=round(score, 3),
+            is_interactive=role in ("button", "input", "icon"),
+        ))
+
+    # Sort by interactivity score descending
+    grounded.sort(key=lambda x: x.interactivity_score, reverse=True)
+    return grounded
+
+
+def find_interactive_element(
+    intent_or_label: str,
+    image: Image.Image | None = None,
+    min_similarity: float = 0.65,
+) -> BrowserGroundingElement | None:
+    """
+    Locates an interactive UI element matching the intent, label, or role
+    using fuzzy string distance and spatial heuristics.
+    """
+    elements = ground_interactive_elements(image)
+    if not elements:
+        return None
+
+    clean_target = intent_or_label.lower().strip()
+    best_match = None
+    best_score = 0.0
+
+    for el in elements:
+        clean_lbl = el.label.lower().strip()
+        sim = difflib.SequenceMatcher(None, clean_target, clean_lbl).ratio()
+        if clean_target in clean_lbl or clean_lbl in clean_target:
+            sim = max(sim, 0.85)
+
+        # Exact role boost
+        if clean_target == el.role:
+            sim = max(sim, 0.90)
+
+        combined_score = (sim * 0.7) + (el.interactivity_score * 0.3)
+        if combined_score > best_score:
+            best_score = combined_score
+            best_match = el
+
+    if best_match and best_score >= min_similarity:
+        return best_match
+    return None
+
+
+def gui_ground_and_click(intent_or_label: str) -> str:
+    """
+    Browser-Use perceptual grounding click:
+    Finds the interactive element matching target intent, glides the mouse, and executes a click.
+    """
+    el = find_interactive_element(intent_or_label)
+    if not el:
+        return f"Could not ground interactive element matching '{intent_or_label}'."
+
+    cx, cy = el.center
+    try:
+        from core.host_bridge import HostBridge
+        if HostBridge.is_wsl():
+            HostBridge.click_host_coordinate(cx, cy)
+        else:
+            human_move_to(cx, cy, duration=0.35, label=f"🎯 CLICKING '{el.label}'", mode="clicking")
+            safety.check()
+            time.sleep(0.08)
+            pyautogui.click()
+
+        return f"Successfully grounded '{el.label}' ({el.role}) at ({cx}, {cy}) and clicked, Sir."
+    except Exception as e:
+        return f"Failed clicking grounded element '{el.label}': {e!s}"

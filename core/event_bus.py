@@ -96,10 +96,13 @@ class SpaceVEventBus:
         handler: Callable[[Event], Any],
         subscriber_id: str = "",
         priority_filter: EventPriority | None = None,
+        priority: EventPriority | None = None,
     ) -> str:
         """
         Subscribes to an exact topic or wildcard pattern (e.g. 'voice.*', '**').
         """
+        if priority_filter is None and priority is not None:
+            priority_filter = priority
         sub_id = subscriber_id or getattr(handler, "__name__", "anonymous_handler")
         sub = Subscription(
             topic_pattern=topic_pattern,
