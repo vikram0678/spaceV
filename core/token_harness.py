@@ -341,6 +341,7 @@ class TokenBudgetGuard:
     def __init__(self, budget: TokenBudget | None = None):
         self.budget = budget or TokenBudget()
         self._provider_usage: dict[str, int] = {}
+        self._agent_usage: dict[str, int] = {}
 
     def pre_flight_check(
         self,
@@ -367,6 +368,9 @@ class TokenBudgetGuard:
 
         self._provider_usage[provider] = self._provider_usage.get(provider, 0) + total
 
+    def record_agent_usage(self, role: str, tokens: int):
+        self._agent_usage[role] = self._agent_usage.get(role, 0) + tokens
+
     def new_turn(self):
         self.budget.used_this_turn = 0
 
@@ -378,6 +382,7 @@ class TokenBudgetGuard:
             "avg_per_turn": self.budget.used_this_session // max(self.budget.turns_count, 1),
             "utilization": f"{self.budget.utilization_percent:.1f}%",
             "by_provider": dict(self._provider_usage),
+            "by_agent": dict(self._agent_usage),
         }
 
 
@@ -485,6 +490,31 @@ class SpaceVTokenHarness:
         logger.info(f"[TOKEN_HARNESS] Optimization: {total_in} -> {total_out} tokens ({reduction:.1f}% reduction)")
 
         return optimized_messages, optimized_tools
+
+    AGENT_COMPRESSION_PROFILES: dict[str, dict[str, int]] = {
+        "planner": {"max_input_tokens": 800, "max_output_tokens": 300},
+        "coder": {"max_input_tokens": 1200, "max_output_tokens": 400},
+        "auditor": {"max_input_tokens": 600, "max_output_tokens": 150},
+        "default": {"max_input_tokens": 1500, "max_output_tokens": 500},
+    }
+
+    def compress_for_agent(self, prompt: str, agent_role: str = "default") -> str:
+        """
+        Compresses an agent prompt according to the agent role's specific input ceiling.
+        """
+        profile = self.AGENT_COMPRESSION_PROFILES.get(str(agent_role).lower(), self.AGENT_COMPRESSION_PROFILES["default"])
+        max_tokens = profile["max_input_tokens"]
+        estimated = estimate_tokens(prompt)
+        if estimated <= max_tokens:
+            return prompt
+
+        max_chars = max_tokens * 4
+        truncated = prompt[:max_chars].rsplit("\n", 1)[0]
+        return truncated + f"\n... [Context compacted for {agent_role} budget: {max_tokens} tokens]"
+
+    def record_agent_usage(self, role: str, tokens: int):
+        if self.budget_guard:
+            self.budget_guard.record_agent_usage(role, tokens)
 
     def record_usage(self, provider: str, input_tokens: int, output_tokens: int):
         if self.budget_guard:

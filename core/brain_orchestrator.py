@@ -571,6 +571,25 @@ class HybridBrainAgent:
         """
         return await workflow_engine.execute_workflow(workflow)
 
+    def should_use_swarm(self, user_prompt: str) -> bool:
+        """
+        Determines whether a task should be decomposed and executed by the multi-agent swarm
+        (Volume I §8 & Volume III §23).
+        """
+        prompt_lower = user_prompt.lower()
+        swarm_triggers = [
+            "swarm", "planner", "auditor", "verify the implementation",
+            "plan and execute", "architect and code", "write and verify"
+        ]
+        return any(trigger in prompt_lower for trigger in swarm_triggers)
+
+    async def route_to_swarm(self, user_prompt: str, context: dict[str, Any] | None = None):
+        """
+        Routes the task to the SwarmOrchestrator.
+        """
+        from core.swarm_orchestrator import swarm_orchestrator
+        return await swarm_orchestrator.route_task(user_input=user_prompt, context=context)
+
 
 # Universal Aliases for Seamless Backward Compatibility
 SpaceVAgent = HybridBrainAgent
