@@ -209,6 +209,12 @@ class HybridBrainAgent:
             fallback_model=PRIMARY_MODEL
         )
         self.active_paused_frame: dict[str, Any] | None = None
+        try:
+            from core.swarm_orchestrator import SwarmOrchestrator
+            from core.token_harness import token_harness
+            self.swarm = SwarmOrchestrator(brain_orchestrator=self, token_harness=token_harness)
+        except Exception:
+            self.swarm = None
         self._verify_model()
 
     def _verify_model(self):
@@ -277,11 +283,29 @@ class HybridBrainAgent:
             self.messages.append({"role": "user", "content": user_prompt})
 
             active_tools = self._resolve_tools(user_prompt, needs_tools)
-            response_dict = self.cloud_client.chat(
+
+            # 4-Tier Token Optimization Harness (SmartCrusher + CacheAligner + ToolCleanup + BudgetGuard)
+            from core.token_harness import token_harness, estimate_messages_tokens
+            pre_tokens = estimate_messages_tokens(self.messages)
+            opt_messages, opt_tools = token_harness.optimize(
                 messages=self.messages,
                 tools=active_tools,
+                user_prompt=user_prompt,
+            )
+            post_tokens = estimate_messages_tokens(opt_messages)
+
+            # Prevent unbounded memory growth if sliding window compressed history
+            if len(self.messages) > 10 and len(opt_messages) < len(self.messages):
+                self.messages = list(opt_messages)
+
+            response_dict = self.cloud_client.chat(
+                messages=opt_messages,
+                tools=opt_tools,
                 model=cloud_model,
-                token_callback=token_callback if not needs_tools else None
+                token_callback=token_callback if not needs_tools else None,
+                pre_tokens=pre_tokens,
+                post_tokens=post_tokens,
+                agent="direct",
             )
 
             content = response_dict.get("content", "")
@@ -326,12 +350,22 @@ class HybridBrainAgent:
                         "content": str(compressed_result),
                     })
 
-                self.messages = token_optimizer.optimize_messages_for_cache(self.messages)
-                synth_dict = self.cloud_client.chat(
+                synth_pre = estimate_messages_tokens(self.messages)
+                synth_opt_messages, _ = token_harness.optimize(
                     messages=self.messages,
                     tools=None,
+                    user_prompt=user_prompt,
+                )
+                synth_post = estimate_messages_tokens(synth_opt_messages)
+
+                synth_dict = self.cloud_client.chat(
+                    messages=synth_opt_messages,
+                    tools=None,
                     model=cloud_model,
-                    token_callback=token_callback
+                    token_callback=token_callback,
+                    pre_tokens=synth_pre,
+                    post_tokens=synth_post,
+                    agent="direct",
                 )
                 final_reply = synth_dict.get("content", "")
                 self.messages.append({"role": "assistant", "content": final_reply})

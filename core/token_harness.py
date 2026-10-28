@@ -523,6 +523,15 @@ class SpaceVTokenHarness:
         output_tokens: int,
         model: str = "default",
         agent: str = "direct",
+        pre_tokens: int = 0,
+        post_tokens: int = 0,
+        bucket_before: int = 0,
+        bucket_after: int = 0,
+        workflow_id: str = "",
+        node_id: str = "",
+        was_rate_limited: bool = False,
+        failover_count: int = 0,
+        final_provider: str = "",
     ):
         if self.budget_guard:
             self.budget_guard.record_usage(provider, input_tokens, output_tokens)
@@ -534,6 +543,15 @@ class SpaceVTokenHarness:
                 agent=agent,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                pre_tokens=pre_tokens,
+                post_tokens=post_tokens,
+                bucket_before=bucket_before,
+                bucket_after=bucket_after,
+                workflow_id=workflow_id,
+                node_id=node_id,
+                was_rate_limited=was_rate_limited,
+                failover_count=failover_count,
+                final_provider=final_provider,
             )
         except Exception as e:
             logger.debug(f"[TOKEN_HARNESS] Could not record to token ledger: {e}")

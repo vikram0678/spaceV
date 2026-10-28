@@ -337,7 +337,10 @@ class UniversalBrainClient:
         temperature: float = 0.2,
         max_tokens: int = 2048,
         token_callback: Callable[[str], None] | None = None,
-        timeout: int = 25
+        timeout: int = 25,
+        pre_tokens: int = 0,
+        post_tokens: int = 0,
+        agent: str = "direct",
     ) -> dict[str, Any]:
         """
         Executes a chat completion against OpenRouter/OpenAI API with live streaming
@@ -391,7 +394,9 @@ class UniversalBrainClient:
                 if not isinstance(msg_copy.get("content"), str):
                     content_val = msg_copy.get("content", "")
                     msg_copy["content"] = json.dumps(content_val) if isinstance(content_val, (dict, list)) else str(content_val)
-            sanitized_messages.append(msg_copy)
+                sanitized_messages.append(msg_copy)
+            else:
+                sanitized_messages.append(msg_copy)
 
         # Context Compressor (skills/context-compressor):
         # Type-aware elision of grep, shell ANSI, JSON, and file dumps to protect TPM budgets
@@ -419,6 +424,7 @@ class UniversalBrainClient:
         use_stream = bool(token_callback and not openai_tools)
         if use_stream:
             payload["stream"] = True
+            payload["stream_options"] = {"include_usage": True}
         if openai_tools:
             payload["tools"] = openai_tools
             payload["tool_choice"] = "auto"
@@ -577,6 +583,10 @@ class UniversalBrainClient:
                 self.last_used_provider = provider_name
                 rate_limiter.record_consumption(provider_name, 1500)
 
+                stream_usage: dict[str, Any] = {}
+                parsed_tool_calls: list[dict[str, Any]] = []
+                content = ""
+
                 if use_stream:
                     full_content = ""
                     for line in res.iter_lines():
@@ -588,6 +598,8 @@ class UniversalBrainClient:
                                     break
                                 try:
                                     chunk = json.loads(data_str)
+                                    if "usage" in chunk and chunk["usage"]:
+                                        stream_usage = chunk["usage"]
                                     delta = chunk.get("choices", [{}])[0].get("delta", {})
                                     token = delta.get("content", "")
                                     if token:
@@ -596,59 +608,73 @@ class UniversalBrainClient:
                                             token_callback(token)
                                 except Exception:
                                     continue
+
+                    content = full_content
                     if full_content:
                         from core.ollama_client import parse_fallback_tool_calls
                         extracted, clean = parse_fallback_tool_calls(full_content)
                         if extracted:
-                            return {
-                                "role": "assistant",
-                                "content": clean,
-                                "tool_calls": extracted
+                            parsed_tool_calls = extracted
+                            content = clean
+                else:
+                    # Non-streaming JSON response
+                    data = res.json()
+                    choice = data.get("choices", [{}])[0].get("message", {})
+                    content = choice.get("content", "") or ""
+                    raw_tool_calls = choice.get("tool_calls", [])
+
+                    for tc in raw_tool_calls:
+                        fn = tc.get("function", {})
+                        args = fn.get("arguments", {})
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except Exception:
+                                args = {"raw_input": args}
+                        parsed_tool_calls.append({
+                            "id": tc.get("id", "") or f"call_{uuid.uuid4().hex[:8]}",
+                            "type": "function",
+                            "function": {
+                                "name": fn.get("name", ""),
+                                "arguments": args
                             }
-                    return {
-                        "role": "assistant",
-                        "content": full_content,
-                        "tool_calls": []
-                    }
+                        })
 
-                # Non-streaming JSON response
-                data = res.json()
-                choice = data.get("choices", [{}])[0].get("message", {})
-                content = choice.get("content", "") or ""
-                raw_tool_calls = choice.get("tool_calls", [])
+                    # Resilient fallback parsing for open-weight models emitting XML/Markdown tools in content
+                    if not parsed_tool_calls and content:
+                        from core.ollama_client import parse_fallback_tool_calls
+                        extracted, clean = parse_fallback_tool_calls(content)
+                        if extracted:
+                            parsed_tool_calls = extracted
+                            content = clean
 
-                parsed_tool_calls = []
-                for tc in raw_tool_calls:
-                    fn = tc.get("function", {})
-                    args = fn.get("arguments", {})
-                    if isinstance(args, str):
-                        try:
-                            args = json.loads(args)
-                        except Exception:
-                            args = {"raw_input": args}
-                    parsed_tool_calls.append({
-                        "id": tc.get("id", "") or f"call_{uuid.uuid4().hex[:8]}",
-                        "type": "function",
-                        "function": {
-                            "name": fn.get("name", ""),
-                            "arguments": args
-                        }
-                    })
+                # Determine accurate token usage from response or heuristic estimator
+                usage = stream_usage if use_stream else data.get("usage", {})
+                if usage and (usage.get("prompt_tokens") or usage.get("completion_tokens")):
+                    in_tok = int(usage.get("prompt_tokens", 0) or 0)
+                    out_tok = int(usage.get("completion_tokens", 0) or 0)
+                else:
+                    from core.token_harness import estimate_messages_tokens, estimate_tokens
+                    in_tok = estimate_messages_tokens(messages)
+                    out_tok = estimate_tokens(content)
 
-                # Resilient fallback parsing for open-weight models emitting XML/Markdown tools in content
-                if not parsed_tool_calls and content:
-                    from core.ollama_client import parse_fallback_tool_calls
-                    extracted, clean = parse_fallback_tool_calls(content)
-                    if extracted:
-                        parsed_tool_calls = extracted
-                        content = clean
+                # Query rate limiter remaining capacity
+                bucket_status = rate_limiter.get_provider_status(provider_name)
+                bucket_after = bucket_status.get("tpm_remaining", 0)
 
-                usage = data.get("usage", {})
-                in_tok = int(usage.get("prompt_tokens", 0) or 1000)
-                out_tok = int(usage.get("completion_tokens", 0) or 200)
                 try:
                     from core.token_harness import token_harness
-                    token_harness.record_usage(provider_name, in_tok, out_tok, model=provider_model)
+                    token_harness.record_usage(
+                        provider=provider_name,
+                        input_tokens=in_tok,
+                        output_tokens=out_tok,
+                        model=provider_model,
+                        agent=agent,
+                        pre_tokens=pre_tokens or in_tok,
+                        post_tokens=post_tokens or in_tok,
+                        bucket_before=bucket_after + in_tok + out_tok,
+                        bucket_after=bucket_after,
+                    )
                 except Exception:
                     pass
 

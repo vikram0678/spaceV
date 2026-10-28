@@ -73,6 +73,20 @@ class ProviderRateLimiter:
                 "token_usage": [],
                 "backoff_until": 0.0,
             },
+            "direct": {
+                "rpm": 500,
+                "tpm": 500000,
+                "calls": [],
+                "token_usage": [],
+                "backoff_until": 0.0,
+            },
+            "openai": {
+                "rpm": 500,
+                "tpm": 500000,
+                "calls": [],
+                "token_usage": [],
+                "backoff_until": 0.0,
+            },
             "ollama": {
                 "rpm": 9999,
                 "tpm": 999999,
