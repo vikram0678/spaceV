@@ -140,8 +140,14 @@ class ChatWindow(QWidget):
 
         # Initialize Proactive Companion Engine
         self.companion = companion_engine
-        self.companion.check_in_triggered.connect(self.on_companion_check_in)
-        self.companion.start()
+        try:
+            self.companion.check_in_triggered.connect(self.on_companion_check_in)
+            self.companion.start()
+        except RuntimeError:
+            from core.proactive_companion import ProactiveCompanion
+            self.companion = ProactiveCompanion()
+            self.companion.check_in_triggered.connect(self.on_companion_check_in)
+            self.companion.start()
 
         self.setWindowTitle(f"⚡ {APP_NAME} AI Assistant")
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
