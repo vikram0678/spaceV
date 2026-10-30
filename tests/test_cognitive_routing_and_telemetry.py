@@ -671,6 +671,9 @@ class TestMultiAgentExecutionAndReliability:
         """When Groq returns 429 on primary model, it must hop to llama-3.1-8b-instant (20k TPM bucket)."""
         import requests
         from core.cloud_client import UniversalBrainClient
+        from core.rate_limiter import rate_limiter
+
+        rate_limiter.reset_all()
 
         client = UniversalBrainClient(
             base_url="https://api.groq.com/openai/v1",

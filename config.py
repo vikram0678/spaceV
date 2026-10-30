@@ -8,8 +8,22 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 # 1. Load .env if present (never breaks if .env is missing)
-
 load_dotenv(BASE_DIR / ".env")
+
+# 1.1 Load structured provider configuration from config/providers.yaml if present
+_yaml_config_path = BASE_DIR / os.getenv("CONFIG_PATH", "config/providers.yaml")
+_yaml_data = {}
+if _yaml_config_path.exists():
+    try:
+        import yaml
+        with open(_yaml_config_path, "r", encoding="utf-8") as _yf:
+            _yaml_data = yaml.safe_load(_yf) or {}
+    except Exception:
+        pass
+_yaml_providers = _yaml_data.get("providers", {})
+_yaml_roles = _yaml_data.get("roles", {})
+_yaml_ollama = _yaml_data.get("ollama", {})
+
 # 2. Dual-Brain Provider & Multi-LLM Configuration with Safe Defaults
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
@@ -39,6 +53,10 @@ GROQ_API_KEYS = [k.strip() for k in _raw_groq_keys.split(",") if k.strip()] if _
 for _k in [GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3, GROQ_API_KEY_4]:
     if _k and _k not in GROQ_API_KEYS:
         GROQ_API_KEYS.append(_k)
+# Supplement from config/providers.yaml if present
+for _k in _yaml_providers.get("groq", {}).get("keys", []):
+    if _k and str(_k).strip() and str(_k).strip() not in GROQ_API_KEYS:
+        GROQ_API_KEYS.append(str(_k).strip())
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_API_KEY_2 = os.getenv("GEMINI_API_KEY_2", "")
@@ -51,10 +69,15 @@ GEMINI_API_KEYS = [k.strip() for k in _raw_gemini_keys.split(",") if k.strip()] 
 for _k in [GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3]:
     if _k and _k not in GEMINI_API_KEYS:
         GEMINI_API_KEYS.append(_k)
+for _k in _yaml_providers.get("gemini", {}).get("keys", []):
+    if _k and str(_k).strip() and str(_k).strip() not in GEMINI_API_KEYS:
+        GEMINI_API_KEYS.append(str(_k).strip())
 
 SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY", "")
 SAMBANOVA_BASE_URL = os.getenv("SAMBANOVA_BASE_URL", "https://api.sambanova.ai/v1").rstrip("/")
 SAMBANOVA_MODEL = os.getenv("SAMBANOVA_MODEL", "DeepSeek-V3.1")
+if not SAMBANOVA_API_KEY and _yaml_providers.get("sambanova", {}).get("keys"):
+    SAMBANOVA_API_KEY = str(_yaml_providers["sambanova"]["keys"][0]).strip()
 
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
 CEREBRAS_API_KEY_2 = os.getenv("CEREBRAS_API_KEY_2", "")
@@ -67,6 +90,9 @@ CEREBRAS_API_KEYS = [k.strip() for k in _raw_cerebras_keys.split(",") if k.strip
 for _k in [CEREBRAS_API_KEY, CEREBRAS_API_KEY_2]:
     if _k and _k not in CEREBRAS_API_KEYS:
         CEREBRAS_API_KEYS.append(_k)
+for _k in _yaml_providers.get("cerebras", {}).get("keys", []):
+    if _k and str(_k).strip() and not str(_k).startswith("csk-your-") and str(_k).strip() not in CEREBRAS_API_KEYS:
+        CEREBRAS_API_KEYS.append(str(_k).strip())
 
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 MISTRAL_API_KEY_2 = os.getenv("MISTRAL_API_KEY_2", "")
@@ -79,6 +105,9 @@ MISTRAL_API_KEYS = [k.strip() for k in _raw_mistral_keys.split(",") if k.strip()
 for _k in [MISTRAL_API_KEY, MISTRAL_API_KEY_2]:
     if _k and _k not in MISTRAL_API_KEYS:
         MISTRAL_API_KEYS.append(_k)
+for _k in _yaml_providers.get("mistral", {}).get("keys", []):
+    if _k and str(_k).strip() and str(_k).strip() not in MISTRAL_API_KEYS:
+        MISTRAL_API_KEYS.append(str(_k).strip())
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_API_KEY_2 = os.getenv("OPENROUTER_API_KEY_2", "")
@@ -101,12 +130,12 @@ CODING_ENGINEER_MODEL = os.getenv("CODING_ENGINEER_MODEL", LLM_MODEL)
 FAST_CHAT_CLOUD_MODEL = os.getenv("FAST_CHAT_CLOUD_MODEL", LLM_MODEL)
 
 # Local Multi-Model Tiers (Ollama)
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-FAST_CHAT_MODEL = os.getenv("FAST_CHAT_MODEL", "qwen2.5:3b")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", str(_yaml_ollama.get("base_url", "http://localhost:11434")))
+FAST_CHAT_MODEL = os.getenv("FAST_CHAT_MODEL", str(_yaml_roles.get("fast_chat", "qwen2.5:3b")))
 PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "qwen2.5:3b")
-CODER_MODEL = os.getenv("CODER_MODEL", "qwen2.5-coder:7b")
-VISION_MODEL = os.getenv("VISION_MODEL", "moondream:latest")
-UI_TARS_MODEL = os.getenv("UI_TARS_MODEL", "ui-tars:7b")
+CODER_MODEL = os.getenv("CODER_MODEL", str(_yaml_roles.get("coder", "qwen2.5-coder:7b")))
+VISION_MODEL = os.getenv("VISION_MODEL", str(_yaml_roles.get("vision", "moondream:latest")))
+UI_TARS_MODEL = os.getenv("UI_TARS_MODEL", str(_yaml_roles.get("ui_tars", "ui-tars:7b")))
 UI_TARS_MODEL_2B = os.getenv("UI_TARS_MODEL_2B", "ui-tars:2b")
 FALLBACK_MODEL = os.getenv("FALLBACK_MODEL", "qwen2.5:7b-instruct-q5_0")
 # 3. Settings

@@ -190,11 +190,16 @@ class UniversalBrainClient:
 
         # 1. DIRECT BYOK PAID MODE: bypass free mesh if direct mode is active (unless running unit tests with mock keys)
         if self.routing_mode == "direct" and not (self.api_key.startswith("mock_") or self.api_key.startswith("gsk_mock")):
+            from core.virtual_router import virtual_router
+            direct_model = requested_model or self.default_model
+            # If a virtual alias like spacev/auto is requested in direct mode, resolve it or keep default
+            if virtual_router.is_virtual_alias(direct_model):
+                direct_model = self.default_model
             pipeline.append({
                 "name": "Direct Paid API",
                 "base_url": self.base_url,
                 "api_key": self.api_key,
-                "model": requested_model or self.default_model,
+                "model": direct_model,
             })
             return pipeline
 
@@ -262,7 +267,28 @@ class UniversalBrainClient:
             "family": "zai",
         }
 
-        if needs_gemini_first:
+        from core.virtual_router import virtual_router
+        model_name = requested_model or self.default_model
+        resolved_alias = virtual_router.resolve_alias(model_name, prompt=prompt, tools=tools) if virtual_router.is_virtual_alias(model_name) else None
+
+        if resolved_alias == "spacev/fast":
+            # Priority: Cerebras Fast / Groq Fast -> Full models -> Others
+            pipeline.extend(cerebras_fast_candidates)
+            pipeline.extend(groq_fast_candidates)
+            pipeline.extend(groq_candidates)
+            pipeline.extend(cerebras_candidates)
+            pipeline.extend(mistral_small_candidates)
+            pipeline.extend(gemini_candidates)
+        elif resolved_alias == "spacev/coder":
+            # Priority: Codestral / Mistral -> Groq -> Cerebras -> SambaNova
+            pipeline.extend(mistral_candidates)
+            pipeline.extend(groq_candidates)
+            pipeline.extend(cerebras_candidates)
+            pipeline.extend(mistral_small_candidates)
+            if self.sambanova_api_key:
+                pipeline.append(sambanova_provider)
+            pipeline.extend(gemini_candidates)
+        elif resolved_alias == "spacev/smart" or needs_gemini_first:
             pipeline.extend(gemini_candidates)
             pipeline.extend(cerebras_candidates)
             pipeline.extend(groq_candidates)
