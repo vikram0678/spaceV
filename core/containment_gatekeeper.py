@@ -344,8 +344,43 @@ class ContainmentGatekeeper:
         return (
             f"⚠️ Sir, this command involves untrusted external code ({reason}):\n"
             f"   `{command}`\n\n"
-            f"   **[1]** 🛡️ Run inside Celesto Sandbox (recommended — isolated in microVM)\n"
+            f"   **[1]** 🛡️ Run inside a connected real Celesto VM (check backend status first)\n"
             f"   **[2]** 💻 Run on Host (I trust this source)\n"
             f"   **[3]** ❌ Cancel\n\n"
             f"Which option, Sir?"
         )
+
+    @classmethod
+    def classify_tool_call(cls, tool_name: str, arguments: dict[str, Any]) -> tuple[str, str]:
+        """
+        Two-tiered approval classifier (TRIVIAL vs HIGH_RISK).
+        TRIVIAL: Read-only observation, search, harvesting, queries (autonomous execution).
+        HIGH_RISK: Mutating system files, process termination, untrusted shell commands, irreversible external mutations.
+        """
+        t = tool_name.lower().strip()
+
+        # Highly destructive / dangerous system operations
+        if t in ("empty_recycle_bin", "kill_process_by_name"):
+            return "HIGH_RISK", f"Destructive system operation: {t}"
+
+        # Terminal execution inspection
+        if t in ("execute_terminal_command", "execute_in_vscode_terminal", "run_python_script", "execute_code_block"):
+            cmd = arguments.get("command") or arguments.get("code") or arguments.get("script_name") or ""
+            sandbox_needed, reason = cls.should_sandbox(str(cmd))
+            if sandbox_needed:
+                return "HIGH_RISK", f"Untrusted shell command requires containment: {reason}"
+            cmd_lower = str(cmd).lower()
+            if any(danger in cmd_lower for danger in ("rm -rf /", "rmdir /s", "del /f /s", "format c:", "drop database")):
+                return "HIGH_RISK", "Potentially destructive filesystem command"
+
+        # Explicit untrusted sandbox execution
+        if t in ("detonate_in_sandbox", "run_sandboxed_workflow"):
+            return "HIGH_RISK", "Isolated untrusted code execution in sandbox"
+
+        # External Job Application Submission Gate (Human-in-the-Loop Confirmation Gate)
+        if t in ("apply_to_job", "submit_application", "submit_job_application"):
+            if not arguments.get("auto_submit"):
+                return "HIGH_RISK", "External job application submission requires explicit user confirmation"
+
+        # Trivial / Read-only / Query tools are completely safe and autonomous
+        return "TRIVIAL", "Autonomous safe operation"
