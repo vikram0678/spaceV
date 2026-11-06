@@ -38,7 +38,7 @@ class ReflexGatekeeper:
 
     COMPOSITE_CONJUNCTIONS: ClassVar[list[str]] = [
         " and search ", " and write ", " and find ", " and open ",
-        " and make ", " and check ", " and list ",
+        " and make ", " and check ", " and list ", " and ask ", " and tell ", " and compare ",
         " then open ", " then write ", " then search ", " then run ",
         " after that "
     ]
@@ -79,8 +79,8 @@ class ReflexGatekeeper:
             return True
 
         # 0.3 Pure single-app launches or system commands must stay on Fast Path
-        # e.g., "open notepad", "open vscode", "launch chrome", "open calculator"
-        if re.match(r"^(?:open|launch)\s+(?:calculator|calc|notepad|chrome|paint|task\s+manager|vs\s*code|vscode|settings)$", lower):
+        # Grounded in dynamic application catalog without hardcoding app names
+        if re.match(r"^(?:open|launch)\s+[a-zA-Z0-9_\-\.\s]+$", lower) and not any(k in lower for k in [" and ", "youtube", "http", "folder", "search", "write", "brightness", "terminal", "mode"]):
             return False
 
         # 0.4 YouTube media commands (e.g. "open youtube and play top video", "play ... on youtube")
@@ -108,6 +108,10 @@ class ReflexGatekeeper:
         # Case B: Generative verb + Programming Language (e.g. "write python program", "code in python3")
         if (has_gen_verb or "program" in words or "script" in words) and has_language:
             return True
+
+        # 1.5 Direct navigation requests ("take me to ... website and timeline") remain on FastRouter
+        if any(lower.startswith(p) or f"hey {p}" in lower for p in ["take me to", "takem to", "navigate to", "go to"]):
+            return False
 
         # 2. Composite multi-step requests: "open chrome and search for latest job application on the ai engineer"
         if any(conj in lower for conj in cls.COMPOSITE_CONJUNCTIONS):
