@@ -8,6 +8,7 @@ and integrates with SQLite / PostgreSQL backend.
 import logging
 import math
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -50,7 +51,7 @@ class RunLedgerService:
 
     def init_db(self):
         """Initializes idempotent schema matching seeds/01_runs.sql with telemetry extensions."""
-        with self.get_connection() as conn:
+        with closing(self.get_connection()) as conn:
             conn.execute("""
             CREATE TABLE IF NOT EXISTS runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,7 +72,7 @@ class RunLedgerService:
 
     def record_run(self, record: SandboxRunRecord) -> bool:
         """Records a completed sandbox execution into the ledger."""
-        with self.get_connection() as conn:
+        with closing(self.get_connection()) as conn:
             conn.execute(
                 """
             INSERT INTO runs (
@@ -144,7 +145,7 @@ class RunLedgerService:
             )
 
     def get_all_runs(self) -> list[dict[str, Any]]:
-        with self.get_connection() as conn:
+        with closing(self.get_connection()) as conn:
             cursor = conn.execute("SELECT * FROM runs ORDER BY id ASC")
             return [dict(row) for row in cursor.fetchall()]
 
