@@ -7,6 +7,7 @@ Orchestrates hardware-isolated sandboxes with snapshot checkpoints,
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from typing import Any
@@ -41,86 +42,138 @@ class CelestoSandboxInstance:
         self.network_mode = network_mode
         self.state = "created"
         self.snapshots: dict[str, Any] = {}
-        self.boot_time_s = 0.48
+        self.boot_time_s: float | None = None
+        self.started_at_monotonic = time.monotonic()
+        self.phase_timings_ms: dict[str, float] = {
+            "vm_startup_ms": 0.0,
+            "command_ms": 0.0,
+            "cleanup_ms": 0.0,
+        }
+        self.command_count = 0
         self._live_computer = None
+        self.backend_error: str | None = None
 
         self._initialize()
 
+    @property
+    def backend_connected(self) -> bool:
+        """True only after the SDK returns a live computer handle."""
+        return self._live_computer is not None
+
     def _initialize(self):
-        """Attempts to initialize via Celesto SDK if live KVM/cloud is available."""
+        """Initialize a real Celesto computer; never substitute a fake guest."""
+        started = time.perf_counter()
         try:
             from celesto import Computer
 
-            # If running locally with KVM or cloud provider
-            if settings.celesto_provider == "cloud":
-                self._live_computer = Computer(name=self.name, provider="cloud", api_key=settings.celesto_api_key)
+            provider = str(settings.celesto_provider or "local").strip().lower()
+            # The SDK reads provider/backend settings from the process environment.
+            # SpaceV loads .env at startup, but seed these values from typed settings
+            # too so callers that import this module directly behave consistently.
+            if settings.celesto_backend:
+                os.environ["CELESTO_BACKEND"] = str(settings.celesto_backend).strip()
+            if provider == "cloud":
+                if not settings.celesto_api_key or settings.celesto_api_key == "placeholder_key":
+                    raise RuntimeError("CELESTO_PROVIDER=cloud requires a configured CELESTO_API_KEY.")
+                # The supported SDK reads CELESTO_API_KEY from the environment.
+                os.environ["CELESTO_API_KEY"] = settings.celesto_api_key
+                self._live_computer = Computer(provider="cloud")
+            elif provider == "local":
+                if os.name == "nt":
+                    raise RuntimeError("Local Celesto virtualization is unavailable on Windows; configure the cloud provider or use a supported Linux/macOS host.")
+                self._live_computer = Computer()
             else:
-                # Local Firecracker
-                self._live_computer = Computer.get(self.name, local=True)
+                raise RuntimeError(f"Unsupported CELESTO_PROVIDER: {provider}")
             self.state = "ready"
-        except Exception:
-            # Deterministic microVM driver mode (for headless CI / environments without KVM)
-            self.state = "ready"
+        except Exception as exc:
+            self._live_computer = None
+            self.backend_error = f"{type(exc).__name__}: {exc}"
+            self.state = "unavailable"
+            logger.warning("Celesto backend unavailable for %s: %s", self.name, self.backend_error)
+        finally:
+            elapsed = time.perf_counter() - started
+            self.boot_time_s = elapsed
+            self.phase_timings_ms["vm_startup_ms"] = round(elapsed * 1000.0, 2)
 
     def run(self, command: str) -> SandboxExecutionResult:
-        """Executes a command inside the microVM after passing safety hook audit."""
-        self.state = "running"
-
-        def _do_exec(cmd: str) -> SandboxExecutionResult:
-            if self._live_computer:
+        """Execute once in a live Celesto computer, or fail closed."""
+        started = time.perf_counter()
+        self.command_count += 1
+        try:
+            if self._live_computer is None:
+                self.state = "unavailable"
+                result = SandboxExecutionResult(
+                    78,
+                    "",
+                    f"Real Celesto sandbox unavailable; command was not executed. {self.backend_error or ''}".strip(),
+                )
+            else:
+                self.state = "running"
                 try:
-                    res = self._live_computer.run(cmd, timeout=30)
-                    return SandboxExecutionResult(res.exit_code, res.stdout, res.stderr)
-                except Exception as e:
-                    return SandboxExecutionResult(1, "", str(e))
-
-            # Deterministic isolated guest response
-            if "uname" in cmd:
-                return SandboxExecutionResult(0, "Linux celesto-guest 6.6.114-firecracker x86_64\n", "")
-            if "cat /proc/mounts" in cmd:
-                return SandboxExecutionResult(0, "/dev/root / ext4 rw,relatime 0 0\n", "")
-            if "raise SystemExit" in cmd or "error" in cmd:
-                return SandboxExecutionResult(2, "", "Process exited with code 2\n")
-            if "setup.py" in cmd or "pip install" in cmd:
-                return SandboxExecutionResult(0, "Successfully installed package in sandbox\n", "")
-            return SandboxExecutionResult(0, f"Executed: {cmd}\n", "")
-
-        # Passes through safety_auditor to append to logs/commands.jsonl
-        # If command is blocked, raises CommandBlockedError
-        safety_auditor.audit_and_execute(self.name, command, executor_fn=_do_exec)
-        return _do_exec(command)
+                    # Audit only here; execute the approved command exactly once below.
+                    safety_auditor.audit_and_execute(self.name, command)
+                    res = self._live_computer.run(command, timeout=30)
+                    result = SandboxExecutionResult(
+                        int(getattr(res, "exit_code", 0)),
+                        str(getattr(res, "stdout", "") or ""),
+                        str(getattr(res, "stderr", "") or ""),
+                    )
+                    self.state = "ready"
+                except Exception as exc:
+                    self.state = "ready" if self._live_computer is not None else "unavailable"
+                    result = SandboxExecutionResult(1, "", f"Celesto command failed: {exc}")
+        finally:
+            elapsed = time.perf_counter() - started
+            self.phase_timings_ms["command_ms"] = round(elapsed * 1000.0, 2)
+        return result
 
     def snapshot(self, snapshot_id: str) -> bool:
-        """Captures hardware state (RAM + Copy-on-Write disk) in ~200ms."""
+        """Capture a real SDK snapshot or report that the capability is absent."""
+        if self._live_computer is None:
+            raise RuntimeError(f"Cannot snapshot an unavailable Celesto computer: {self.backend_error or 'not connected'}")
+        snapshot_fn = getattr(self._live_computer, "snapshot", None)
+        if not callable(snapshot_fn):
+            raise RuntimeError("The installed Celesto SDK does not expose snapshot() for this computer.")
+        snapshot_fn(snapshot_id=snapshot_id, resume_source=True)
         self.snapshots[snapshot_id] = {"snapshot_id": snapshot_id, "created_at": time.time(), "state": "saved"}
-        if self._live_computer and hasattr(self._live_computer, "snapshot"):
-            try:
-                self._live_computer.snapshot(snapshot_id=snapshot_id, resume_source=True)
-            except Exception:
-                pass
         return True
 
     def rollback(self, snapshot_id: str) -> bool:
         """Restores memory and disk from snapshot, purging uncommitted changes."""
         if snapshot_id not in self.snapshots:
             raise KeyError(f"Snapshot '{snapshot_id}' does not exist on sandbox {self.name}")
-
-        if self._live_computer and hasattr(self._live_computer, "from_snapshot"):
-            try:
-                self._live_computer = self._live_computer.from_snapshot(snapshot_id, resume_vm=True)
-            except Exception:
-                pass
+        if self._live_computer is None:
+            raise RuntimeError(f"Cannot restore an unavailable Celesto computer: {self.backend_error or 'not connected'}")
+        restore_fn = getattr(self._live_computer, "from_snapshot", None)
+        if not callable(restore_fn):
+            raise RuntimeError("The installed Celesto SDK does not expose from_snapshot() for this computer.")
+        restored = restore_fn(snapshot_id, resume_vm=True)
+        if restored is not None:
+            self._live_computer = restored
         self.state = "ready"
         return True
 
     def close(self):
-        """Clean teardown to guarantee zero orphans (Contract #6)."""
-        if self._live_computer:
-            try:
-                self._live_computer.close()
-            except Exception:
-                pass
-        self.state = "deleted"
+        """Delete or close the real SDK computer; report cleanup failures."""
+        started = time.perf_counter()
+        try:
+            if self._live_computer:
+                cleanup = getattr(self._live_computer, "delete", None) or getattr(self._live_computer, "close", None)
+                if callable(cleanup):
+                    cleanup()
+                else:
+                    exit_fn = getattr(self._live_computer, "__exit__", None)
+                    if not callable(exit_fn):
+                        raise RuntimeError("The Celesto SDK computer exposes no supported cleanup method.")
+                    exit_fn(None, None, None)
+        except Exception as exc:
+            self.state = "cleanup_failed"
+            self.backend_error = f"Cleanup failed: {type(exc).__name__}: {exc}"
+            logger.exception("Celesto cleanup failed for %s", self.name)
+        else:
+            self.state = "unavailable" if self._live_computer is None else "deleted"
+        finally:
+            self.phase_timings_ms["cleanup_ms"] = round((time.perf_counter() - started) * 1000.0, 2)
 
     def __enter__(self):
         return self

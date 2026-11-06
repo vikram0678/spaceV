@@ -1,18 +1,26 @@
-"""
-Celesto Firecracker MicroVM Sandbox & Rollback Engine for SpaceV.
-Provides guest microVM isolation, safety hooks, pre-flight and teardown cleanup,
-and automated Step 7/10 failure detection with snapshot rollback recovery.
+"""Celesto command execution, simulation fallback, and diagnostics.
+
+The Celesto provider selected in .env chooses the execution backend. The
+simulator is used only when the provider is explicitly set to simulation.
+Workflow and containment demonstrations in this module remain simulations.
 """
 
 import hashlib
+import atexit
+import importlib.util
 import json
 import logging
+import os
 import re
+import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from core.task_input import unresolved_template_marker
 
 logger = logging.getLogger("SpaceV.Sandbox")
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -56,8 +64,11 @@ class WorkflowExecutionReport:
 
 class CelestoSandboxRunner:
     """
-    MicroVM Sandbox Controller.
-    Manages guest isolation, cleanup lifecycles, and snapshot rollback.
+    In-memory sandbox simulator used by deterministic tests and demonstrations.
+
+    This class does not create or control a Celesto VM. Keep its output and
+    audit records explicitly marked as simulation until a real SDK backend is
+    wired into this execution path.
     """
 
     def __init__(self, default_sandbox_id: str | None = None):
@@ -147,7 +158,7 @@ class CelestoSandboxRunner:
                     policy_violation=bad_pattern,
                 )
 
-        # Emulated guest file system operations inside sandbox
+        # Emulated guest file system operations; no command is executed here.
         if "<<" in command or "cat >" in command:
             # Handle heredoc or write redirection (e.g. cat > /tmp/untrusted.py <<'EOF')
             write_match = re.search(r"cat\s+>\s*([^\s<]+)\s*<<\s*['\"]?([A-Za-z0-9_]+)['\"]?", command)
@@ -196,7 +207,10 @@ class CelestoSandboxRunner:
             target_path = f"/workspace/quarantine/{repo_name}"
             self.guest_state.setdefault("files", {})[f"{target_path}/README.md"] = f"# Quarantined {repo_name}\nIsolated in Celesto Guest MicroVM."
             self.guest_state.setdefault("files", {})[f"{target_path}/package.json"] = json.dumps({"name": repo_name, "version": "4.18.2", "description": f"Quarantined {repo_name} package in Celesto MicroVM"}, indent=2)
-            stdout = f"Cloning into '{target_path}'...\nRemote: Enumerating objects: 100%, done.\nRemote: Compressing objects: 100%, done.\nReceiving objects: 100%, done.\nSuccessfully quarantined in Celesto MicroVM at {target_path}."
+            stdout = (
+                "SIMULATION ONLY: git clone was not executed and no repository was downloaded. "
+                f"A real sandbox would place it at {target_path}."
+            )
 
             # If command chained a cat or file read on the newly cloned repo (e.g. && cat express/package.json)
             if "&&" in command or ";" in command:
@@ -390,8 +404,388 @@ sandbox_runner = CelestoSandboxRunner()
 workflow_engine = StepWorkflowEngine(sandbox_runner)
 
 
+def _celesto_readiness() -> dict[str, Any]:
+    """Check configuration prerequisites without creating a computer."""
+    from spacev.config import settings
+
+    provider = str(settings.celesto_provider or "").strip().lower()
+    backend = str(settings.celesto_backend or "").strip().lower()
+    key = str(settings.celesto_api_key or "").strip()
+    key_configured = bool(key and key.lower() not in {"placeholder_key", "replace-with-celesto-api-key"})
+    sdk_available = importlib.util.find_spec("celesto") is not None
+    python_supported = sys.version_info >= (3, 11)
+
+    blockers: list[str] = []
+    if provider in {"local", "cloud"}:
+        mode = "celesto"
+    elif provider in {"simulation", "simulator"}:
+        mode = "simulation"
+    else:
+        mode = "unavailable"
+        blockers.append(f"Unsupported CELESTO_PROVIDER value: {provider or '(blank)'}.")
+    if not python_supported:
+        blockers.append("The Celesto Python SDK requires Python 3.11 or newer.")
+    if not sdk_available:
+        blockers.append("The Celesto Python SDK is not installed in this environment.")
+    if provider == "cloud" and not key_configured:
+        blockers.append("CELESTO_PROVIDER is cloud, but no non-placeholder CELESTO_API_KEY is configured.")
+    elif provider == "local" and os.name == "nt":
+        blockers.append("Local Celesto virtualization is unavailable on this Windows host; use Celesto Cloud or a supported host.")
+    if provider == "local" and not backend:
+        blockers.append("CELESTO_BACKEND is blank; set the local Celesto backend in .env.")
+
+    return {
+        "mode": mode,
+        "provider": provider or "(blank)",
+        "backend": backend or "(blank)",
+        "key_configured": key_configured,
+        "sdk_installed": sdk_available,
+        "python_supported": python_supported,
+        "configured_for_real_execution": not blockers,
+        "blockers": blockers,
+    }
+
+
+@dataclass
+class _SandboxSession:
+    session_id: str
+    task_description: str
+    instance: Any
+    started_at: float
+    last_activity: float
+    command_count: int = 0
+    aggregate_command_ms: float = 0.0
+
+
+class SandboxSessionManager:
+    """Owns one approved, reusable Celesto computer with bounded lifetime."""
+
+    APPROVAL_TTL_SECONDS = 15 * 60
+    IDLE_TTL_SECONDS = 15 * 60
+    MAX_LIFETIME_SECONDS = 60 * 60
+
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._sessions: dict[str, _SandboxSession] = {}
+        self._pending: dict[str, tuple[str, float]] = {}
+        self._reaper_stop = threading.Event()
+        self._reaper_thread = threading.Thread(
+            target=self._reaper_loop,
+            name="SpaceVSandboxSessionReaper",
+            daemon=True,
+        )
+        self._reaper_thread.start()
+
+    def _reaper_loop(self) -> None:
+        while not self._reaper_stop.wait(30.0):
+            try:
+                with self._lock:
+                    self._expire_locked()
+            except Exception:
+                logger.exception("Celesto session reaper encountered an error")
+
+    def _expire_locked(self) -> None:
+        now = time.monotonic()
+        for approval_id, (_task, expiry) in list(self._pending.items()):
+            if now >= expiry:
+                self._pending.pop(approval_id, None)
+        for session_id, session in list(self._sessions.items()):
+            idle_expired = now - session.last_activity >= self.IDLE_TTL_SECONDS
+            lifetime_expired = now - session.started_at >= self.MAX_LIFETIME_SECONDS
+            if idle_expired or lifetime_expired:
+                session.instance.close()
+                self._sessions.pop(session_id, None)
+                logger.info(
+                    "Closed expired Celesto session %s state=%s timings_ms=%s",
+                    session_id,
+                    session.instance.state,
+                    json.dumps(session.instance.phase_timings_ms, sort_keys=True),
+                )
+
+    def active_count(self) -> int:
+        with self._lock:
+            self._expire_locked()
+            return len(self._sessions)
+
+    def continuation_context(self, user_prompt: str | None = None) -> str:
+        """Return sandbox state only for a related follow-up, never for a disallowed/unrelated task."""
+        with self._lock:
+            self._expire_locked()
+            pending_match = re.fullmatch(
+                r"approve sandbox task ([a-f0-9]{10})",
+                str(user_prompt or "").strip(),
+                flags=re.IGNORECASE,
+            )
+            prompt_text = str(user_prompt or "").casefold()
+            if user_prompt and not pending_match:
+                # Negative tool constraints in a new request override stale
+                # task context, which would otherwise force sandbox-only tools.
+                if re.search(
+                    r"\b(?:do not|don't|never|avoid|without)\b[^.!?\n]{0,120}\b(?:sandbox|celesto|vm)\b",
+                    prompt_text,
+                ) or re.search(r"\bno\s+(?:sandbox|celesto)\s+tools?\b", prompt_text):
+                    return ""
+            if self._sessions:
+                session = next(iter(self._sessions.values()))
+                if user_prompt and not self._context_matches(user_prompt, session.task_description):
+                    return ""
+                payload = {
+                    "state": "active_approved_session",
+                    "session_id": session.session_id,
+                    "approved_task": session.task_description,
+                }
+            elif self._pending:
+                if pending_match:
+                    approval_id = pending_match.group(1).lower()
+                    pending = self._pending.get(approval_id)
+                    if pending is None:
+                        return ""
+                    task_description, _expiry = pending
+                else:
+                    approval_id, (task_description, _expiry) = next(reversed(self._pending.items()))
+                    if user_prompt and not self._context_matches(user_prompt, task_description):
+                        return ""
+                payload = {
+                    "state": "awaiting_user_approval",
+                    "approval_id": approval_id,
+                    "task": task_description,
+                }
+            else:
+                return ""
+        return (
+            "[Persisted sandbox task state; use only to resolve follow-ups to this task, "
+            "and never let it override the current user's constraints]\n"
+            + json.dumps(payload, ensure_ascii=False)
+        )
+
+    @staticmethod
+    def _context_matches(user_prompt: str, task_description: str) -> bool:
+        """Keep only explicit follow-ups or requests sharing distinctive task terms."""
+        prompt = str(user_prompt or "").casefold()
+        follow_up = re.search(
+            r"\b(continue|resume|approval|proposal|that task|same task|what.{0,20}(?:next|now))\b",
+            prompt,
+        )
+        stop_words = {"about", "after", "again", "also", "could", "from", "have", "into", "just", "more", "only", "please", "same", "should", "that", "task", "the", "this", "what", "with", "would"}
+        prompt_terms = {
+            token for token in re.findall(r"[a-z0-9][a-z0-9_.#/-]{2,}", prompt)
+            if token not in stop_words
+        }
+        task_terms = {
+            token for token in re.findall(r"[a-z0-9][a-z0-9_.#/-]{2,}", str(task_description or "").casefold())
+            if token not in stop_words
+        }
+        return bool(follow_up or len(prompt_terms & task_terms) >= 2)
+
+    def create(self, task_description: str, approval_id: str = "", approval_text: str = "") -> str:
+        task_description = str(task_description or "").strip()
+        approval_id = str(approval_id or "").strip()
+        if not approval_id:
+            placeholder = unresolved_template_marker(task_description)
+            if placeholder:
+                return (
+                    "BLOCKED: Sandbox task still contains the unresolved placeholder "
+                    f"{placeholder!r}. Supply the missing task input; no Celesto VM was started."
+                )
+        if not approval_id and not 8 <= len(task_description) <= 800:
+            return "BLOCKED: Describe the approved task in 8 to 800 characters. No Celesto VM was started."
+
+        readiness = _celesto_readiness()
+        if readiness["mode"] != "celesto" or not readiness["configured_for_real_execution"]:
+            details = "\n".join(f"- {reason}" for reason in readiness["blockers"])
+            return f"BLOCKED: Celesto is not ready; no VM was started.\n{details}"
+
+        with self._lock:
+            self._expire_locked()
+            if self._sessions:
+                active_id = next(iter(self._sessions))
+                return (
+                    f"BLOCKED: Celesto session {active_id} is already active. Reuse it for this task or close it first; "
+                    "SpaceV allows one managed session at a time."
+                )
+
+            if not approval_id:
+                approval_id = uuid.uuid4().hex[:10]
+                self._pending[approval_id] = (
+                    task_description,
+                    time.monotonic() + self.APPROVAL_TTL_SECONDS,
+                )
+                return (
+                    "SPACEV_NEEDS_USER_INPUT: I propose one Celesto VM for this task:\n"
+                    f"Task: {task_description}\n"
+                    "It will remain available for up to 15 minutes idle (1 hour maximum), then SpaceV will delete it. "
+                    "Commands and phase timings will be audited. No VM has been started yet.\n"
+                    f"To approve this task, reply exactly: approve sandbox task {approval_id}"
+                )
+
+            pending = self._pending.get(approval_id)
+            if pending is None:
+                return "BLOCKED: Sandbox approval is unknown, expired, or already used. Request a fresh proposal."
+            approved_task, expiry = pending
+            if time.monotonic() >= expiry:
+                self._pending.pop(approval_id, None)
+                return "BLOCKED: Sandbox approval expired. Request a fresh proposal."
+            if str(approval_text or "").strip().casefold() != f"approve sandbox task {approval_id}".casefold():
+                return "BLOCKED: The exact approval phrase was not supplied. No Celesto VM was started."
+
+            placeholder = unresolved_template_marker(approved_task)
+            if placeholder:
+                self._pending.pop(approval_id, None)
+                return (
+                    "BLOCKED: The approved sandbox task still contains the unresolved placeholder "
+                    f"{placeholder!r}. No Celesto VM was started; submit a corrected proposal."
+                )
+
+            # The proposal is the authorization source of truth. The model may
+            # omit or paraphrase task_description on the approval turn; never
+            # execute that new text. Use only the task bound to this approval ID.
+            task_description = approved_task
+            self._pending.pop(approval_id, None)
+
+            from spacev.fleet.celesto_engine import CelestoSandboxInstance
+
+            task_started = time.monotonic()
+            instance = CelestoSandboxInstance(f"sbx-{uuid.uuid4().hex[:12]}")
+            if instance.state != "ready" or not instance.backend_connected:
+                error = instance.backend_error or "Celesto did not return a live computer."
+                instance.close()
+                timings = dict(instance.phase_timings_ms)
+                return (
+                    "BLOCKED: Celesto could not start the approved task; no command was run. "
+                    f"{error}\nPhase timings (ms): {json.dumps(timings, sort_keys=True)}"
+                )
+
+            now = time.monotonic()
+            session_id = f"session-{uuid.uuid4().hex[:12]}"
+            self._sessions[session_id] = _SandboxSession(
+                session_id=session_id,
+                task_description=task_description,
+                instance=instance,
+                started_at=task_started,
+                last_activity=now,
+            )
+            return (
+                f"[CELESTO SESSION READY] Session ID: {session_id}; sandbox: {instance.name}. "
+                "This VM is now reusable across commands for the approved task. "
+                f"VM startup: {instance.phase_timings_ms['vm_startup_ms']:.2f} ms."
+            )
+
+    def run(self, session_id: str, command: str) -> str:
+        command = str(command or "").strip()
+        if not command or len(command) > 10000 or "\x00" in command:
+            return "BLOCKED: Command must be non-empty, at most 10000 characters, and contain no NUL bytes."
+        with self._lock:
+            self._expire_locked()
+            session = self._sessions.get(str(session_id or "").strip())
+            if session is None:
+                return "BLOCKED: Celesto session is missing or expired. Create a new approved session."
+            tool_started = time.perf_counter()
+            result = session.instance.run(command)
+            tool_command_ms = round((time.perf_counter() - tool_started) * 1000.0, 2)
+            session.command_count += 1
+            session.aggregate_command_ms += session.instance.phase_timings_ms["command_ms"]
+            session.last_activity = time.monotonic()
+            timing = {
+                "command_ms": session.instance.phase_timings_ms["command_ms"],
+                "command_tool_total_ms": tool_command_ms,
+                "session_vm_startup_ms": session.instance.phase_timings_ms["vm_startup_ms"],
+                "session_commands_total_ms": round(session.aggregate_command_ms, 2),
+                "session_lifetime_ms": round((time.monotonic() - session.started_at) * 1000.0, 2),
+            }
+            return (
+                f"[CELESTO SESSION EXECUTION] Session: {session.session_id}; sandbox: {session.instance.name}; "
+                f"command {session.command_count}; exit code: {result.exit_code}\n"
+                f"Phase timings (ms): {json.dumps(timing, sort_keys=True)}\n"
+                f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+            )
+
+    def close(self, session_id: str) -> str:
+        with self._lock:
+            self._expire_locked()
+            session_id = str(session_id or "").strip()
+            session = self._sessions.pop(session_id, None)
+            if session is None:
+                return "Celesto session is already closed, missing, or expired."
+            session.instance.close()
+            timing = {
+                "vm_startup_ms": session.instance.phase_timings_ms["vm_startup_ms"],
+                "commands_total_ms": round(session.aggregate_command_ms, 2),
+                "cleanup_ms": session.instance.phase_timings_ms["cleanup_ms"],
+                "total_task_session_ms": round((time.monotonic() - session.started_at) * 1000.0, 2),
+            }
+            return (
+                f"[CELESTO SESSION CLOSED] Sandbox: {session.instance.name}; "
+                f"commands: {session.command_count}; state: {session.instance.state}. "
+                f"Phase timings (ms): {json.dumps(timing, sort_keys=True)}"
+                + (f"\nCleanup error: {session.instance.backend_error}" if session.instance.state == "cleanup_failed" else "")
+            )
+
+    def close_all(self) -> None:
+        self._reaper_stop.set()
+        with self._lock:
+            for session_id, session in list(self._sessions.items()):
+                session.instance.close()
+                self._sessions.pop(session_id, None)
+
+
+sandbox_session_manager = SandboxSessionManager()
+atexit.register(sandbox_session_manager.close_all)
+
+
+def create_sandbox_session(task_description: str = "", approval_id: str = "", approval_text: str = "") -> str:
+    """Propose, then approval-gate a reusable Celesto VM for a bounded task."""
+    return sandbox_session_manager.create(task_description, approval_id, approval_text)
+
+
+def run_sandbox_session_command(session_id: str, command: str) -> str:
+    """Run one audited command in an existing approved Celesto session."""
+    return sandbox_session_manager.run(session_id, command)
+
+
+def close_sandbox_session(session_id: str) -> str:
+    """Delete an active Celesto session and report total lifecycle timings."""
+    return sandbox_session_manager.close(session_id)
+
+
 def detonate_in_sandbox(command: str) -> str:
-    """SpaceV tool to execute untrusted code inside an isolated Celesto MicroVM sandbox."""
+    """Run in the .env-selected real Celesto provider, or simulate explicitly."""
+    total_started = time.perf_counter()
+    readiness = _celesto_readiness()
+    if readiness["mode"] == "celesto":
+        if not readiness["configured_for_real_execution"]:
+            return "BLOCKED: Real Celesto execution is not ready; no command was executed.\n" + "\n".join(
+                f"- {reason}" for reason in readiness["blockers"]
+            )
+
+        from spacev.fleet.celesto_engine import CelestoSandboxInstance
+
+        instance = CelestoSandboxInstance(f"sbx-{uuid.uuid4().hex[:8]}")
+        if instance.state != "ready" or not instance.backend_connected:
+            error = instance.backend_error or "Celesto did not return a live computer."
+            instance.close()
+            timings = dict(instance.phase_timings_ms)
+            timings["total_ms"] = round((time.perf_counter() - total_started) * 1000.0, 2)
+            return (
+                "BLOCKED: Celesto computer could not be started; command was not executed. "
+                f"{error}\nPhase timings (ms): {json.dumps(timings, sort_keys=True)}"
+            )
+        try:
+            result = instance.run(command)
+        finally:
+            instance.close()
+        timings = dict(instance.phase_timings_ms)
+        timings["total_ms"] = round((time.perf_counter() - total_started) * 1000.0, 2)
+        return (
+            f"[CELESTO SDK EXECUTION] Sandbox ID: {instance.name}; exit code: {result.exit_code}; "
+            f"cleanup_state: {instance.state}\n"
+            f"Phase timings (ms): {json.dumps(timings, sort_keys=True)}\n"
+            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+
+    if readiness["mode"] != "simulation":
+        return "BLOCKED: Celesto provider configuration is invalid; no command was executed."
+
+    # Explicit demonstration/test mode only. The emulator does not run commands.
     res = sandbox_runner.run_in_sandbox(command)
 
     # Pre-detonation neural file inspection telemetry
@@ -424,7 +818,7 @@ def detonate_in_sandbox(command: str) -> str:
             "sandbox_name": sbx_id,
             "command": command,
             "decision": "block" if res.blocked else "allow",
-            "execution_target": "celesto_sandbox",
+            "execution_target": "sandbox_simulator",
         }
         if neural_meta:
             log_payload["neural_inspection"] = neural_meta
@@ -436,8 +830,73 @@ def detonate_in_sandbox(command: str) -> str:
         logger.warning(f"Failed to record sandbox audit log: {e}")
 
     if res.blocked:
-        return f"🛡️ [SANDBOX CONTAINMENT ALERT] Command blocked by Celesto Safety Hook:\n{res.stderr}\nSandbox ID: {res.sandbox_id}"
-    return f"⚡ [CELLESTO MICROVM OUTPUT] (Duration: {res.duration_ms:.1f}ms)\n{res.stdout}\nSandbox: {res.sandbox_id}"
+        return (
+            "[SIMULATION ONLY — this is not real VM containment] The simulated policy blocked the command:\n"
+            f"{res.stderr}\nSimulation ID: {res.sandbox_id}"
+        )
+    return (
+        "[SIMULATION ONLY — no host or Celesto command was executed]\n"
+        f"{res.stdout}\nSimulation ID: {res.sandbox_id}"
+    )
+
+
+def get_sandbox_status() -> str:
+    """Report source registration and real backend readiness without starting a VM."""
+    from config import ENABLE_CODE_MODE
+    from tools.registry import OLLAMA_TOOLS_SCHEMA, TOOL_FUNCTIONS
+
+    registered = "detonate_in_sandbox" in TOOL_FUNCTIONS
+    session_tools = (
+        "create_sandbox_session",
+        "run_sandbox_session_command",
+        "close_sandbox_session",
+    )
+    source_clone_registered = "clone_public_repository" in TOOL_FUNCTIONS
+    schema_registered = any(
+        entry.get("function", {}).get("name") == "detonate_in_sandbox"
+        for entry in OLLAMA_TOOLS_SCHEMA
+    )
+    source_clone_schema_registered = any(
+        entry.get("function", {}).get("name") == "clone_public_repository"
+        for entry in OLLAMA_TOOLS_SCHEMA
+    )
+    readiness = _celesto_readiness()
+    mode = readiness["mode"]
+    if mode == "celesto" and readiness["configured_for_real_execution"]:
+        execution_backend = "celesto_sdk_with_reusable_sessions"
+    elif mode == "simulation":
+        execution_backend = "in_memory_simulator"
+    else:
+        execution_backend = "unavailable"
+
+    active_sessions = sandbox_session_manager.active_count()
+    return json.dumps(
+        {
+            "tool": "detonate_in_sandbox",
+            "registered_in_tool_function_map": registered,
+            "registered_in_project_tool_schema": schema_registered,
+            "reusable_session_tools_registered": all(name in TOOL_FUNCTIONS for name in session_tools),
+            "reusable_session_tool_names": list(session_tools),
+            "source_only_clone_tool_registered": source_clone_registered,
+            "source_only_clone_registered_in_project_tool_schema": source_clone_schema_registered,
+            "configured_tool_delivery_mode": "code_mode_meta_tools" if ENABLE_CODE_MODE else "scoped_function_tools",
+            "active_model_payload_inspectable": False,
+            "configured_sandbox_mode": mode,
+            "execution_backend": execution_backend,
+            "real_celesto_backend_configured": readiness["configured_for_real_execution"],
+            "real_celesto_vm_connected": active_sessions > 0,
+            "active_sandbox_sessions": active_sessions,
+            "max_concurrent_sandbox_sessions": 1,
+            "celesto_sdk_installed": readiness["sdk_installed"],
+            "python_version": ".".join(map(str, sys.version_info[:3])),
+            "celesto_python_version_supported": readiness["python_supported"],
+            "celesto_provider": readiness["provider"],
+            "celesto_api_key_configured": readiness["key_configured"],
+            "note": "Project registration does not prove a tool was exposed in a specific external harness request.",
+            "blockers": readiness["blockers"],
+        },
+        indent=2,
+    )
 
 
 def inspect_file_security(file_path: str) -> str:
@@ -471,19 +930,19 @@ def run_sandboxed_workflow(workflow_name: str = "celesto_deployment_pipeline") -
     """SpaceV tool to execute a 10-step workflow with automated Step 7 snapshot rollback recovery."""
     report = workflow_engine.execute_10_step_workflow(workflow_name, auto_rollback=True)
     return (
-        f"🛡️ **Celesto MicroVM 10-Step Workflow Complete**:\n"
+        f"⚠️ **Sandbox simulation only — no Celesto VM was started**:\n"
         f"• Status: `{report.recovery_status}`\n"
         f"• Steps Completed: `{report.steps_completed}/{report.total_steps}`\n"
         f"• Step 7 Failure Intercepted: `{report.failure_encountered}`\n"
         f"• Snapshot Rollback Executed: `{report.rollback_occurred}` (Restored `{report.restored_checkpoint}`)\n"
-        f"• Host OS Compromised: `{report.host_compromised}` (Air-gapped guest containment 100% verified)"
+        f"• Host impact: `not measured by a real VM`; simulation result only"
     )
 
 
 class HostIntegrityMonitor:
     """
-    Computes cryptographic SHA-256 baselines of critical host files and canary markers
-    before and after microVM payload execution to prove mathematical host immutability.
+    Computes hashes of selected local files for diagnostics. Since the current
+    runner is a simulator, this cannot prove isolation from a real guest VM.
     """
 
     def __init__(self, monitored_files: list[str] | None = None):
@@ -529,8 +988,8 @@ class HostIntegrityMonitor:
 
 class PromptInjectionContainmentHarness:
     """
-    Adversarial Detonator: Tests known attack vectors inside guest Celesto microVM
-    and verifies zero host escape or credential exfiltration.
+    Deterministic simulator for containment scenarios. It does not prove real
+    VM isolation or host escape resistance.
     """
 
     def __init__(self, runner: CelestoSandboxRunner | None = None):
@@ -554,7 +1013,7 @@ class PromptInjectionContainmentHarness:
         res = self.runner.run_in_sandbox(cmd)
         integrity = self.monitor.verify_host_integrity()
 
-        # Both the safety hook blocking and host checksum matching prove containment
+        # These checks describe simulator behavior only; they do not prove VM containment.
         blocked = res.blocked or res.exit_code != 0
         host_untouched = integrity["intact"] and not integrity["host_compromised"]
 
@@ -563,8 +1022,11 @@ class PromptInjectionContainmentHarness:
             "command": cmd,
             "blocked": blocked,
             "exit_code": res.exit_code,
-            "host_untouched": host_untouched,
-            "guest_contained": True,
+            "host_untouched": None,
+            "simulated_host_files_unchanged": host_untouched,
+            "guest_contained": False,
+            "execution_mode": "in_memory_simulation",
+            "real_vm_containment_proven": False,
             "sandbox_id": self.runner.sandbox_id,
             "timestamp": time.time(),
         }
@@ -572,8 +1034,8 @@ class PromptInjectionContainmentHarness:
 
 def generate_containment_contract_report(attack_type: str = "prompt_injection_exfil") -> Path:
     """
-    Generates reports/containment.json conforming to Hackathon Contract 8.
-    Appends evidence to reports/evidence/containment.log and logs/commands.jsonl.
+    Writes a clearly labeled simulation report. It is not Celesto containment evidence.
+    Appends the simulation record to the evidence and command logs.
     """
     harness = PromptInjectionContainmentHarness()
     res = harness.test_attack_containment(attack_type)
@@ -585,7 +1047,10 @@ def generate_containment_contract_report(attack_type: str = "prompt_injection_ex
     report_data = {
         "attack": res["attack"],
         "blocked": res["blocked"],
-        "host_untouched": res["host_untouched"],
+        "host_untouched": None,
+        "simulated_host_files_unchanged": res["simulated_host_files_unchanged"],
+        "execution_mode": res["execution_mode"],
+        "real_vm_containment_proven": False,
         "evidence_paths": [
             "reports/evidence/containment.log",
             "logs/commands.jsonl",
@@ -596,7 +1061,7 @@ def generate_containment_contract_report(attack_type: str = "prompt_injection_ex
 
     # Append to evidence logs
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
-    log_entry = f"[{ts}] [CONTAINMENT_AUDIT] attack='{res['attack']}' blocked={res['blocked']} host_untouched={res['host_untouched']} sandbox={res['sandbox_id']}\n"
+    log_entry = f"[{ts}] [SIMULATION_ONLY] attack='{res['attack']}' simulated_blocked={res['blocked']} real_vm_containment_proven=False sandbox={res['sandbox_id']}\n"
     with open(evidence_log, "a", encoding="utf-8") as f:
         f.write(log_entry)
 
@@ -608,7 +1073,7 @@ def generate_containment_contract_report(attack_type: str = "prompt_injection_ex
                 "sandbox_name": res["sandbox_id"],
                 "command": res["command"],
                 "decision": "block" if res["blocked"] else "allow",
-                "execution_target": "celesto_sandbox",
+                "execution_target": "sandbox_simulator",
             }
         )
         + "\n"
@@ -623,9 +1088,9 @@ def audit_sandbox_containment(attack_type: str = "prompt_injection_exfil") -> st
     """SpaceV tool to trigger an adversarial prompt injection containment audit and generate Contract 8 evidence."""
     report_file = generate_containment_contract_report(attack_type)
     return (
-        f"🛡️ **Celesto Containment Audit Passed**:\n"
+        f"⚠️ **Sandbox simulation only — no Celesto containment was tested**:\n"
         f"• Attack Vector Tested: `{attack_type}`\n"
-        f"• Attack Blocked in Guest: `True`\n"
-        f"• Host OS Untouched: `True` (Cryptographic SHA-256 match)\n"
+        f"• Simulated policy blocked input: `True`\n"
+        f"• Real VM isolation proven: `False`\n"
         f"• Audit Report Written: `{report_file.relative_to(REPO_ROOT)}`"
     )
