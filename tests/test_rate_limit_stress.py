@@ -12,7 +12,7 @@ Validates:
 from __future__ import annotations
 
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from core.event_bus import EventPriority, SpaceVEventBus
 from core.rate_limiter import OmniRouteRateLimiter
@@ -170,12 +170,13 @@ def test_browser_use_and_crawl4ai_enhancements():
     assert len(crawl_res.links) == 1
 
     # 3. Test find_interactive_element graceful none
-    found = find_interactive_element("Submit Button", image=None)
+    # `image=None` intentionally inspects the live desktop. Keep this unit test
+    # independent from dialogs/windows opened by the developer's environment.
+    with patch("core.vision_grounding.capture_screen_pil", return_value=None):
+        found = find_interactive_element("Submit Button", image=None)
     assert found is None
 
     # 4. Test scrape_web_page_crawl4ai
-    from unittest.mock import patch
-
     with patch("urllib.request.urlopen") as mock_urlopen:
         mock_resp = MagicMock()
         mock_resp.read.return_value = b"<html><head><title>Test Page</title></head><body><p>Hello world</p><a href='https://example.com/link1'>Link</a></body></html>"

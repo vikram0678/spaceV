@@ -3,6 +3,7 @@ Industrial Verification Suite for SpaceV Resilient Web Perception & Extraction.
 Tests the Crawl4AI dual-engine content cascade, stealth browser hardening,
 and self-healing browser failover without relying on live external networks.
 """
+import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -49,6 +50,70 @@ class TestGitHubFastPathAndSemanticDistiller:
             output = read_web_page("https://github.com/unclecode/crawl4AI")
             assert "=== Distilled Repository Content ===" in output
             assert "Mocked Crawl4AI Repo Overview" in output
+
+    def test_github_issue_url_fetches_issue_and_comments_not_repository_readme(self):
+        """Issue URLs must preserve the issue path and expose the actual discussion."""
+        issue_payload = {
+            "title": "Non-string form field names raise AttributeError when files are attached",
+            "html_url": "https://github.com/psf/requests/issues/7634",
+            "state": "open",
+            "created_at": "2026-10-12T00:00:00Z",
+            "comments": 1,
+            "repository_url": "https://api.github.com/repos/psf/requests",
+            "user": {"login": "reporter"},
+            "body": "Multipart form encoding raises AttributeError for integer field names.",
+        }
+        comment_payload = [{"user": {"login": "maintainer"}, "body": "Please clarify expected key types."}]
+        requested_urls = []
+
+        def mock_urlopen(req, timeout=12):
+            url = req.full_url
+            requested_urls.append(url)
+            payload = comment_payload if "/comments" in url else issue_payload
+            response = MagicMock()
+            response.read.return_value = json.dumps(payload).encode("utf-8")
+            response.__enter__.return_value = response
+            return response
+
+        with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+            with patch("tools.web_tools.fetch_github_repo_summary") as repo_summary:
+                output = read_web_page("https://github.com/psf/requests/issues/7634")
+
+        assert "Non-string form field names" in output
+        assert "Multipart form encoding raises AttributeError" in output
+        assert "@maintainer" in output
+        assert "Please clarify expected key types." in output
+        assert requested_urls == [
+            "https://api.github.com/repos/psf/requests/issues/7634",
+            "https://api.github.com/repos/psf/requests/issues/7634/comments?per_page=30",
+        ]
+        repo_summary.assert_not_called()
+
+    def test_github_api_issue_url_preserves_api_resource_path(self):
+        """An api.github.com issue URL must not be parsed as the repo repos/psf."""
+        issue_payload = {
+            "title": "Example issue",
+            "html_url": "https://github.com/psf/requests/issues/7634",
+            "state": "open",
+            "created_at": "2026-10-12T00:00:00Z",
+            "comments": 0,
+            "user": {"login": "reporter"},
+            "body": "Example body",
+        }
+        requested_urls = []
+
+        def mock_urlopen(req, timeout=12):
+            requested_urls.append(req.full_url)
+            response = MagicMock()
+            response.read.return_value = json.dumps(issue_payload).encode("utf-8")
+            response.__enter__.return_value = response
+            return response
+
+        with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+            output = read_web_page("https://api.github.com/repos/psf/requests/issues/7634")
+
+        assert "# Example issue" in output
+        assert requested_urls == ["https://api.github.com/repos/psf/requests/issues/7634"]
 
     def test_read_web_page_general_http_fallback(self):
         """read_web_page extracts readable content from standard HTML websites."""

@@ -31,9 +31,10 @@ def test_bridge_backward_compatibility():
 
 
 def test_system_prompt_integrity():
-    """Verify SpaceV persona, Jarivs/Gemini tone, and Celesto sandbox containment policy."""
-    assert "System Protocol Autonomous Cybernetic Engine Version V" in SYSTEM_PROMPT
-    assert "Celesto Sandbox Containment Policy" in SYSTEM_PROMPT
+    """Verify the current grounded-agent and containment instructions."""
+    assert "You are SpaceV" in SYSTEM_PROMPT
+    assert "Never report success solely because a tool call returned" in SYSTEM_PROMPT
+    assert "Do not execute untrusted external code on the host" in SYSTEM_PROMPT
     assert "detonate_in_sandbox" in SYSTEM_PROMPT
 
 

@@ -272,6 +272,27 @@ class TestPostelsLawTolerance:
         assert "hello world" in result
         assert "Failed to read file" not in result
 
+    def test_read_file_content_supports_bounded_line_ranges(self, tmp_path):
+        """Readers can inspect a function below the first-page preview safely."""
+        test_file = tmp_path / "large.py"
+        test_file.write_text("".join(f"line_{line}\n" for line in range(1, 101)), encoding="utf-8")
+
+        result = read_file_content(
+            file_name_or_path=str(test_file),
+            max_lines=5,
+            start_line=47,
+        )
+
+        assert "lines 47-51 of 100" in result
+        assert "line_47" in result
+        assert "line_51" in result
+        assert "line_46" not in result
+        assert "line_52" not in result
+
+        normalized = ReadFileInput(file_name_or_path=str(test_file), start_line=47, max_lines=5)
+        assert normalized.start_line == 47
+        assert normalized.max_lines == 5
+
     def test_execute_tool_with_alias_and_kwarg(self, tmp_path):
         """Verifies execute_tool('read_file', {'file_path': '...'}) completes cleanly."""
         test_file = tmp_path / "sample.txt"

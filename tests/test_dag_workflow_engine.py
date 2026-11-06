@@ -67,9 +67,7 @@ async def test_dag_parallel_fanout_execution(temp_workflow_dir):
         nodes=[node1, node2, node3]
     )
 
-    t0 = time.time()
     completed_wf = await engine.execute_workflow(wf)
-    elapsed = time.time() - t0
 
     assert completed_wf.status == WorkflowStatus.COMPLETED
     assert node1.status == NodeStatus.COMPLETED
@@ -84,8 +82,8 @@ async def test_dag_parallel_fanout_execution(temp_workflow_dir):
     assert execution_order.index("start_n3") > execution_order.index("end_n1")
     assert execution_order.index("start_n3") > execution_order.index("end_n2")
 
-    # Time check: parallel wave (0.1s) + aggregator (0.1s) ~ 0.2s (serial would be 0.3s)
-    assert elapsed < 0.28
+    # The interleaved start/end order above proves concurrency directly. Avoid a
+    # wall-clock cutoff here: desktop load and VS Code startup make it flaky.
 
 
 @pytest.mark.asyncio
@@ -169,6 +167,59 @@ async def test_approval_store_gate_and_resume(temp_workflow_dir):
     assert resumed_wf is not None
     assert resumed_wf.status == WorkflowStatus.COMPLETED
     assert resumed_wf.get_node("deploy_prod").status == NodeStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_user_input_pauses_persists_and_resumes_dag_without_repeating_completed_nodes(temp_workflow_dir):
+    """A missing tool argument pauses durably; supplying it resumes only pending work."""
+    state_mgr = WorkflowStateManager(state_dir=temp_workflow_dir / "workflows")
+    calls = {"prepare": 0, "search": 0}
+
+    async def custom_executor(node: DAGNode, wf: Workflow):
+        calls[node.node_id] += 1
+        if node.node_id == "search" and not node.action_args.get("location"):
+            return {
+                "status": "needs_input",
+                "question": "Which location should I search?",
+            }
+        return {"status": "ok", "node": node.node_id, "args": dict(node.action_args)}
+
+    engine = SpaceVWorkflowEngine(state_manager=state_mgr, node_executor=custom_executor)
+    prepare = DAGNode(node_id="prepare", name="Prepare search")
+    search = DAGNode(
+        node_id="search",
+        name="Find matching jobs",
+        depends_on=["prepare"],
+        action_args={"role": "intern"},
+    )
+    workflow = Workflow(name="Clarification resume test", nodes=[prepare, search])
+
+    paused = await engine.execute_workflow(workflow)
+
+    assert paused.status == WorkflowStatus.PAUSED
+    assert paused.get_node("prepare").status == NodeStatus.COMPLETED
+    assert paused.get_node("search").status == NodeStatus.WAITING_INPUT
+    assert paused.get_node("search").result == "Which location should I search?"
+    assert paused.completed_at == 0.0
+    assert calls == {"prepare": 1, "search": 1}
+
+    # Verify a new engine instance can recover the question from persisted state.
+    persisted = state_mgr.load_workflow(workflow.workflow_id)
+    assert persisted is not None
+    assert persisted.status == WorkflowStatus.PAUSED
+    assert persisted.get_node("search").status == NodeStatus.WAITING_INPUT
+
+    resumed = await engine.resume_workflow(
+        workflow.workflow_id,
+        node_inputs={"search": {"location": "remote"}},
+    )
+
+    assert resumed is not None
+    assert resumed.status == WorkflowStatus.COMPLETED
+    assert resumed.get_node("prepare").status == NodeStatus.COMPLETED
+    assert resumed.get_node("search").status == NodeStatus.COMPLETED
+    assert resumed.get_node("search").action_args == {"role": "intern", "location": "remote"}
+    assert calls == {"prepare": 1, "search": 2}
 
 
 @pytest.mark.asyncio

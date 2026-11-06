@@ -220,9 +220,14 @@ class TestConversationalInterlinkingAndExecution:
         assert "Exit Code: 0" in res
         assert "Fibonacci sequence computed successfully" in res
 
-    def test_graph_engine_rolling_context_interlinking(self):
+    def test_graph_engine_rolling_context_interlinking(self, monkeypatch):
         from core.graph_engine import SpaceVGraphEngine
 
+        monkeypatch.setattr(
+            "core.grounded_agent.inspect_environment",
+            lambda: {"active_window": "Test window", "sources": []},
+        )
+        monkeypatch.setattr("core.modal_interceptor.modal_interceptor.detect", lambda: None)
         engine = SpaceVGraphEngine()
         engine.agent.messages = [
             {"role": "user", "content": "create a python script reverse_number.py in vscode"},
@@ -260,9 +265,9 @@ class TestConversationalInterlinkingAndExecution:
         script = tmp_path / "test_prog.py"
         script.write_text("print('hello')", encoding="utf-8")
 
-        # 1. Bare .py command must be resolved with python3 -u
+        # 1. Bare .py command must be resolved with the available Python runtime.
         res1 = resolve_interpreter_command(str(script))
-        assert res1.startswith("python3 -u ") or res1.startswith(f"{sys.executable} -u ")
+        assert sys.executable.lower() in res1.lower() or res1.startswith("python3 -u ")
         assert str(script) in res1
 
         # 2. Command with args
@@ -272,7 +277,10 @@ class TestConversationalInterlinkingAndExecution:
 
         # 3. Already qualified command is untouched
         res3 = resolve_interpreter_command(f"python3 {script}")
-        assert res3 == f"python3 {script}"
+        if sys.platform == "win32":
+            assert sys.executable.lower() in res3.lower()
+        else:
+            assert res3 == f"python3 {script}"
 
     def test_run_python_script_dual_pipe_stdin_binding(self, tmp_path):
         from tools.system_tools import run_python_script
@@ -476,19 +484,23 @@ class TestMultiAgentExecutionAndReliability:
 
         engine = SpaceVGraphEngine()
         scratchpad = SpaceVScratchpad()
+        scratchpad.create_plan(["Create the requested file", "Read the file back to verify it"])
 
         state = {
-            "user_prompt": "Create test.txt with data and then read back the file content to verify",
             "iteration": 1,
             "scratchpad": scratchpad.to_dict(),
             "tool_results": [{"name": "create_file", "args": {"filename": "test.txt"}, "status": "success"}]
         }
 
-        # Gate should force another reasoning loop because verification read has not occurred
+        # A still-pending model-derived plan keeps the workflow active.
+        scratchpad.advance_step(result="File created", success=True)
+        state["scratchpad"] = scratchpad.to_dict()
         next_step = engine._route_after_tools(state)
         assert next_step == "loop_reasoning"
 
-        # Once verification tool has run, it can transition to synthesize
+        # Once verification is represented as complete, synthesis can proceed.
+        scratchpad.advance_step(result="File contents verified", success=True)
+        state["scratchpad"] = scratchpad.to_dict()
         state["tool_results"].append({"name": "read_file_content", "args": {"filename": "test.txt"}, "status": "success"})
         assert engine._route_after_tools(state) == "synthesize"
 
@@ -499,18 +511,23 @@ class TestMultiAgentExecutionAndReliability:
 
         engine = SpaceVGraphEngine()
         scratchpad = SpaceVScratchpad()
+        scratchpad.create_plan(["Create alpha", "Create beta", "Create gamma"])
 
         state = {
-            "user_prompt": "create nested directories alpha/beta/gamma on desktop",
             "iteration": 1,
             "scratchpad": scratchpad.to_dict(),
             "tool_results": [{"name": "create_folder", "args": {"folder_name": "alpha"}, "status": "success"}]
         }
 
-        # Alpha is created, but beta and gamma are still pending
+        # Alpha is created, but the two model-derived plan steps remain.
+        scratchpad.advance_step(result="alpha created", success=True)
+        state["scratchpad"] = scratchpad.to_dict()
         assert engine._route_after_tools(state) == "loop_reasoning"
 
-        # Add remaining folders
+        # Complete the remaining planned work; no prompt-word parsing is needed.
+        scratchpad.advance_step(result="beta created", success=True)
+        scratchpad.advance_step(result="gamma created", success=True)
+        state["scratchpad"] = scratchpad.to_dict()
         state["tool_results"].append({"name": "create_folder", "args": {"folder_name": "beta"}, "status": "success"})
         state["tool_results"].append({"name": "create_folder", "args": {"folder_name": "gamma"}, "status": "success"})
         assert engine._route_after_tools(state) == "synthesize"
@@ -572,9 +589,11 @@ class TestMultiAgentExecutionAndReliability:
         # Gate disproves phantom success and forces another loop (self-healing or reflection)
         assert engine._route_after_tools(state) == "loop_reasoning"
 
-    def test_read_file_content_with_error_string_does_not_fail(self):
+    def test_read_file_content_with_error_string_does_not_fail(self, monkeypatch):
         """Reading code with 'error' or 'except' must evaluate to status='success' and last_error=None."""
         from core.graph_engine import SpaceVGraphEngine, determine_tool_status
+
+        monkeypatch.setattr("core.grounded_agent.inspect_environment", lambda: {"sources": []})
 
         mock_code_content = "Content of 'main.py' (46 lines):\n\n```python\ntry:\n    do_something()\nexcept ValueError as error:\n    logger.error('failed')\n```"
         status = determine_tool_status("read_file_content", mock_code_content)

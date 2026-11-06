@@ -91,10 +91,16 @@ def test_route_after_tools_exhausted_healing():
 
 def test_host_bridge_click_host_coordinate():
     """Verify HostBridge.click_host_coordinate generates correct PowerShell script."""
+    from tools.gui_tools import safety
+    previous_mode = safety.autonomous_mode_enabled
+    safety.set_desktop_control(True)
     with patch.object(HostBridge, "execute_powershell") as mock_ps:
         mock_ps.return_value = (0, "True", "")
         with patch.object(HostBridge, "is_wsl", return_value=True):
-            res = HostBridge.click_host_coordinate(400, 300)
+            try:
+                res = HostBridge.click_host_coordinate(400, 300)
+            finally:
+                safety.set_desktop_control(previous_mode)
             assert res is True
             assert mock_ps.called
             ps_script = mock_ps.call_args[0][0]
