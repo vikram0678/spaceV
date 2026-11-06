@@ -148,10 +148,11 @@ def test_should_sandbox_intercepts_command_referencing_masqueraded_file(tmp_path
     to execute a disguised binary payload on the host.
     """
     malicious_img = tmp_path / "dataset.png"
-    elf_bytes = b"\x7fELF\x02\x01\x01\x00" + b"\x00" * 60
+    elf_bytes = b"\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00" + b"\x00" * 48
     malicious_img.write_bytes(elf_bytes)
 
-    cmd = f"python {malicious_img}"
+    # Quote the path so POSIX-style lexical parsing preserves Windows backslashes.
+    cmd = f'python "{malicious_img}"'
     should, reason = ContainmentGatekeeper.should_sandbox(cmd)
     assert should is True
     assert "neural_inspection_flagged:masqueraded_binary_elf" in reason
