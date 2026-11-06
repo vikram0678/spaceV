@@ -5,7 +5,19 @@ and vector-stroke canvas drawing in MS Paint using pure cursor manipulation.
 """
 import math
 import subprocess
+import sys
 import time
+
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 try:
     import pyautogui
@@ -89,11 +101,11 @@ except Exception:
 
 # 5 Speed Profiles (DPI & Motion Dynamics)
 CURSOR_SPEED_PRESETS = {
-    "Hyper": {"multiplier": 0.20, "move_duration": 0.08, "type_interval": 0.010, "label": "🚀 Hyper (0.2x)"},
-    "Fast": {"multiplier": 0.50, "move_duration": 0.22, "type_interval": 0.025, "label": "🏎️ Fast (0.5x)"},
-    "Normal": {"multiplier": 1.00, "move_duration": 0.45, "type_interval": 0.045, "label": "👤 Normal (1.0x)"},
-    "Steady": {"multiplier": 1.60, "move_duration": 0.75, "type_interval": 0.070, "label": "🚶 Steady (1.6x)"},
-    "Precision": {"multiplier": 2.50, "move_duration": 1.25, "type_interval": 0.100, "label": "🎯 Precision (2.5x)"},
+    "0.1x": {"multiplier": 0.1, "move_duration": 0.45, "type_interval": 0.045, "label": "0.1x · Slow"},
+    "0.3x": {"multiplier": 0.3, "move_duration": 0.45, "type_interval": 0.045, "label": "0.3x"},
+    "0.5x": {"multiplier": 0.5, "move_duration": 0.45, "type_interval": 0.045, "label": "0.5x"},
+    "0.8x": {"multiplier": 0.8, "move_duration": 0.45, "type_interval": 0.045, "label": "0.8x"},
+    "1.0x": {"multiplier": 1.0, "move_duration": 0.45, "type_interval": 0.045, "label": "1.0x · Normal"},
 }
 
 class SafetyController:
@@ -108,7 +120,7 @@ class SafetyController:
             cls._instance = super().__new__(cls)
             cls._instance.is_aborted = False
             cls._instance.autonomous_mode_enabled = False
-            cls._instance.current_speed = "Normal"
+            cls._instance.current_speed = "1.0x"
             cls._instance._listener = None
             cls._instance.start_global_listener()
         return cls._instance
@@ -135,8 +147,18 @@ class SafetyController:
     def reset(self):
         self.is_aborted = False
 
+    def set_desktop_control(self, enabled: bool):
+        """Atomically enables/disables simulated desktop input."""
+        self.autonomous_mode_enabled = bool(enabled)
+        if enabled:
+            self.reset()
+        else:
+            self.abort()
+
     def check(self):
         """Raises exception if abort flag is raised or failsafe triggered."""
+        if not self.autonomous_mode_enabled:
+            raise PermissionError("Desktop control is off. Enable it in the SpaceV desktop controls first.")
         if self.is_aborted:
             raise InterruptedError("Autonomous action aborted by User (Emergency Stop / ESC pressed)!")
 
@@ -144,13 +166,13 @@ class SafetyController:
         """Sets the active motion and typing speed profile."""
         if preset_name in CURSOR_SPEED_PRESETS:
             self.current_speed = preset_name
-            pyautogui.PAUSE = max(0.01, 0.04 * CURSOR_SPEED_PRESETS[preset_name]["multiplier"])
+            pyautogui.PAUSE = max(0.01, 0.04 / CURSOR_SPEED_PRESETS[preset_name]["multiplier"])
             return True
         return False
 
     def get_speed_settings(self) -> dict:
         """Returns the currently active speed profile dictionary."""
-        return CURSOR_SPEED_PRESETS.get(self.current_speed, CURSOR_SPEED_PRESETS["Normal"])
+        return CURSOR_SPEED_PRESETS.get(self.current_speed, CURSOR_SPEED_PRESETS["1.0x"])
 
 # Global instance
 safety = SafetyController()
@@ -168,7 +190,7 @@ def human_move_to(x: int, y: int, duration: float = 0.5, label: str = "⚡ SPACE
         pass
 
     multiplier = safety.get_speed_settings()["multiplier"]
-    actual_duration = max(0.03, duration * multiplier)
+    actual_duration = max(0.03, duration / multiplier)
 
     # Smooth easing curve
     pyautogui.moveTo(x, y, duration=actual_duration, tween=pyautogui.easeInOutQuad)
@@ -179,6 +201,7 @@ def human_type(text: str, interval: float = 0.04, label: str = "⌨️ SPACEV TY
     Types text with human-like keystroke delays and continuous abort checks.
     Scales typing interval dynamically based on the active speed profile.
     """
+    safety.check()
     try:
         from ui.cursor_overlay import show_cursor_hud
         show_cursor_hud(label=label, mode="typing")
@@ -186,7 +209,7 @@ def human_type(text: str, interval: float = 0.04, label: str = "⌨️ SPACEV TY
         pass
 
     multiplier = safety.get_speed_settings()["multiplier"]
-    actual_interval = max(0.008, interval * multiplier)
+    actual_interval = max(0.008, interval / multiplier)
 
     for char in text:
         safety.check()
@@ -421,7 +444,7 @@ def gui_draw_in_paint(shape_or_prompt: str = "house") -> str:
     the requested diagram, shape, or illustration using pure cursor movements
     with glowing real-time HUD spotlight.
     """
-    safety.reset()
+    safety.check()
     try:
         screen_w, screen_h = pyautogui.size()
         label, strokes = get_shape_strokes(shape_or_prompt)
@@ -457,7 +480,7 @@ def gui_draw_in_paint(shape_or_prompt: str = "house") -> str:
 
         print(f"  [GUI] ✍️ Executing {len(strokes)} continuous vector stroke paths with mouse cursor...")
 
-        multiplier = safety.get_speed_settings()["multiplier"]
+        duration_scale = 1.0 / safety.get_speed_settings()["multiplier"]
 
         # 5. Draw each stroke path smoothly
         for s_idx, stroke in enumerate(strokes):
@@ -469,8 +492,8 @@ def gui_draw_in_paint(shape_or_prompt: str = "house") -> str:
             start_x = int(canvas_cx + stroke[0][0])
             start_y = int(canvas_cy + stroke[0][1])
 
-            pyautogui.moveTo(start_x, start_y, duration=max(0.04, 0.25 * multiplier), tween=pyautogui.easeInOutQuad)
-            time.sleep(max(0.01, 0.04 * multiplier))
+            pyautogui.moveTo(start_x, start_y, duration=max(0.04, 0.25 * duration_scale), tween=pyautogui.easeInOutQuad)
+            time.sleep(max(0.01, 0.04 * duration_scale))
             safety.check()
 
             # Press down left mouse button to begin drawing
@@ -482,16 +505,16 @@ def gui_draw_in_paint(shape_or_prompt: str = "house") -> str:
                 safety.check()
                 target_px = int(canvas_cx + pt[0])
                 target_py = int(canvas_cy + pt[1])
-                pyautogui.moveTo(target_px, target_py, duration=max(0.008, 0.035 * multiplier), tween=pyautogui.linear)
+                pyautogui.moveTo(target_px, target_py, duration=max(0.008, 0.035 * duration_scale), tween=pyautogui.linear)
 
             # Release mouse button
             pyautogui.mouseUp(button="left")
-            time.sleep(max(0.01, 0.06 * multiplier))
+            time.sleep(max(0.01, 0.06 * duration_scale))
 
         # 6. Smoothly glide cursor away from the finished artwork
         print("  [GUI] ✨ Artwork complete! Gliding cursor away...")
-        pyautogui.moveTo(canvas_cx + 170, canvas_cy + 170, duration=max(0.08, 0.4 * multiplier), tween=pyautogui.easeOutQuad)
-        time.sleep(max(0.05, 0.3 * multiplier))
+        pyautogui.moveTo(canvas_cx + 170, canvas_cy + 170, duration=max(0.08, 0.4 * duration_scale), tween=pyautogui.easeOutQuad)
+        time.sleep(max(0.05, 0.3 * duration_scale))
         hide_cursor_hud()
 
         return f"SpaceV has autonomously drawn a {label} in MS Paint using pure cursor automation, Sir."
@@ -529,7 +552,7 @@ def gui_open_and_search_app(app_name: str, text_to_type: str = "") -> str:
     if PlatformAdapter.is_wsl() or not HAS_PYAUTOGUI:
         return PlatformAdapter.launch_app(app_name)
 
-    safety.reset()
+    safety.check()
     try:
         screen_w, screen_h = pyautogui.size()
 
@@ -606,39 +629,55 @@ def gui_search_google_browser(query: str) -> str:
     Autonomously opens a browser via Start Menu, navigates to Google, and types the query like a human.
     """
     from core.platform_adapter import PlatformAdapter
+    from core.query_parser import parse_search_intent
+    clean_q, _, _ = parse_search_intent(query)
+    target_q = clean_q or query
+
     if PlatformAdapter.is_wsl() or not HAS_PYAUTOGUI:
         from tools.web_tools import search_google
-        return search_google(query)
+        return search_google(target_q)
 
-    safety.reset()
+    safety.check()
     try:
         screen_w, screen_h = pyautogui.size()
 
-        print("  [GUI] 🖱️ Opening Start Menu to launch browser...")
-        human_move_to(20, screen_h - 20, duration=0.4, label="🌐 LAUNCHING CHROME", mode="moving")
-        safety.check()
-        pyautogui.press("win")
-        time.sleep(0.3)
-        safety.check()
+        from core.app_catalog import app_catalog
+        def_browser, _ = app_catalog.get_default_browser()
+        browser_title = def_browser.title()
 
-        print("  [GUI] ⌨️ Typing 'chrome'...")
-        human_type("chrome", interval=0.05, label="🔍 SEARCHING CHROME")
-        time.sleep(0.3)
-        pyautogui.press("enter")
-        time.sleep(1.8)
-        safety.check()
+        from core.memory import memory
+        pref_profile = memory.get("preferred_browser_profile") or memory.get("preferred_chrome_profile") or memory.get_preference("chrome", "profile")
+
+        if pref_profile:
+            PlatformAdapter.launch_app(def_browser, profile_dir=str(pref_profile))
+            time.sleep(1.8)
+            safety.check()
+        else:
+            print(f"  [GUI] 🖱️ Opening Start Menu to launch {browser_title}...")
+            human_move_to(20, screen_h - 20, duration=0.4, label=f"🌐 LAUNCHING {browser_title.upper()}", mode="moving")
+            safety.check()
+            pyautogui.press("win")
+            time.sleep(0.3)
+            safety.check()
+
+            print(f"  [GUI] ⌨️ Typing '{def_browser}'...")
+            human_type(def_browser, interval=0.05, label=f"🔍 SEARCHING {browser_title.upper()}")
+            time.sleep(0.3)
+            pyautogui.press("enter")
+            time.sleep(1.8)
+            safety.check()
 
         # Closed-loop profile guard
-        profile_res = resolve_chrome_profile_guard(pending_query=query)
-        if profile_res and ("stuck" in profile_res.lower() or "waiting at" in profile_res.lower()):
-            return f"⚠️ Modal Blocker: {profile_res}"
+        profile_res = resolve_chrome_profile_guard(pending_query=target_q)
+        if profile_res:
+            return profile_res
 
-        print(f"  [GUI] 🌐 Focusing address bar and searching: '{query}'...")
+        print(f"  [GUI] 🌐 Focusing address bar and searching: '{target_q}'...")
         pyautogui.hotkey("ctrl", "l")
         time.sleep(0.2)
         safety.check()
 
-        human_type(query, interval=0.04, label=f"🌐 SEARCHING: {query[:15]}...")
+        human_type(target_q, interval=0.04, label=f"🌐 SEARCHING: {target_q[:15]}...")
         time.sleep(0.2)
         pyautogui.press("enter")
 
@@ -670,28 +709,40 @@ def gui_play_youtube(video_query: str) -> str:
         return play_youtube(video_query)
 
     import urllib.parse
-    safety.reset()
+    safety.check()
     try:
         screen_w, screen_h = pyautogui.size()
 
-        print(f"  [GUI] 🖱️ Gliding cursor to Start Menu (20, {screen_h - 20})...")
-        human_move_to(20, screen_h - 20, duration=0.4, label="🎵 LAUNCHING YOUTUBE", mode="moving")
-        safety.check()
-        pyautogui.press("win")
-        time.sleep(0.3)
-        safety.check()
+        from core.app_catalog import app_catalog
+        def_browser, _ = app_catalog.get_default_browser()
+        browser_title = def_browser.title()
 
-        print("  [GUI] ⌨️ Typing 'chrome'...")
-        human_type("chrome", interval=0.04, label="🔍 OPENING BROWSER")
-        time.sleep(0.3)
-        pyautogui.press("enter")
-        time.sleep(1.8)
-        safety.check()
+        from core.memory import memory
+        pref_profile = memory.get("preferred_browser_profile") or memory.get("preferred_chrome_profile") or memory.get_preference("chrome", "profile")
+
+        if pref_profile:
+            PlatformAdapter.launch_app(def_browser, profile_dir=str(pref_profile))
+            time.sleep(1.8)
+            safety.check()
+        else:
+            print(f"  [GUI] 🖱️ Gliding cursor to Start Menu (20, {screen_h - 20})...")
+            human_move_to(20, screen_h - 20, duration=0.4, label=f"🎵 LAUNCHING {browser_title.upper()}", mode="moving")
+            safety.check()
+            pyautogui.press("win")
+            time.sleep(0.3)
+            safety.check()
+
+            print(f"  [GUI] ⌨️ Typing '{def_browser}'...")
+            human_type(def_browser, interval=0.04, label="🔍 OPENING BROWSER")
+            time.sleep(0.3)
+            pyautogui.press("enter")
+            time.sleep(1.8)
+            safety.check()
 
         # Closed-loop profile guard
         profile_res = resolve_chrome_profile_guard(pending_query=video_query)
-        if profile_res and ("stuck" in profile_res.lower() or "waiting at" in profile_res.lower()):
-            return f"⚠️ Modal Blocker: {profile_res}"
+        if profile_res:
+            return profile_res
 
         # Resolve direct video ID for instant autoplay
         from tools.web_tools import _resolve_youtube_top_video_id
@@ -743,7 +794,7 @@ def gui_type_text(text: str) -> str:
     """
     Types text at the current cursor position with human-like typing speed.
     """
-    safety.reset()
+    safety.check()
     try:
         human_type(text, interval=0.04)
         try:
@@ -754,3 +805,224 @@ def gui_type_text(text: str) -> str:
         return f"Typed text ({len(text)} chars) at cursor."
     except Exception as e:
         return f"Typing aborted: {e!s}"
+
+
+def sanitize_url_tokens(url: str) -> str:
+    """
+    Strips stale anti-bot tokens (__cf_chl_rt_tk, etc.) and tracking artifacts
+    that cause Cloudflare to trigger 'Humans only' blocks.
+    """
+    import urllib.parse
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if not parsed.query:
+            return url
+        qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        stale_keys = [k for k in qs if k.startswith("__cf_") or k.startswith("cf_") or k in ("fbclid", "gclid")]
+        if not stale_keys:
+            return url
+        for k in stale_keys:
+            qs.pop(k, None)
+        clean_query = urllib.parse.urlencode(qs, doseq=True)
+        return urllib.parse.urlunparse(parsed._replace(query=clean_query))
+    except Exception:
+        return url
+
+
+def gui_open_browser_urls(urls: list[str] | str, delay_sec: float = 0.8) -> str:
+    """
+    Autonomously opens multiple URLs in Chrome like a real human:
+    Brings Chrome to front, opens new tabs with Ctrl+T, glides the cursor to the address bar,
+    types the clean URL with realistic typing cadence, and presses Enter.
+    Strips poisoned anti-bot tokens (__cf_chl_rt_tk) to prevent Cloudflare blocks.
+    """
+    import urllib.parse
+    from core.platform_adapter import PlatformAdapter
+
+    target_urls: list[str] = []
+    if isinstance(urls, str):
+        clean = urls.strip()
+        if clean.startswith("[") and clean.endswith("]"):
+            try:
+                import json
+                target_urls = [str(u) for u in json.loads(clean)]
+            except Exception:
+                target_urls = [u.strip().strip("'\"") for u in clean.strip("[]").split(",") if u.strip()]
+        elif "\n" in clean:
+            target_urls = [u.strip().strip("'\"") for u in clean.split("\n") if u.strip()]
+        elif "," in clean:
+            target_urls = [u.strip().strip("'\"") for u in clean.split(",") if u.strip()]
+        else:
+            target_urls = [clean]
+    elif isinstance(urls, list):
+        target_urls = [str(u).strip() for u in urls if str(u).strip()]
+
+    if not target_urls:
+        return "No valid URLs provided to open."
+
+    safety.check()
+    try:
+        screen_w, screen_h = pyautogui.size()
+
+        from core.app_catalog import app_catalog
+        def_browser, _ = app_catalog.get_default_browser()
+        browser_title = def_browser.title()
+
+        # 1. Bring default browser to the foreground
+        print(f"  [GUI] 🌐 Bringing {browser_title} browser to foreground...")
+        PlatformAdapter.launch_app(def_browser)
+        time.sleep(1.0)
+        safety.check()
+
+        # Check for profile guard
+        profile_res = resolve_chrome_profile_guard(pending_query=" ".join(target_urls))
+        if profile_res:
+            return profile_res
+
+        opened = 0
+        pacing = max(0.4, min(delay_sec, 4.0))
+
+        for idx, raw_u in enumerate(target_urls[:10], 1):
+            safety.check()
+            clean_u = sanitize_url_tokens(raw_u)
+            if not clean_u.startswith("http://") and not clean_u.startswith("https://"):
+                clean_u = "https://" + clean_u
+
+            parsed = urllib.parse.urlparse(clean_u)
+            domain = parsed.netloc or "link"
+
+            print(f"  [GUI] 🖱️ Opening Tab {idx}/{len(target_urls)}: {clean_u[:45]}...")
+
+            # Move cursor up towards tab strip
+            tab_x = min(screen_w - 100, 240 + (idx * 50))
+            human_move_to(tab_x, 45, duration=0.3, label=f"🌐 NEW TAB: {domain}", mode="moving")
+            safety.check()
+
+            # Open new tab via Ctrl+T
+            pyautogui.hotkey("ctrl", "t")
+            time.sleep(0.25)
+            safety.check()
+
+            # Focus address bar (Ctrl+L) and type URL with human cadence
+            pyautogui.hotkey("ctrl", "l")
+            time.sleep(0.15)
+            safety.check()
+
+            # Type the URL with human typing speed
+            human_type(clean_u, interval=0.012, label=f"⌨️ {domain}")
+            time.sleep(0.1)
+            safety.check()
+
+            # Press Enter to navigate
+            pyautogui.press("enter")
+            opened += 1
+
+            # Amber gold visual pulse to show navigation
+            try:
+                from ui.cursor_overlay import show_cursor_hud
+                show_cursor_hud(label=f"⚡ NAVIGATING: {domain}", mode="clicking")
+            except Exception:
+                pass
+
+            if idx < len(target_urls[:10]):
+                time.sleep(pacing)
+
+        try:
+            from ui.cursor_overlay import hide_cursor_hud
+            hide_cursor_hud()
+        except Exception:
+            pass
+
+        return f"Autonomously navigated and opened {opened} of {len(target_urls)} links in {browser_title} using human mouse & keyboard!"
+
+    except pyautogui.FailSafeException:
+        safety.abort()
+        return "⚠️ EMERGENCY STOP: PyAutoGUI Fail-Safe triggered."
+    except InterruptedError as e:
+        return f"⚠️ EMERGENCY STOP: {e!s}"
+    except Exception as e:
+        return f"Autonomous action stopped: {e!s}"
+
+
+def gui_human_search_and_open(query: str, click_first_result: bool = True) -> str:
+    """
+    Autonomously searches Google in Chrome like a real human:
+    Opens/focuses Chrome, opens a new tab, types the query in Google, hits Enter,
+    glides the mouse cursor down onto the first organic search result, and clicks it!
+    Simulates authentic human interaction to avoid triggering anti-bot security interstitials.
+    """
+    import urllib.parse
+    from core.platform_adapter import PlatformAdapter
+    from core.query_parser import parse_search_intent
+    clean_q, _, _ = parse_search_intent(query)
+    target_q = clean_q or query
+
+    safety.check()
+    try:
+        screen_w, screen_h = pyautogui.size()
+
+        from core.app_catalog import app_catalog
+        def_browser, _ = app_catalog.get_default_browser()
+        browser_title = def_browser.title()
+
+        # 1. Bring default browser to the foreground
+        print(f"  [GUI] 🌐 Focusing {browser_title} to search for '{target_q}'...")
+        PlatformAdapter.launch_app(def_browser)
+        time.sleep(1.0)
+        safety.check()
+
+        # Closed-loop profile guard
+        profile_res = resolve_chrome_profile_guard(pending_query=target_q)
+        if profile_res:
+            return profile_res
+
+        # 2. Open new tab via Ctrl+T
+        pyautogui.hotkey("ctrl", "t")
+        time.sleep(0.3)
+        safety.check()
+
+        # 3. Focus address bar with Ctrl+L
+        pyautogui.hotkey("ctrl", "l")
+        time.sleep(0.2)
+        safety.check()
+
+        # 4. Type search query in address bar
+        google_search_url = f"https://www.google.com/search?q={urllib.parse.quote_plus(target_q)}"
+        human_type(google_search_url, interval=0.015, label=f"🔍 GOOGLE: {target_q[:18]}")
+        time.sleep(0.15)
+        safety.check()
+        pyautogui.press("enter")
+
+        # 5. Wait for Google search results page to load
+        print("  [GUI] ⏳ Waiting for Google search results to render...")
+        time.sleep(2.0)
+        safety.check()
+
+        # 6. Glide cursor down to the first organic result link and click it like a human
+        if click_first_result:
+            result_x = int(screen_w * 0.28)
+            result_y = int(screen_h * 0.35)
+            print(f"  [GUI] 🖱️ Gliding cursor to top search result ({result_x}, {result_y})...")
+            human_move_to(result_x, result_y, duration=0.6, label="🎯 CLICKING TOP RESULT", mode="clicking")
+            time.sleep(0.25)
+            safety.check()
+
+            # Click with amber gold pulse
+            pyautogui.click()
+            time.sleep(0.5)
+
+        try:
+            from ui.cursor_overlay import hide_cursor_hud
+            hide_cursor_hud()
+        except Exception:
+            pass
+
+        return f"Autonomously searched Google for '{query}' and clicked the top organic result with human mouse & keyboard!"
+
+    except pyautogui.FailSafeException:
+        safety.abort()
+        return "⚠️ EMERGENCY STOP: PyAutoGUI Fail-Safe triggered."
+    except InterruptedError as e:
+        return f"⚠️ EMERGENCY STOP: {e!s}"
+    except Exception as e:
+        return f"Autonomous action stopped: {e!s}"
