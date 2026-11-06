@@ -6,9 +6,10 @@ import time
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from voice.aec_guard import AECReferenceGuard
-from voice.audio_stream import AudioStreamRecorder
+from voice.audio_stream import AudioStreamRecorder, HAS_WEBRTC_APM
 from voice.stt_engine import VoiceListener
 from voice.tts_engine import TTSEngine, tts
 from voice.wake_word import WakeWordDetector
@@ -19,6 +20,8 @@ def test_webrtc_apm_initialization_and_chunk_cleaning():
     Verifies that AudioStreamRecorder initializes WebRTC-APM (if installed)
     and clean_chunk filters 16kHz audio in 10ms slices without distorting length.
     """
+    if not HAS_WEBRTC_APM:
+        pytest.skip("WebRTC audio processing dependency is not installed on this platform")
     recorder = AudioStreamRecorder()
     assert recorder._apm is not None, "WebRTC-APM AudioProcessor should be initialized"
 
