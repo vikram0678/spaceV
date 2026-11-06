@@ -91,7 +91,18 @@ class WakeWordDetector(QThread):
         print(
             "[WAKE-WORD] [LISTENER] Full-Duplex Conversational Engine Active (Continuous VAD + Conversational Turns)..."
         )
-        self.recorder.start_stream()
+        if not self.recorder.start_stream():
+            # A missing audio backend is a permanent startup condition for this
+            # thread. Stop instead of entering the main loop and retrying the
+            # same failed microphone open (which floods the terminal).
+            self._is_running = False
+            self._paused = True
+            self.listening_state_changed.emit("AUDIO_UNAVAILABLE")
+            logger.warning(
+                "[WAKE-WORD] Microphone input is unavailable; hands-free listening is disabled. "
+                "Text chat remains available."
+            )
+            return
         while self._is_running:
             if self._paused:
                 time.sleep(0.12)
