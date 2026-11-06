@@ -14,13 +14,17 @@ import requests
 from config import USER_DESKTOP_DIR
 
 
-def scrape_jobs(role: str = "python", location: str = "remote", save_to_desktop: bool = True) -> str:
+def scrape_jobs(role: str = "", location: str = "", save_to_desktop: bool = False) -> str:
     """
     Scrapes real-time tech and remote jobs, formats top listings,
     and optionally exports them to a CSV file on your Desktop.
     """
     try:
-        clean_role = role.strip().lower()
+        clean_role = (role or "").strip().lower()
+        clean_location = (location or "").strip().lower()
+        if not clean_role or not clean_location:
+            missing = "job role and target location" if not clean_role and not clean_location else ("job role" if not clean_role else "target location")
+            return f"SPACEV_NEEDS_USER_INPUT: I need your {missing} before searching. What {missing} should I use?"
         # RemoteOK API (Public endpoint returning JSON listings)
         url = "https://remoteok.com/api"
         headers = {
@@ -43,7 +47,11 @@ def scrape_jobs(role: str = "python", location: str = "remote", save_to_desktop:
             desc = job.get("description", "")
             full_text = f"{position} {tags} {desc}".lower()
 
-            if clean_role in full_text or any(w in full_text for w in clean_role.split()):
+            raw_location = str(job.get("location", ""))
+            location_text = f"{raw_location} {'remote' if 'remote' in raw_location.lower() or 'remote' in full_text else ''}".lower()
+            role_match = clean_role in full_text or any(w in full_text for w in clean_role.split())
+            location_match = clean_location in ("any", "all", "global") or clean_location in location_text
+            if role_match and location_match:
                 matched_jobs.append({
                     "Title": position,
                     "Company": job.get("company", "Unknown"),
@@ -56,14 +64,8 @@ def scrape_jobs(role: str = "python", location: str = "remote", save_to_desktop:
                 break
 
         if not matched_jobs:
-            # Fallback if specific keyword didn't match
-            matched_jobs = [{
-                "Title": j.get("position", "Software Engineer"),
-                "Company": j.get("company", "Tech Company"),
-                "Location": j.get("location", "Remote"),
-                "Tags": ", ".join(j.get("tags", [])[:4]),
-                "URL": j.get("url", "https://remoteok.com")
-            } for j in job_list[:5]]
+            return (f"SPACEV_NEEDS_USER_INPUT: No RemoteOK listings matched **{role}** in **{location}**. "
+                    "Would you like to broaden the role, change the location, or include remote positions?")
 
         # Optionally save to CSV on Desktop
         csv_msg = ""

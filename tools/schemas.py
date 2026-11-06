@@ -13,10 +13,10 @@ from datetime import datetime, timezone
 class ToolResult(BaseModel):
     """
     Standardized, normalized result envelope for all SpaceV tool executions.
-    Distinguishes tool invocation failure, execution failure, and verified success.
+    Distinguishes success, failure, blocked execution, and work waiting for user input.
     """
     success: bool = True
-    status: str = "success"  # 'success', 'failed', 'blocked', 'invocation_error', 'execution_error'
+    status: str = "success"  # includes 'needs_input' when a tool requires clarification
     data: Any = ""
     error: Optional[str] = None
     execution_id: str = Field(default_factory=lambda: f"exec_{uuid.uuid4().hex[:8]}")
@@ -80,7 +80,8 @@ class OpenTextEditorInput(BaseModel):
 class ReadFileInput(BaseModel):
     file_name_or_path: str = Field(default="", description="The name or path of the file to read.")
     location: str = Field(default="Desktop", description="Location of the file (defaults to 'Desktop').")
-    max_lines: int = Field(default=40, description="Maximum number of lines to read.")
+    max_lines: int = Field(default=40, ge=1, le=400, description="Maximum number of lines to read (1-400).")
+    start_line: int = Field(default=1, ge=1, description="1-based first line to read; use this to inspect a later function or section.")
 
     @model_validator(mode='before')
     @classmethod
@@ -123,6 +124,11 @@ class OpenUrlInput(BaseModel):
     url: str = Field(..., description="The website URL to open in browser.")
 
 
+class OpenBrowserUrlsInput(BaseModel):
+    urls: Union[list[str], str] = Field(..., description="List of website URLs (or comma/newline-separated string of URLs) to open in browser tabs.")
+    delay_sec: float = Field(default=0.5, description="Delay in seconds between opening each tab.")
+
+
 # --- System & Hardware Schemas ---
 class OpenAppInput(BaseModel):
     app_name: str = Field(default="", description="The name of the application to open (e.g. 'calc', 'notepad', 'chrome').")
@@ -157,14 +163,99 @@ class SetTimerInput(BaseModel):
         except Exception:
             return 5.0
 
+
+class CreateCareerGoalInput(BaseModel):
+    goal: str = ""
+    target_roles: list[str] = Field(default_factory=list)
+    location: str = ""
+    deadline: str = Field(default="", description="Goal deadline as YYYY-MM-DD.")
+    duration_days: int = Field(default=0, description="Relative deadline, such as 20, when user gave a duration rather than a calendar date.")
+    available_hours: float = 0
+    plan_items: list[dict[str, Any]] = Field(default_factory=list, description="Proposed tasks with title, due_date, and optional estimated_minutes/category.")
+    resume_path: str = ""
+
+
+class RecordCareerActivityInput(BaseModel):
+    activity: str = ""
+    minutes: int = 0
+    task_id: str = ""
+    notes: str = ""
+
+
+class UpdateCareerPlanTaskInput(BaseModel):
+    task_id: str = ""
+    title: str = ""
+    due_date: str = ""
+    estimated_minutes: Optional[int] = None
+    status: str = ""
+
+
+class DailyCareerReviewInput(BaseModel):
+    day: str = ""
+
+
+class CreateCareerReminderInput(BaseModel):
+    title: str = ""
+    due_at: str = Field(default="", description="ISO datetime with UTC offset, e.g. 2026-11-04T18:30:00+05:30.")
+    repeat_rule: str = "none"
+    goal_id: str = ""
+    purpose: str = "notification"
+    timezone_name: str = Field(default="", description="IANA timezone for recurring reminders, e.g. Asia/Kolkata.")
+
+
+class ListCareerRemindersInput(BaseModel):
+    include_completed: bool = False
+
+
+class ReminderIdInput(BaseModel):
+    reminder_id: str = ""
+
+
+class SnoozeCareerReminderInput(BaseModel):
+    reminder_id: str = ""
+    due_at: str = Field(default="", description="New ISO datetime with UTC offset.")
+
+
+class ListCareerOpportunitiesInput(BaseModel):
+    status: str = "new"
+    limit: int = 25
+    opportunity_type: str = ""
+
+
+class DeleteCareerAssistantDataInput(BaseModel):
+    confirm: bool = False
+
 class KillProcessInput(BaseModel):
     process_name: str = Field(..., description="The process or application name to terminate.")
 
 # --- Scraping & Intelligence Schemas ---
 class ScrapeJobsInput(BaseModel):
-    role: str = Field(default="python", description="Job keyword or role to search for (e.g. 'python', 'react').")
-    location: str = Field(default="remote", description="Location or 'remote'.")
-    save_to_desktop: bool = Field(default=True, description="Whether to export results to a CSV on Desktop.")
+    role: str = Field(default="", description="Role requested by the user; ask if missing instead of guessing.")
+    location: str = Field(default="", description="Target location/work mode requested by the user; ask if missing.")
+    save_to_desktop: bool = Field(default=False, description="Export results only when the user asks.")
+
+class SearchAndHarvestJobsInput(BaseModel):
+    role: str = Field(default="", description="Role/keywords requested by the user. If absent, ask the user instead of assuming a role.")
+    location: str = Field(default="", description="User's target location or work mode. If absent, ask instead of assuming remote.")
+    min_exp: int = Field(default=0, description="Optional minimum experience filter; do not infer if the user did not specify it.")
+    limit: int = Field(default=10, description="Maximum number of job listings to retrieve.")
+    save_to_desktop: bool = Field(default=False, description="Export results to CSV only when the user asks.")
+
+class TrackCareerApplicationInput(BaseModel):
+    job_title: str = Field(..., description="Job title / role applied or wishlisted.")
+    company: str = Field(..., description="Company name.")
+    job_url: str = Field(default="", description="URL of the job posting.")
+    status: str = Field(default="Wishlist", description="Stage: 'Wishlist', 'Applied', 'Interview', 'Offer', 'Rejected'.")
+    notes: str = Field(default="", description="Optional personal notes, interview date, or contact info.")
+
+class ListCareerApplicationsInput(BaseModel):
+    status_filter: str = Field(default="", description="Optional filter by status ('Wishlist', 'Applied', 'Interview', 'Offer', 'Rejected').")
+
+class PrepareJobApplicationInput(BaseModel):
+    job_title: str = Field(..., description="Target job title.")
+    company: str = Field(..., description="Target company.")
+    candidate_name: str = Field(default="Applicant", description="Applicant name.")
+    skills: str = Field(default="", description="Key skills or achievements to emphasize.")
 
 class FetchNewsInput(BaseModel):
     topic: str = Field(default="technology", description="News topic or industry.")
@@ -189,6 +280,10 @@ class GuiOpenAppInput(BaseModel):
 
 class GuiSearchGoogleInput(BaseModel):
     query: str = Field(..., description="The search term to type into Google.")
+
+class GuiHumanSearchAndOpenInput(BaseModel):
+    query: str = Field(..., description="The search term to type into Google browser like a human.")
+    click_first_result: bool = Field(default=True, description="Whether to smoothly glide cursor and click the first organic search result.")
 
 class GuiTypeTextInput(BaseModel):
     text: str = Field(..., description="The text to type at current cursor position.")
@@ -260,6 +355,32 @@ class ExecuteTerminalCommandInput(BaseModel):
                         data["command"] = str(data[alt])
                         break
         return data
+
+
+class ClonePublicRepositoryInput(BaseModel):
+    """Inputs for the source-only, exact-approval GitHub clone tool."""
+
+    repository_url: str = Field(..., min_length=1, max_length=500)
+    destination: str = Field(..., min_length=1, max_length=1000)
+    approval_id: str = Field(default="", max_length=32)
+    approval_text: str = Field(default="", max_length=80)
+
+
+class CreateSandboxSessionInput(BaseModel):
+    """Create a reusable Celesto VM only after exact approval of the task scope."""
+
+    task_description: str = Field(default="", max_length=800, description="Required on the proposal call. On approval, the task stored for approval_id is authoritative; this field may be omitted.")
+    approval_id: str = Field(default="", max_length=32)
+    approval_text: str = Field(default="", max_length=80)
+
+
+class RunSandboxSessionCommandInput(BaseModel):
+    session_id: str = Field(..., min_length=8, max_length=64)
+    command: str = Field(..., min_length=1, max_length=10000)
+
+
+class CloseSandboxSessionInput(BaseModel):
+    session_id: str = Field(..., min_length=8, max_length=64)
 
 class ExecuteInVscodeTerminalInput(BaseModel):
     command: str = Field(default="", description="The command or script to execute in VS Code terminal.")
@@ -384,10 +505,21 @@ PYDANTIC_TOOL_MODELS = {
     "search_google": SearchGoogleInput,
     "play_youtube": PlayYoutubeInput,
     "open_url": OpenUrlInput,
+    "open_browser_urls": OpenBrowserUrlsInput,
     "open_application": OpenAppInput,
     "activate_workspace_mode": ActivateWorkspaceInput,
     "media_control": MediaControlInput,
     "set_timer": SetTimerInput,
+    "create_career_goal": CreateCareerGoalInput,
+    "record_career_activity": RecordCareerActivityInput,
+    "update_career_plan_task": UpdateCareerPlanTaskInput,
+    "get_career_daily_review": DailyCareerReviewInput,
+    "create_career_reminder": CreateCareerReminderInput,
+    "list_career_reminders": ListCareerRemindersInput,
+    "cancel_career_reminder": ReminderIdInput,
+    "snooze_career_reminder": SnoozeCareerReminderInput,
+    "list_career_opportunities": ListCareerOpportunitiesInput,
+    "delete_career_assistant_data": DeleteCareerAssistantDataInput,
     "kill_process_by_name": KillProcessInput,
     "scrape_jobs": ScrapeJobsInput,
     "fetch_news_headlines": FetchNewsInput,
@@ -397,6 +529,7 @@ PYDANTIC_TOOL_MODELS = {
     "write_clipboard_text": WriteClipboardInput,
     "gui_open_and_search_app": GuiOpenAppInput,
     "gui_search_google_browser": GuiSearchGoogleInput,
+    "gui_human_search_and_open": GuiHumanSearchAndOpenInput,
     "gui_type_text": GuiTypeTextInput,
     "gui_play_youtube": GuiPlayYoutubeInput,
     "gui_draw_in_paint": GuiDrawInPaintInput,
@@ -412,6 +545,10 @@ PYDANTIC_TOOL_MODELS = {
     "run_python_script": RunPythonScriptInput,
     "execute_code_block": ExecuteCodeBlockInput,
     "execute_terminal_command": ExecuteTerminalCommandInput,
+    "clone_public_repository": ClonePublicRepositoryInput,
+    "create_sandbox_session": CreateSandboxSessionInput,
+    "run_sandbox_session_command": RunSandboxSessionCommandInput,
+    "close_sandbox_session": CloseSandboxSessionInput,
     "execute_in_vscode_terminal": ExecuteInVscodeTerminalInput,
     "read_web_page": ReadWebPageInput,
     "set_system_brightness": SetSystemBrightnessInput,
@@ -420,6 +557,10 @@ PYDANTIC_TOOL_MODELS = {
     "get_code_node": GetCodeNodeInput,
     "get_code_neighbors": GetCodeNeighborsInput,
     "get_code_blast_radius": GetCodeBlastRadiusInput,
+    "search_and_harvest_jobs": SearchAndHarvestJobsInput,
+    "track_career_application": TrackCareerApplicationInput,
+    "list_career_applications": ListCareerApplicationsInput,
+    "prepare_job_application": PrepareJobApplicationInput,
 }
 
 
