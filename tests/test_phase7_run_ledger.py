@@ -7,6 +7,7 @@ evaluation math (success rate, median latency, p90 latency), and SpaceV tool int
 import re
 import sys
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -31,7 +32,7 @@ def test_run_ledger_schema_and_idempotency():
         assert db_path.exists()
 
         # Verify schema
-        with service.get_connection() as conn:
+        with closing(service.get_connection()) as conn:
             cursor = conn.execute("PRAGMA table_info(runs);")
             cols = {row["name"] for row in cursor.fetchall()}
             expected_cols = {
