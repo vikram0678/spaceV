@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QHBoxLayout,
     QLabel,
-    QMenu,
+    QComboBox,
     QPushButton,
     QScrollArea,
     QTextEdit,
@@ -22,7 +22,6 @@ from config import (
     AUTO_LISTEN_FOLLOWUP,
     CHAT_HEIGHT,
     CHAT_WIDTH,
-    DEFAULT_CURSOR_SPEED,
     WAKE_WORD_ENABLED_BY_DEFAULT,
 )
 from core.agent_worker import AgentWorker
@@ -119,6 +118,7 @@ class ChatInput(QTextEdit):
 
 class ChatWindow(QWidget):
     state_changed = pyqtSignal(str)  # "IDLE", "THINKING", "LISTENING", "SPEAKING"
+    tool_event_emitted = pyqtSignal(str, str, str)  # tool_name, status, details
 
     def __init__(self, agent: OllamaAgent):
         super().__init__()
@@ -145,6 +145,7 @@ class ChatWindow(QWidget):
             self.companion.start()
         except RuntimeError:
             from core.proactive_companion import ProactiveCompanion
+
             self.companion = ProactiveCompanion()
             self.companion.check_in_triggered.connect(self.on_companion_check_in)
             self.companion.start()
@@ -224,17 +225,18 @@ class ChatWindow(QWidget):
         cursor_layout.setContentsMargins(0, 0, 0, 0)
         cursor_layout.setSpacing(0)
 
-        self.btn_cursor_toggle = QPushButton("🤖 Cursor: ON" if safety.autonomous_mode_enabled else "🤖 Cursor: OFF")
+        self.btn_cursor_toggle = QPushButton("🖱️ Desktop: ON" if safety.autonomous_mode_enabled else "🖱️ Desktop: OFF")
         self.btn_cursor_toggle.setObjectName("CursorToggleBtn")
         self.btn_cursor_toggle.setProperty("active", "false")
-        self.btn_cursor_toggle.setToolTip("Toggle autonomous mouse & keyboard control")
+        self.btn_cursor_toggle.setToolTip("Enable or disable SpaceV mouse and keyboard input")
         self.btn_cursor_toggle.clicked.connect(self.toggle_cursor_mode)
 
         self.btn_cursor_speed = QPushButton("▾")
         self.btn_cursor_speed.setObjectName("CursorSpeedArrowBtn")
         self.btn_cursor_speed.setProperty("active", "false")
-        self.btn_cursor_speed.setToolTip(f"Adjust cursor motion speed (Current: {DEFAULT_CURSOR_SPEED})")
-        self.btn_cursor_speed.clicked.connect(self.show_cursor_speed_menu)
+        self.btn_cursor_speed.setToolTip("Show or hide desktop control and speed settings")
+        self.btn_cursor_speed.setCheckable(True)
+        self.btn_cursor_speed.clicked.connect(self.toggle_desktop_controls_panel)
 
         cursor_layout.addWidget(self.btn_cursor_toggle)
         cursor_layout.addWidget(self.btn_cursor_speed)
@@ -264,13 +266,36 @@ class ChatWindow(QWidget):
         self.btn_emergency_stop.setToolTip("Immediately stop autonomous action (or press ESC)")
         self.btn_emergency_stop.clicked.connect(self.emergency_stop)
 
-        # toolbar_layout.addWidget(cursor_container)
+        toolbar_layout.addWidget(cursor_container)
         toolbar_layout.addWidget(self.btn_voice_toggle)
         toolbar_layout.addWidget(self.btn_wake_toggle)
         toolbar_layout.addWidget(self.btn_companion_toggle)
         toolbar_layout.addStretch()
         toolbar_layout.addWidget(self.btn_emergency_stop)
         central_layout.addWidget(toolbar)
+
+        self.desktop_controls_panel = QWidget()
+        self.desktop_controls_panel.setObjectName("DesktopControlsPanel")
+        desktop_panel_layout = QVBoxLayout(self.desktop_controls_panel)
+        desktop_panel_layout.setContentsMargins(14, 6, 14, 8)
+        desktop_panel_layout.addWidget(QLabel("Desktop mode controls the orange visor and SpaceV mouse/keyboard input."))
+        speed_row = QWidget()
+        speed_row_layout = QHBoxLayout(speed_row)
+        speed_row_layout.setContentsMargins(0, 0, 0, 0)
+        speed_row_layout.addWidget(QLabel("Desktop input speed"))
+        self.cursor_speed_combo = QComboBox()
+        self.cursor_speed_combo.setObjectName("CursorSpeedCombo")
+        for key, preset in CURSOR_SPEED_PRESETS.items():
+            self.cursor_speed_combo.addItem(preset["label"], key)
+        self.cursor_speed_combo.setCurrentIndex(max(0, self.cursor_speed_combo.findData(safety.current_speed)))
+        self.cursor_speed_combo.currentIndexChanged.connect(
+            lambda _index: self.select_cursor_speed(self.cursor_speed_combo.currentData())
+        )
+        speed_row_layout.addWidget(self.cursor_speed_combo)
+        speed_row_layout.addStretch()
+        desktop_panel_layout.addWidget(speed_row)
+        self.desktop_controls_panel.hide()
+        central_layout.addWidget(self.desktop_controls_panel)
 
         # 2. Scrollable Messages Area
         self.scroll_area = QScrollArea()
@@ -421,24 +446,19 @@ class ChatWindow(QWidget):
                 self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
 
-    def dock_near(self, point: QPoint):
+    def dock_near(self, point: QPoint = None):
         """Positions chat window nicely directly above the floating icon, clamped to screen bounds."""
         screen_obj = self.screen() or (QApplication.primaryScreen() if QApplication.instance() else None)
         if screen_obj:
             screen = screen_obj.availableGeometry()
         else:
             screen = QRectF(0, 0, 1920, 1080).toRect()
-
-        # Align chat window horizontally with the right side of the floating icon (approx 90px wide)
-        icon_right = point.x() + 90
+        margin = 20
+        icon_right = point.x() + 90 if point is not None else screen.x() + screen.width()
         x = icon_right - self.width()
-
-        # Place directly above the floating icon with a 12px gap
-        y = point.y() - self.height() - 12
-
-        # Safety clamps to ensure it's always fully visible within the active screen
-        x = max(screen.x() + 20, min(x, screen.x() + screen.width() - self.width() - 20))
-        y = max(screen.y() + 20, min(y, screen.y() + screen.height() - self.height() - 20))
+        y = (point.y() if point is not None else screen.y() + screen.height()) - self.height() - 12
+        x = max(screen.x() + margin, min(x, screen.x() + screen.width() - self.width() - margin))
+        y = max(screen.y() + margin, min(y, screen.y() + screen.height() - self.height() - margin))
         self.move(int(x), int(y))
 
     def send_message(self):
@@ -501,6 +521,7 @@ class ChatWindow(QWidget):
         self.current_stream_label = bubble
 
     def on_tool_event(self, tool_name: str, status: str, details: str):
+        self.tool_event_emitted.emit(tool_name, status, details)
         if status == "running":
             self.status_label.setText(f"⚙️ Executing tool: {tool_name}...")
         else:
@@ -674,46 +695,56 @@ class ChatWindow(QWidget):
         return w
 
     def toggle_cursor_mode(self):
-        safety.autonomous_mode_enabled = not safety.autonomous_mode_enabled
+        safety.set_desktop_control(not safety.autonomous_mode_enabled)
+        self._sync_desktop_control_ui()
+        enabled = safety.autonomous_mode_enabled
+        try:
+            from ui.holographic_visor import HolographicVisor
+            visor = HolographicVisor.get_instance()
+            if visor:
+                if enabled:
+                    visor._is_active = True
+                    visor.show()
+                else:
+                    visor.clear_attention()
+                    visor._target_boxes.clear()
+                    visor._is_active = False
+                    visor.hide()
+        except Exception:
+            pass
         if safety.autonomous_mode_enabled:
-            self.btn_cursor_toggle.setText("🤖 Cursor: ON")
-            self.btn_cursor_toggle.setProperty("active", "true")
-            self.btn_cursor_speed.setProperty("active", "true")
             self.add_agent_message(
-                "🤖 **Autonomous Cursor Mode Enabled**!\nSpaceV will move the cursor and type like a human for UI commands.\n\n🛡️ **Emergency Stop**: Press `ESC` or shove cursor to top-left corner anytime to halt!"
+                "🟠 **Desktop control enabled.** The visor is active and SpaceV can use mouse/keyboard actions. Other connected tools remain available. Press Stop or ESC to halt an action."
             )
         else:
-            self.btn_cursor_toggle.setText("🤖 Cursor: ON")
-            self.btn_cursor_toggle.setProperty("active", "false")
-            self.btn_cursor_speed.setProperty("active", "false")
-            self.add_agent_message("🤖 Autonomous Cursor Mode Disabled. Reverted to standard background automation.")
+            self.add_agent_message("Desktop control disabled. SpaceV will continue using its other connected tools; simulated mouse and keyboard actions are blocked.")
 
+    def _sync_desktop_control_ui(self):
+        enabled = safety.autonomous_mode_enabled
+        self.btn_cursor_toggle.setText("🖱️ Desktop: ON" if enabled else "🖱️ Desktop: OFF")
+        self.btn_cursor_toggle.setProperty("active", "true" if enabled else "false")
+        self.btn_cursor_speed.setProperty("active", "true" if enabled else "false")
         self.btn_cursor_toggle.style().unpolish(self.btn_cursor_toggle)
         self.btn_cursor_toggle.style().polish(self.btn_cursor_toggle)
         self.btn_cursor_speed.style().unpolish(self.btn_cursor_speed)
         self.btn_cursor_speed.style().polish(self.btn_cursor_speed)
 
-    def show_cursor_speed_menu(self):
-        menu = QMenu(self)
-        menu.setObjectName("CursorSpeedMenu")
-        for key, preset in CURSOR_SPEED_PRESETS.items():
-            action = menu.addAction(preset["label"])
-            action.setCheckable(True)
-            if key == safety.current_speed:
-                action.setChecked(True)
-            action.triggered.connect(lambda checked, k=key: self.select_cursor_speed(k))
+    def toggle_desktop_controls_panel(self):
+        expanded = not self.desktop_controls_panel.isVisible()
+        self.desktop_controls_panel.setVisible(expanded)
+        self.btn_cursor_speed.setText("▴" if expanded else "▾")
 
-        btn_pos = self.btn_cursor_speed.mapToGlobal(QPoint(0, self.btn_cursor_speed.height() + 2))
-        menu.exec(btn_pos)
+    def show_cursor_speed_menu(self):
+        self.toggle_desktop_controls_panel()
 
     def select_cursor_speed(self, speed_key: str):
         if speed_key:
             safety.set_cursor_speed(speed_key)
             preset = CURSOR_SPEED_PRESETS.get(speed_key, {})
             label = preset.get("label", speed_key)
-            self.btn_cursor_speed.setToolTip(f"Adjust cursor motion speed (Current: {speed_key})")
+            self.btn_cursor_speed.setToolTip(f"Desktop input speed: {speed_key}")
             play_action_sound()
-            self.add_agent_message(f"⚡ **Cursor Speed Profile Updated**: `{label}` activated.")
+            self.btn_cursor_speed.setText("▴" if self.desktop_controls_panel.isVisible() else "▾")
 
     def toggle_voice(self):
         tts.is_enabled = not tts.is_enabled
@@ -945,7 +976,16 @@ class ChatWindow(QWidget):
             print(f"[ChatWindow] Wake detector init notice: {e}")
 
     def on_conversational_state_changed(self, state: str):
-        if state == "LISTENING":
+        if state == "AUDIO_UNAVAILABLE":
+            self.btn_wake_toggle.setText("🎙️ Wake: OFF")
+            self.btn_wake_toggle.setProperty("active", "false")
+            self.btn_wake_toggle.style().unpolish(self.btn_wake_toggle)
+            self.btn_wake_toggle.style().polish(self.btn_wake_toggle)
+            self.add_agent_message(
+                "🎙️ **Hands-free listening is unavailable** because PyAudio is not installed in this WSL environment. "
+                "Text chat is still ready to use."
+            )
+        elif state == "LISTENING":
             self.state_changed.emit("LISTENING")
             self.btn_mic.setText("🎙️...")
             self.btn_mic.setProperty("listening", "true")
