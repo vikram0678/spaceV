@@ -1,8 +1,9 @@
 """
 Universal Cloud Brain Client for SpaceV Cybernetic AI Agent.
-Provides native OpenAI / OpenRouter API communication with streaming,
-tool calling, and automatic rate-limit (HTTP 429) fallback to local Ollama.
+Supports one configured OpenAI-compatible endpoint or Anthropic Messages API,
+including streaming and tool calling.
 """
+
 import json
 import os
 import time
@@ -13,15 +14,12 @@ from typing import Any
 import requests
 
 from config import (
-    AUTONOMOUS_AGENT_MODEL,
     BASE_DIR,
     CEREBRAS_API_KEY,
     CEREBRAS_API_KEYS,
     CEREBRAS_BASE_URL,
     CEREBRAS_FAST_MODEL,
     CEREBRAS_MODEL,
-    CODING_ENGINEER_MODEL,
-    FAST_CHAT_CLOUD_MODEL,
     GEMINI_API_KEY,
     GEMINI_API_KEYS,
     GEMINI_BASE_URL,
@@ -34,6 +32,7 @@ from config import (
     LLM_API_KEY,
     LLM_BASE_URL,
     LLM_MODEL,
+    LLM_PROVIDER,
     MISTRAL_API_KEY,
     MISTRAL_API_KEYS,
     MISTRAL_BASE_URL,
@@ -46,7 +45,6 @@ from config import (
     OPENROUTER_BASE_URL,
     OPENROUTER_MODEL,
     PRIMARY_MODEL,
-    ROUTING_MODE,
     SAMBANOVA_API_KEY,
     SAMBANOVA_BASE_URL,
     SAMBANOVA_MODEL,
@@ -61,16 +59,15 @@ from core.token_optimizer import token_optimizer
 
 class UniversalBrainClient:
     """
-    High-performance, resilient OpenAI/OpenRouter client supporting
-    both streaming token delivery and function calling with zero-downtime local fallback.
+    Single-endpoint cloud client supporting OpenAI-compatible APIs and Anthropic.
     """
 
     def __init__(
         self,
-        base_url: str = GROQ_BASE_URL or LLM_BASE_URL,
-        api_key: str = GROQ_API_KEY or LLM_API_KEY,
+        base_url: str = LLM_BASE_URL,
+        api_key: str = LLM_API_KEY,
         groq_api_key_2: str = "",
-        default_model: str = GROQ_MODEL or LLM_MODEL,
+        default_model: str = LLM_MODEL,
         fallback_base_url: str = OLLAMA_BASE_URL,
         fallback_model: str = PRIMARY_MODEL,
         gemini_api_key: str = GEMINI_API_KEY,
@@ -82,7 +79,8 @@ class UniversalBrainClient:
         cerebras_api_key: str = CEREBRAS_API_KEY,
         cerebras_base_url: str = CEREBRAS_BASE_URL,
         cerebras_model: str = CEREBRAS_MODEL,
-        routing_mode: str = ROUTING_MODE,
+        routing_mode: str = "direct",
+        provider: str = LLM_PROVIDER,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -99,6 +97,7 @@ class UniversalBrainClient:
         self.cerebras_base_url = cerebras_base_url.rstrip("/")
         self.cerebras_model = cerebras_model
         self.routing_mode = routing_mode
+        self.provider = provider
         self.last_used_provider = "cloud"
         self.disabled_providers: set[str] = set()
 
@@ -189,25 +188,32 @@ class UniversalBrainClient:
         )
 
         # 1. DIRECT BYOK PAID MODE: bypass free mesh if direct mode is active (unless running unit tests with mock keys)
-        if self.routing_mode == "direct" and not (self.api_key.startswith("mock_") or self.api_key.startswith("gsk_mock")):
+        if self.routing_mode == "direct" and not (
+            self.api_key.startswith("mock_") or self.api_key.startswith("gsk_mock")
+        ):
             from core.virtual_router import virtual_router
+
             direct_model = requested_model or self.default_model
             # If a virtual alias like spacev/auto is requested in direct mode, resolve it or keep default
-            if virtual_router.is_virtual_alias(direct_model):
+            if direct_model and virtual_router.is_virtual_alias(direct_model):
                 direct_model = self.default_model
-            pipeline.append({
-                "name": "Direct Paid API",
-                "base_url": self.base_url,
-                "api_key": self.api_key,
-                "model": direct_model,
-            })
+            pipeline.append(
+                {
+                    "name": "Direct Paid API",
+                    "base_url": self.base_url,
+                    "api_key": self.api_key,
+                    "model": direct_model,
+                }
+            )
             return pipeline
 
         # Track families rotated during this turn to advance each family once per request
         rotated_families: set[str] = set()
 
         # Helper to get active keys with pre-emptive round-robin rotation
-        def get_pool_candidates(name_prefix: str, keys: list[str], base_url: str, model_id: str, family: str) -> list[dict[str, Any]]:
+        def get_pool_candidates(
+            name_prefix: str, keys: list[str], base_url: str, model_id: str, family: str
+        ) -> list[dict[str, Any]]:
             if not keys:
                 return []
             valid_keys = [k for k in keys if k and not self.is_in_cooldown(k)]
@@ -230,25 +236,37 @@ class UniversalBrainClient:
                 # In mesh mode, each provider must strictly use its own model ID.
                 # requested_model is only used when running in direct BYOK mode.
                 target_model = requested_model if (self.routing_mode == "direct" and requested_model) else model_id
-                candidates.append({
-                    "name": prefix if i == 1 else f"{prefix} Pool {i}",
-                    "base_url": base_url,
-                    "api_key": k,
-                    "model": target_model,
-                    "family": family,
-                })
+                candidates.append(
+                    {
+                        "name": prefix if i == 1 else f"{prefix} Pool {i}",
+                        "base_url": base_url,
+                        "api_key": k,
+                        "model": target_model,
+                        "family": family,
+                    }
+                )
             return candidates
 
-        cerebras_candidates = get_pool_candidates("Cerebras", self.cerebras_keys, self.cerebras_base_url, self.cerebras_model, "cerebras")
-        cerebras_fast_candidates = get_pool_candidates("Cerebras Fast", self.cerebras_keys, self.cerebras_base_url, CEREBRAS_FAST_MODEL, "cerebras")
-        groq_candidates = get_pool_candidates("Groq", self.groq_keys, self.base_url, self.default_model, "groq")
-        mistral_candidates = get_pool_candidates("Mistral", self.mistral_keys, MISTRAL_BASE_URL, MISTRAL_MODEL, "mistral")
-        mistral_small_candidates = get_pool_candidates("Mistral Small", self.mistral_keys, MISTRAL_BASE_URL, MISTRAL_SMALL_MODEL, "mistral")
-        gemini_candidates = get_pool_candidates("Google Gemini", self.gemini_keys, self.gemini_base_url, self.gemini_model, "gemini")
+        cerebras_candidates = get_pool_candidates(
+            "Cerebras", self.cerebras_keys, self.cerebras_base_url, self.cerebras_model, "cerebras"
+        )
+        cerebras_fast_candidates = get_pool_candidates(
+            "Cerebras Fast", self.cerebras_keys, self.cerebras_base_url, CEREBRAS_FAST_MODEL, "cerebras"
+        )
+        groq_base = GROQ_BASE_URL or "https://api.groq.com/openai/v1"
+        groq_candidates = get_pool_candidates("Groq", self.groq_keys, groq_base, GROQ_MODEL, "groq")
+        mistral_candidates = get_pool_candidates(
+            "Mistral", self.mistral_keys, MISTRAL_BASE_URL, MISTRAL_MODEL, "mistral"
+        )
+        mistral_small_candidates = get_pool_candidates(
+            "Mistral Small", self.mistral_keys, MISTRAL_BASE_URL, MISTRAL_SMALL_MODEL, "mistral"
+        )
+        gemini_candidates = get_pool_candidates(
+            "Google Gemini", self.gemini_keys, self.gemini_base_url, self.gemini_model, "gemini"
+        )
 
-        # Fallback 8B candidates for Groq
-        groq_fast_candidates = get_pool_candidates("Groq Fast", self.groq_keys, self.base_url, GROQ_FAST_MODEL, "groq")
-
+        # Fast candidates for Groq
+        groq_fast_candidates = get_pool_candidates("Groq Fast", self.groq_keys, groq_base, GROQ_FAST_MODEL, "groq")
         sambanova_provider = {
             "name": "SambaNova",
             "base_url": self.sambanova_base_url,
@@ -257,7 +275,9 @@ class UniversalBrainClient:
             "family": "sambanova",
         }
 
-        openrouter_candidates = get_pool_candidates("OpenRouter", self.openrouter_keys, OPENROUTER_BASE_URL, OPENROUTER_MODEL, "openrouter")
+        openrouter_candidates = get_pool_candidates(
+            "OpenRouter", self.openrouter_keys, OPENROUTER_BASE_URL, OPENROUTER_MODEL, "openrouter"
+        )
 
         zai_provider = {
             "name": "ZAI Direct",
@@ -268,8 +288,13 @@ class UniversalBrainClient:
         }
 
         from core.virtual_router import virtual_router
+
         model_name = requested_model or self.default_model
-        resolved_alias = virtual_router.resolve_alias(model_name, prompt=prompt, tools=tools) if virtual_router.is_virtual_alias(model_name) else None
+        resolved_alias = (
+            virtual_router.resolve_alias(model_name, prompt=prompt, tools=tools)
+            if virtual_router.is_virtual_alias(model_name)
+            else None
+        )
 
         if resolved_alias == "spacev/fast":
             # Priority: Cerebras Fast / Groq Fast -> Full models -> Others
@@ -314,34 +339,28 @@ class UniversalBrainClient:
                 pipeline.append(zai_provider)
 
         pipeline = [
-            p for p in pipeline
+            p
+            for p in pipeline
             if p["name"] not in self.disabled_providers
             and not self.is_in_cooldown(p.get("api_key", ""))
             and not self.is_in_cooldown(p["name"])
         ]
 
         if not pipeline:
-            pipeline.append({
-                "name": "Cloud API",
-                "base_url": self.base_url,
-                "api_key": self.api_key,
-                "model": requested_model or self.default_model,
-                "family": "groq",
-            })
+            pipeline.append(
+                {
+                    "name": "Cloud API",
+                    "base_url": self.base_url,
+                    "api_key": self.api_key,
+                    "model": requested_model or self.default_model,
+                    "family": "groq",
+                }
+            )
 
         return pipeline
 
-    def select_cloud_model(self, prompt: str, requires_tools: bool = False) -> str:
-        """Dynamically routes between top-tier free OpenRouter models based on task intent."""
-        if "openrouter.ai" not in self.base_url.lower():
-            return self.default_model
-        prompt_lower = prompt.lower()
-        if any(w in prompt_lower for w in ["code", "python", "script", "terminal", "debug", "test", "git", "bash", "compile"]):
-            return CODING_ENGINEER_MODEL
-        elif any(w in prompt_lower for w in ["screen", "click", "window", "gui", "see", "look", "desktop", "browser"]):
-            return AUTONOMOUS_AGENT_MODEL
-        elif not requires_tools and len(prompt.split()) < 15:
-            return FAST_CHAT_CLOUD_MODEL
+    def select_cloud_model(self, prompt: str = "", requires_tools: bool = False) -> str:
+        """Use only the model explicitly configured by the user or endpoint default."""
         return self.default_model
 
     def _get_headers(self, api_key: str | None = None) -> dict[str, str]:
@@ -355,39 +374,12 @@ class UniversalBrainClient:
             headers["Authorization"] = f"Bearer {key}"
         return headers
 
-    def chat(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]] | None = None,
-        model: str | None = None,
-        temperature: float = 0.2,
-        max_tokens: int = 2048,
-        token_callback: Callable[[str], None] | None = None,
-        timeout: int = 25,
-        pre_tokens: int = 0,
-        post_tokens: int = 0,
-        agent: str = "direct",
-    ) -> dict[str, Any]:
+    def sanitize_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
-        Executes a chat completion against OpenRouter/OpenAI API with live streaming
-        and automatic 429 rate limit fallback to local Ollama.
+        Transform messages to strict OpenAI/OpenRouter contract:
+        - Every 'assistant' message with tool_calls is strictly preserved with valid JSON string arguments.
+        - Every 'tool' role message carries a non-empty string tool_call_id and name.
         """
-        active_model = model or self.default_model
-
-        # Transform tools to OpenAI schema format if needed
-        openai_tools = None
-        if tools:
-            openai_tools = []
-            for t in tools:
-                if "type" in t and t["type"] == "function":
-                    openai_tools.append(t)
-                elif "function" in t:
-                    openai_tools.append({"type": "function", "function": t["function"]})
-                else:
-                    openai_tools.append({"type": "function", "function": t})
-
-        # Transform messages to strict OpenAI/OpenRouter contract:
-        # Every 'tool' role message MUST carry a non-empty string tool_call_id.
         sanitized_messages = []
         pending_tool_call_ids = []
         for msg in messages:
@@ -411,18 +403,248 @@ class UniversalBrainClient:
                     pending_tool_call_ids.append(tc_id)
                     fixed_calls.append(tc_copy)
                 msg_copy["tool_calls"] = fixed_calls
+                if msg_copy.get("content") is None:
+                    msg_copy["content"] = ""
+                sanitized_messages.append(msg_copy)
             elif role == "tool":
                 if not msg_copy.get("tool_call_id"):
                     if pending_tool_call_ids:
                         msg_copy["tool_call_id"] = pending_tool_call_ids.pop(0)
                     else:
                         msg_copy["tool_call_id"] = f"call_{uuid.uuid4().hex[:8]}"
+                if not msg_copy.get("name"):
+                    target_id = msg_copy.get("tool_call_id")
+                    matched_name = ""
+                    for prev_m in reversed(sanitized_messages):
+                        if prev_m.get("role") == "assistant" and prev_m.get("tool_calls"):
+                            for tc in prev_m["tool_calls"]:
+                                if tc.get("id") == target_id:
+                                    matched_name = tc.get("function", {}).get("name", "")
+                                    break
+                            if matched_name:
+                                break
+                    msg_copy["name"] = matched_name or "tool_result"
                 if not isinstance(msg_copy.get("content"), str):
                     content_val = msg_copy.get("content", "")
-                    msg_copy["content"] = json.dumps(content_val) if isinstance(content_val, (dict, list)) else str(content_val)
+                    msg_copy["content"] = (
+                        json.dumps(content_val) if isinstance(content_val, (dict, list)) else str(content_val)
+                    )
                 sanitized_messages.append(msg_copy)
             else:
                 sanitized_messages.append(msg_copy)
+        return sanitized_messages
+
+    def _chat_anthropic(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        token_callback: Callable[[str], None] | None,
+        timeout: int,
+    ) -> dict[str, Any]:
+        """Call Anthropic's Messages API and normalize its response for SpaceV."""
+        if not model:
+            return {
+                "role": "assistant",
+                "content": "LLM_MODEL is required when LLM_PROVIDER=anthropic. Set the Claude model name in .env.",
+                "tool_calls": [],
+            }
+
+        system_parts: list[str] = []
+        anthropic_messages: list[dict[str, Any]] = []
+        for message in messages:
+            role = message.get("role")
+            content = message.get("content")
+            if role == "system":
+                if content:
+                    system_parts.append(str(content))
+            elif role == "tool":
+                result_block = {
+                    "type": "tool_result",
+                    "tool_use_id": str(message.get("tool_call_id", "")),
+                    "content": str(content or ""),
+                }
+                if anthropic_messages and anthropic_messages[-1].get("role") == "user":
+                    existing = anthropic_messages[-1]["content"]
+                    if isinstance(existing, list):
+                        existing.append(result_block)
+                    else:
+                        anthropic_messages[-1]["content"] = [
+                            {"type": "text", "text": str(existing)}, result_block
+                        ]
+                else:
+                    anthropic_messages.append({"role": "user", "content": [result_block]})
+            elif role in ("user", "assistant"):
+                blocks: list[dict[str, Any]] = []
+                if content:
+                    blocks.append({"type": "text", "text": str(content)})
+                if role == "assistant":
+                    for tool_call in message.get("tool_calls", []) or []:
+                        function = tool_call.get("function", {})
+                        arguments = function.get("arguments", {})
+                        if isinstance(arguments, str):
+                            try:
+                                arguments = json.loads(arguments)
+                            except json.JSONDecodeError:
+                                arguments = {"raw_input": arguments}
+                        blocks.append(
+                            {
+                                "type": "tool_use",
+                                "id": str(tool_call.get("id") or f"call_{uuid.uuid4().hex[:8]}"),
+                                "name": str(function.get("name", "")),
+                                "input": arguments if isinstance(arguments, dict) else {"value": arguments},
+                            }
+                        )
+                anthropic_messages.append({"role": role, "content": blocks or ""})
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": anthropic_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if system_parts:
+            payload["system"] = "\n\n".join(system_parts)
+        if tools:
+            payload["tools"] = [
+                {
+                    "name": tool.get("function", {}).get("name", ""),
+                    "description": tool.get("function", {}).get("description", ""),
+                    "input_schema": tool.get("function", {}).get("parameters", {"type": "object", "properties": {}}),
+                }
+                for tool in tools
+            ]
+            payload["tool_choice"] = {"type": "auto"}
+
+        base_url = self.base_url.rstrip("/")
+        if base_url.endswith("/v1/messages"):
+            endpoint = base_url
+        elif base_url.endswith("/messages"):
+            endpoint = base_url
+        else:
+            if not base_url.endswith("/v1"):
+                base_url += "/v1"
+            endpoint = f"{base_url}/messages"
+        headers = {
+            "content-type": "application/json",
+            "anthropic-version": "2023-06-01",
+        }
+        if self.api_key:
+            headers["x-api-key"] = self.api_key
+
+        try:
+            use_stream = bool(token_callback and not tools)
+            if use_stream:
+                payload["stream"] = True
+            response = requests.post(endpoint, headers=headers, json=payload, stream=use_stream, timeout=timeout)
+            if response.status_code != 200:
+                return {
+                    "role": "assistant",
+                    "content": f"Anthropic API error ({response.status_code}): {response.text[:500]}",
+                    "tool_calls": [],
+                }
+
+            if use_stream:
+                text_parts: list[str] = []
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    line_text = line.decode("utf-8", errors="replace").strip()
+                    if not line_text.startswith("data:"):
+                        continue
+                    try:
+                        event = json.loads(line_text[5:].strip())
+                    except json.JSONDecodeError:
+                        continue
+                    if event.get("type") == "content_block_delta":
+                        delta = event.get("delta", {})
+                        if delta.get("type") == "text_delta" and delta.get("text"):
+                            text_parts.append(delta["text"])
+                            token_callback(delta["text"])
+                self.last_used_provider = "anthropic"
+                return {"role": "assistant", "content": "".join(text_parts), "tool_calls": []}
+
+            data = response.json()
+            text_parts = []
+            tool_calls: list[dict[str, Any]] = []
+            for block in data.get("content", []):
+                if block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+                elif block.get("type") == "tool_use":
+                    tool_calls.append(
+                        {
+                            "id": block.get("id") or f"call_{uuid.uuid4().hex[:8]}",
+                            "type": "function",
+                            "function": {
+                                "name": block.get("name", ""),
+                                "arguments": block.get("input", {}),
+                            },
+                        }
+                    )
+            self.last_used_provider = "anthropic"
+            return {"role": "assistant", "content": "".join(text_parts), "tool_calls": tool_calls}
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
+            return {"role": "assistant", "content": f"Anthropic connection failed: {exc!s}", "tool_calls": []}
+        except Exception as exc:
+            return {"role": "assistant", "content": f"Anthropic request failed: {exc!s}", "tool_calls": []}
+
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        temperature: float = 0.2,
+        max_tokens: int = 2048,
+        token_callback: Callable[[str], None] | None = None,
+        timeout: int = 25,
+        pre_tokens: int = 0,
+        post_tokens: int = 0,
+        agent: str = "direct",
+    ) -> dict[str, Any]:
+        """
+        Executes one configured provider request. Local fallback is reserved for
+        legacy mesh mode and is not used for the normal single-endpoint path.
+        """
+        active_model = model or self.default_model
+
+        # Fail-safe auto-optimizer: if pre_tokens was not provided by caller, optimize automatically
+        if not pre_tokens and len(messages) >= 1:
+            try:
+                from core.token_harness import token_harness, estimate_messages_tokens
+                pre_tokens = estimate_messages_tokens(messages)
+                last_p = ""
+                for m in reversed(messages):
+                    if m.get("role") == "user":
+                        last_p = str(m.get("content", ""))
+                        break
+                opt_messages, opt_tools = token_harness.optimize(
+                    messages=messages,
+                    tools=tools,
+                    user_prompt=last_p,
+                )
+                messages = opt_messages
+                if opt_tools is not None:
+                    tools = opt_tools
+                post_tokens = estimate_messages_tokens(messages)
+            except Exception:
+                pass
+
+        # Transform tools to OpenAI schema format if needed
+        openai_tools = None
+        if tools:
+            openai_tools = []
+            for t in tools:
+                if "type" in t and t["type"] == "function":
+                    openai_tools.append(t)
+                elif "function" in t:
+                    openai_tools.append({"type": "function", "function": t["function"]})
+                else:
+                    openai_tools.append({"type": "function", "function": t})
+
+        # Transform messages to strict OpenAI/OpenRouter contract:
+        sanitized_messages = self.sanitize_messages(messages)
 
         # Context Compressor (skills/context-compressor):
         # Type-aware elision of grep, shell ANSI, JSON, and file dumps to protect TPM budgets
@@ -439,12 +661,24 @@ class UniversalBrainClient:
         # CacheAligner & ContextToolCleanup: Anchor system prompt & replace stale intermediate tool blobs
         sanitized_messages = token_optimizer.optimize_messages_for_cache(sanitized_messages)
 
+        if self.provider == "anthropic":
+            return self._chat_anthropic(
+                sanitized_messages,
+                openai_tools,
+                active_model,
+                temperature,
+                max_tokens,
+                token_callback,
+                timeout,
+            )
+
         payload: dict[str, Any] = {
-            "model": active_model,
             "messages": sanitized_messages,
             "temperature": temperature,
-            "max_tokens": max_tokens
+            "max_tokens": max_tokens,
         }
+        if active_model:
+            payload["model"] = active_model
 
         # Streaming is only enabled when no tools are passed or when streaming tokens
         use_stream = bool(token_callback and not openai_tools)
@@ -473,7 +707,9 @@ class UniversalBrainClient:
             provider_name = provider["name"]
             # Pre-emptive rate limit check (OmniRoute + WeKnora pattern)
             if not rate_limiter.acquire_slot(provider_name, estimated_tokens=1500, max_wait_sec=0.0):
-                print(f"[CLOUD-BRAIN] ⏳ {provider_name} at RPM/TPM limit. Pre-emptively failing over to next provider.")
+                print(
+                    f"[CLOUD-BRAIN] ⏳ {provider_name} at RPM/TPM limit. Pre-emptively failing over to next provider."
+                )
                 continue
 
             url = f"{provider['base_url']}/chat/completions"
@@ -481,7 +717,10 @@ class UniversalBrainClient:
             provider_model = provider["model"]
 
             current_payload = dict(payload)
-            current_payload["model"] = provider_model
+            if provider_model:
+                current_payload["model"] = provider_model
+            else:
+                current_payload.pop("model", None)
 
             current_timeout = 15 if "sambanova" in provider_name.lower() else timeout
 
@@ -491,12 +730,14 @@ class UniversalBrainClient:
                     headers=self._get_headers(provider_key),
                     json=current_payload,
                     stream=use_stream,
-                    timeout=current_timeout
+                    timeout=current_timeout,
                 )
 
                 # Check for Account/Payment Exhaustion (402)
                 if res.status_code == 402 or "PAYMENT_METHOD_REQUIRED" in res.text:
-                    print(f"[CLOUD-BRAIN] ⚠️ {provider_name} returned HTTP 402 (Payment/Credits Exhausted). Disabling provider for this session.")
+                    print(
+                        f"[CLOUD-BRAIN] ⚠️ {provider_name} returned HTTP 402 (Payment/Credits Exhausted). Disabling provider for this session."
+                    )
                     self.disabled_providers.add(provider_name)
                     if provider_key:
                         self._save_cooldown(provider_key, 86400.0)
@@ -517,7 +758,10 @@ class UniversalBrainClient:
                         err_msg = res.text[:160].replace("\n", " ")
 
                     # Classify cooldown duration: Daily Quota vs Sliding Window TPM
-                    is_daily = any(s in err_msg.lower() for s in ["tokens per day", "tpd", "requests per day", "rpd", "limit: 20", "daily"])
+                    is_daily = any(
+                        s in err_msg.lower()
+                        for s in ["tokens per day", "tpd", "requests per day", "rpd", "limit: 20", "daily"]
+                    )
                     cooldown_sec = 86400.0 if is_daily else 35.0
                     cooldown_label = "24h daily quota" if is_daily else "35s sliding-window TPM"
 
@@ -528,7 +772,9 @@ class UniversalBrainClient:
                     else:
                         self._save_cooldown(provider_name, cooldown_sec)
 
-                    print(f"[CLOUD-BRAIN] ⚠️ {provider_name} returned HTTP 429 ({cooldown_label}): {err_msg}. Sidelining and rotating to next provider...")
+                    print(
+                        f"[CLOUD-BRAIN] ⚠️ {provider_name} returned HTTP 429 ({cooldown_label}): {err_msg}. Sidelining and rotating to next provider..."
+                    )
 
                     # 1. Multi-Model TPM Bucket Hopping on Groq:
                     # Groq TPM is enforced per-model. llama-3.1-8b-instant has an independent 20,000 TPM limit!
@@ -544,7 +790,7 @@ class UniversalBrainClient:
                                 headers=self._get_headers(provider_key),
                                 json=fast_payload,
                                 stream=use_stream,
-                                timeout=current_timeout
+                                timeout=current_timeout,
                             )
                             if res_fast.status_code == 200:
                                 res = res_fast
@@ -554,7 +800,9 @@ class UniversalBrainClient:
 
                     # 2. Short backoff retry if reset is small
                     if res.status_code == 429:
-                        reset_header = res.headers.get("x-ratelimit-reset-tokens", "") or res.headers.get("retry-after", "")
+                        reset_header = res.headers.get("x-ratelimit-reset-tokens", "") or res.headers.get(
+                            "retry-after", ""
+                        )
                         wait_sec = 2.5
                         if "s" in reset_header:
                             try:
@@ -573,7 +821,7 @@ class UniversalBrainClient:
                                 headers=self._get_headers(provider_key),
                                 json=current_payload,
                                 stream=use_stream,
-                                timeout=current_timeout
+                                timeout=current_timeout,
                             )
 
                 # Transient server overload (502 / 503) retry (common for Google Gemini)
@@ -584,7 +832,7 @@ class UniversalBrainClient:
                         headers=self._get_headers(provider_key),
                         json=current_payload,
                         stream=use_stream,
-                        timeout=current_timeout
+                        timeout=current_timeout,
                     )
 
                 if res.status_code in (429, 502, 503):
@@ -599,11 +847,15 @@ class UniversalBrainClient:
                         pass
                     if not err_msg:
                         err_msg = res.text[:160].replace("\n", " ")
-                    print(f"[CLOUD-BRAIN] ⚠️ {provider_name} returned HTTP {res.status_code}: {err_msg}. Cascading to next cloud provider...")
+                    print(
+                        f"[CLOUD-BRAIN] ⚠️ {provider_name} returned HTTP {res.status_code}: {err_msg}. Cascading to next cloud provider..."
+                    )
                     continue
 
                 if res.status_code != 200:
-                    print(f"[CLOUD-BRAIN] ⚠️ {provider_name} error ({res.status_code}): {res.text[:160]}. Cascading to next cloud provider...")
+                    print(
+                        f"[CLOUD-BRAIN] ⚠️ {provider_name} error ({res.status_code}): {res.text[:160]}. Cascading to next cloud provider..."
+                    )
                     continue
 
                 self.last_used_provider = provider_name
@@ -638,6 +890,7 @@ class UniversalBrainClient:
                     content = full_content
                     if full_content:
                         from core.ollama_client import parse_fallback_tool_calls
+
                         extracted, clean = parse_fallback_tool_calls(full_content)
                         if extracted:
                             parsed_tool_calls = extracted
@@ -657,18 +910,18 @@ class UniversalBrainClient:
                                 args = json.loads(args)
                             except Exception:
                                 args = {"raw_input": args}
-                        parsed_tool_calls.append({
-                            "id": tc.get("id", "") or f"call_{uuid.uuid4().hex[:8]}",
-                            "type": "function",
-                            "function": {
-                                "name": fn.get("name", ""),
-                                "arguments": args
+                        parsed_tool_calls.append(
+                            {
+                                "id": tc.get("id", "") or f"call_{uuid.uuid4().hex[:8]}",
+                                "type": "function",
+                                "function": {"name": fn.get("name", ""), "arguments": args},
                             }
-                        })
+                        )
 
                     # Resilient fallback parsing for open-weight models emitting XML/Markdown tools in content
                     if not parsed_tool_calls and content:
                         from core.ollama_client import parse_fallback_tool_calls
+
                         extracted, clean = parse_fallback_tool_calls(content)
                         if extracted:
                             parsed_tool_calls = extracted
@@ -681,6 +934,7 @@ class UniversalBrainClient:
                     out_tok = int(usage.get("completion_tokens", 0) or 0)
                 else:
                     from core.token_harness import estimate_messages_tokens, estimate_tokens
+
                     in_tok = estimate_messages_tokens(messages)
                     out_tok = estimate_tokens(content)
 
@@ -690,6 +944,7 @@ class UniversalBrainClient:
 
                 try:
                     from core.token_harness import token_harness
+
                     token_harness.record_usage(
                         provider=provider_name,
                         input_tokens=in_tok,
@@ -704,28 +959,58 @@ class UniversalBrainClient:
                 except Exception:
                     pass
 
-                return {
-                    "role": "assistant",
-                    "content": content,
-                    "tool_calls": parsed_tool_calls
-                }
+                return {"role": "assistant", "content": content, "tool_calls": parsed_tool_calls}
 
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                print(f"[CLOUD-BRAIN] ⚠️ Connection to {provider_name} failed ({e!s}). Cascading to next cloud provider...")
+                print(
+                    f"[CLOUD-BRAIN] ⚠️ Connection to {provider_name} failed ({e!s}). Cascading to next cloud provider..."
+                )
                 continue
             except Exception as e:
                 print(f"[CLOUD-BRAIN] ⚠️ Error with {provider_name} ({e!s}). Cascading...")
                 continue
 
+        # Do not silently switch a single-endpoint configuration to local Ollama.
+        # An invalid key, model, or URL should be visible to the user.
+        if self.routing_mode == "direct" and not (
+            self.api_key.startswith("mock_") or self.api_key.startswith("gsk_mock")
+        ):
+            self.last_used_provider = "configured_endpoint_error"
+            return {
+                "role": "assistant",
+                "content": "The configured LLM endpoint did not return a usable response. Check LLM_PROVIDER, LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL, then try again.",
+                "tool_calls": [],
+            }
+
         # If all cloud providers failed or returned error:
-        print("[CLOUD-BRAIN] ⚠️ All cloud providers exhausted or unavailable. Initiating local Ollama fallback...")
+        print("[CLOUD-BRAIN] ⚠️ All cloud providers exhausted or unavailable. Initiating local fallback...")
+        try:
+            from core.colibri_client import colibri_client
+            if colibri_client.is_server_running():
+                print("[CLOUD-BRAIN] 🪶 Routing request to local Colibrì MoE engine (0 tokens)...")
+                res = colibri_client.chat_completion(
+                    messages=messages,
+                    tools=tools,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                if res and "choices" in res and res["choices"]:
+                    choice = res["choices"][0].get("message", {})
+                    content = choice.get("content", "") or ""
+                    tool_calls = choice.get("tool_calls", [])
+                    self.last_used_provider = "colibri_local"
+                    return {"role": "assistant", "content": content, "tool_calls": tool_calls}
+        except Exception as e:
+            print(f"[CLOUD-BRAIN] Colibri local bypass note: {e}")
+
+        print("[CLOUD-BRAIN] ⚠️ Initiating local Ollama fallback...")
         return self._fallback_to_ollama(messages, tools, token_callback)
 
     def _fallback_to_ollama(
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
-        token_callback: Callable[[str], None] | None = None
+        token_callback: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         """Local Ollama resilient fallback when cloud API is unavailable or rate limited."""
         self.last_used_provider = "ollama_fallback"
@@ -755,7 +1040,7 @@ class UniversalBrainClient:
             "model": self.fallback_model,
             "messages": ollama_messages,
             "stream": bool(token_callback and not tools),
-            "options": {"temperature": 0.2, "num_ctx": OLLAMA_NUM_CTX}
+            "options": {"temperature": 0.2, "num_ctx": OLLAMA_NUM_CTX},
         }
         if tools:
             clean_tools = []
@@ -783,19 +1068,11 @@ class UniversalBrainClient:
             if res.status_code == 200:
                 data = res.json()
                 msg = data.get("message", {})
-                return {
-                    "role": "assistant",
-                    "content": msg.get("content", ""),
-                    "tool_calls": msg.get("tool_calls", [])
-                }
-            return {
-                "role": "assistant",
-                "content": f"[Ollama Error {res.status_code}]: {res.text}",
-                "tool_calls": []
-            }
+                return {"role": "assistant", "content": msg.get("content", ""), "tool_calls": msg.get("tool_calls", [])}
+            return {"role": "assistant", "content": f"[Ollama Error {res.status_code}]: {res.text}", "tool_calls": []}
         except Exception as err:
             return {
                 "role": "assistant",
                 "content": f"Both Cloud and Local LLMs were unreachable. Error: {err!s}",
-                "tool_calls": []
+                "tool_calls": [],
             }
