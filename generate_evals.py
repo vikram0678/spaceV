@@ -5,7 +5,11 @@ generates logs/commands.jsonl, reports/reliability.json, reports/postmortem.md,
 reports/lifecycle.json, and reports/concurrency.json.
 """
 import json
-from datetime import UTC, datetime
+try:
+    from datetime import UTC, datetime
+except ImportError:
+    from datetime import datetime, timezone
+    UTC = timezone.utc
 
 # 20 runs with realistic variations reflecting real microVM detonation
 # Aiming for ~85% success rate (17 successes, 3 honest failures for post-mortem analysis)

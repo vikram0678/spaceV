@@ -3,12 +3,12 @@
   "voice_enabled": false,
   "cursor_mode_enabled": false,
   "custom_shortcuts": {},
-  "preferred_chrome_profile": "vikram",
+  "preferred_chrome_profile": "Default",
   "notes": [],
   "pending_resume_task": null,
   "preferences": {
     "chrome": {
-      "profile": "vikram"
+      "profile": "Default"
     },
     "vscode": {
       "trust_workspace": "always_trust"
@@ -18,7 +18,17 @@
     },
     "file_explorer": {
       "conflict_policy": "replace"
+    },
+    "web": {
+      "selected_source": "https://www.kaggle.com/learn/intro-to-machine-learning"
+    },
+    "career_application": {
+      "submit_decision": "submit_confirmed"
+    },
+    "browser": {
+      "profile": "Default"
     }
   },
-  "ghost_mode_enabled": false
+  "ghost_mode_enabled": false,
+  "preferred_browser_profile": "Default"
 }

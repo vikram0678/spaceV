@@ -44,3 +44,7 @@ etools/
 Thumbs.db
 .vscode/
 .idea/
+
+plan/
+venv311
+spacev-wsl/
