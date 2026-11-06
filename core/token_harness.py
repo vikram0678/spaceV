@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -106,6 +107,10 @@ class HeadroomSmartCrusher:
         to_compress = messages[:-preserve_last_n] if preserve_last_n > 0 else messages
         to_preserve = messages[-preserve_last_n:] if preserve_last_n > 0 else []
 
+        # ECC PreCompact Memory Persistence Hook (hooks/memory-persistence):
+        # Checkpoints essential user instructions, decisions, and preferences before context compaction
+        self._fire_pre_compact_hook(to_compress)
+
         cache_key = self._compute_cache_key(to_compress)
         if cache_key in self._compression_cache:
             compressed_content = self._compression_cache[cache_key]
@@ -162,6 +167,45 @@ class HeadroomSmartCrusher:
     def _compute_cache_key(self, messages: list[dict[str, Any]]) -> str:
         content = "".join(str(m.get("content", ""))[:50] for m in messages)
         return hashlib.md5(content.encode()).hexdigest()
+
+    def _fire_pre_compact_hook(self, to_compress: list[dict[str, Any]]) -> None:
+        """
+        ECC PreCompact Lifecycle Hook (hooks/memory-persistence).
+        Extracts key user intents, decisions, paths, and preferences,
+        flushing them into persistent memory before history is compacted.
+        """
+        try:
+            from core.memory import memory
+            important_facts: list[str] = []
+            for msg in to_compress:
+                role = msg.get("role", "")
+                content = str(msg.get("content", ""))
+                if role == "user":
+                    for line in content.splitlines():
+                        line_clean = line.strip()
+                        if any(k in line_clean.lower() for k in ["always", "prefer", "profile", "save to", "don't", "remember", "never", "use"]):
+                            if 5 < len(line_clean) < 160 and line_clean not in important_facts:
+                                important_facts.append(line_clean)
+                elif role == "tool":
+                    if any(k in content.lower() for k in ["successfully", "created", "saved", "harvested", "exported"]):
+                        summary_line = content[:120].strip()
+                        if summary_line and summary_line not in important_facts:
+                            important_facts.append(f"Tool: {summary_line}")
+
+            if important_facts:
+                compact_note = "; ".join(important_facts[:5])
+                memory.append_note(f"[PreCompact Checkpoint]: {compact_note}")
+
+            try:
+                from core.event_bus import event_bus
+                event_bus.publish("context.pre_compact", {
+                    "compressed_count": len(to_compress),
+                    "checkpoint_facts": len(important_facts)
+                })
+            except Exception:
+                pass
+        except Exception as e:
+            logger.debug(f"[TOKEN_HARNESS] PreCompact hook note: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -228,7 +272,9 @@ class ContextToolCleanup:
         "web": ["search_web", "open_url", "scrape_page"],
         "system": ["run_command", "get_system_info", "take_screenshot", "execute_terminal_command"],
         "gui": ["click_element", "type_text", "move_mouse", "press_key"],
-        "code": ["run_python", "analyze_code", "format_code", "run_python_script", "open_text_editor"],
+        "code": ["run_python", "analyze_code", "format_code", "run_python_script", "open_text_editor", "spacev_search_tools", "spacev_execute_script", "clone_public_repository", "query_code_graph"],
+        "issue": ["read_web_page", "search_google", "clone_public_repository", "list_workspace_files", "read_file_content", "search_file_content", "query_code_graph", "get_sandbox_status", "detonate_in_sandbox"],
+        "sandbox": ["detonate_in_sandbox", "create_sandbox_session", "run_sandbox_session_command", "close_sandbox_session", "get_sandbox_status", "run_sandboxed_workflow", "audit_sandbox_containment", "get_run_ledger_summary"],
         "time": ["get_current_time", "set_timer", "set_reminder"],
         "chat": [],
     }
@@ -239,6 +285,8 @@ class ContextToolCleanup:
         "system_command": "system",
         "gui_automation": "gui",
         "code_task": "code",
+        "issue_investigation": "issue",
+        "sandbox_task": "sandbox",
         "time_query": "time",
         "simple_chat": "chat",
     }
@@ -248,7 +296,7 @@ class ContextToolCleanup:
 
     def select_tools(self, user_prompt: str, all_tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
-        Filters tool schemas based on the user's intent.
+        Prunes already-scoped tool schemas without dropping explicit capabilities.
         """
         cache_key = hashlib.md5(user_prompt.lower()[:100].encode()).hexdigest()[:8]
         if cache_key in self._selection_cache:
@@ -257,13 +305,42 @@ class ContextToolCleanup:
             needed_names = self._classify_needed_tools(user_prompt)
             self._selection_cache[cache_key] = needed_names
 
-        if not needed_names:
-            return []
+        # Preserve any tool the user explicitly named. This uses the registered
+        # function IDs rather than trying to guess tool needs from prose alone.
+        prompt_text = (user_prompt or "").lower()
+        for tool in all_tools:
+            fn = tool.get("function", {})
+            name = str(fn.get("name", ""))
+            if name and re.search(rf"(?<![a-z0-9_]){re.escape(name.lower())}(?![a-z0-9_])", prompt_text):
+                needed_names.append(name)
 
-        return [
+        # Keep the sandbox session controls available across short follow-up
+        # turns (for example, "replace that command"), where the latest text
+        # may not repeat the original isolation intent. These tools are
+        # approval-gated and cannot execute on the host.
+        try:
+            from tools.registry import SANDBOX_SESSION_TOOL_NAMES
+
+            available_names = {
+                str(tool.get("function", {}).get("name", ""))
+                for tool in all_tools
+                if isinstance(tool, dict)
+            }
+            needed_names.extend(sorted(SANDBOX_SESSION_TOOL_NAMES & available_names))
+        except Exception:
+            logger.debug("Sandbox lifecycle tools could not be preserved during schema pruning", exc_info=True)
+
+        needed_names = list(dict.fromkeys(needed_names))
+        # `all_tools` has already been scoped by the goal router. If this
+        # lightweight classifier has no match, keep that upstream decision.
+        if not needed_names:
+            return all_tools
+
+        selected = [
             tool for tool in all_tools
             if tool.get("function", {}).get("name") in needed_names
         ]
+        return selected or all_tools
 
     def _classify_needed_tools(self, prompt: str) -> list[str]:
         prompt_lower = prompt.lower()
@@ -275,6 +352,8 @@ class ContextToolCleanup:
             "system": ["run", "execute", "command", "terminal", "screenshot", "system"],
             "gui": ["click", "type", "mouse", "press", "key", "button", "window"],
             "code": ["code", "python", "script", "analyze", "format", "lint", "vscode"],
+            "sandbox": ["sandbox", "celesto", "isolate", "containment", "detonate", "microvm"],
+            "issue": ["github", "issue", "reproduce", "failing test", "repository", "repo", "test diff"],
             "time": ["time", "date", "timer", "remind", "schedule", "clock"],
         }
 
@@ -435,6 +514,12 @@ class SpaceVTokenHarness:
         # Also apply CacheAligner & tombstoning from token_optimizer
         optimized_messages = token_optimizer.optimize_messages_for_cache(optimized_messages)
 
+        # Compress oversized tool outputs (> 600 chars) in messages
+        for m in optimized_messages:
+            if m.get("role") == "tool" and isinstance(m.get("content"), str) and len(m.get("content", "")) > 600:
+                t_name = m.get("name", "tool")
+                m["content"] = token_optimizer.compress_tool_result(t_name, m["content"], max_chars=400)
+
         # TIER 1: Headroom SmartCrusher compression if history > 6
         if self.crusher and len(optimized_messages) > 6:
             system_msg = optimized_messages[0]
@@ -456,6 +541,12 @@ class SpaceVTokenHarness:
         if self.tool_cleanup and optimized_tools:
             optimized_tools = self.tool_cleanup.select_tools(user_prompt, optimized_tools)
             log_entry["after_tier3_tools"] = estimate_tokens(json.dumps(optimized_tools)) if optimized_tools else 0
+
+        # TIER 3.5: ECC Prompt Caching Prefix Alignment (skills/prompt-caching-strategy)
+        # Guarantees prefix stabilization: [Single System Anchor] -> [Sorted Tools] -> [Turn Suffix]
+        optimized_messages, optimized_tools = self.align_prefix_for_prompt_caching(
+            optimized_messages, optimized_tools
+        )
 
         # TIER 4: Budget guard pre-flight check
         if self.budget_guard:
@@ -567,6 +658,51 @@ class SpaceVTokenHarness:
         if self.budget_guard:
             report["budget"] = self.budget_guard.get_report()
         return report
+
+    def align_prefix_for_prompt_caching(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
+        """
+        ECC Prompt Caching Prefix Stabilization (skills/prompt-caching-strategy).
+        Stabilizes the prompt prefix to maximize KV cache hit rates on Claude / Gemini / OpenAI:
+        1. Consolidates system instructions into a single canonical message at index 0.
+        2. Sorts tool definitions deterministically by name so schemas don't cause cache misses.
+        3. Preserves conversation turn order in non-system messages.
+        """
+        if not messages:
+            return messages, tools
+
+        aligned_messages = [dict(m) for m in messages]
+        system_prompts: list[str] = []
+        non_system: list[dict[str, Any]] = []
+
+        for m in aligned_messages:
+            if m.get("role") == "system":
+                c = str(m.get("content", "")).strip()
+                if c.startswith("[CONVERSATION SUMMARY"):
+                    # Dynamic compaction summary belongs in history turns to prevent breaking system KV cache
+                    non_system.append(m)
+                elif c and c not in system_prompts:
+                    system_prompts.append(c)
+            else:
+                non_system.append(m)
+
+        if system_prompts:
+            canonical_system = "\n\n".join(system_prompts)
+            aligned_messages = [{"role": "system", "content": canonical_system}] + non_system
+
+        aligned_tools = None
+        if tools:
+            def _tool_key(t: dict[str, Any]) -> str:
+                if "function" in t and isinstance(t["function"], dict):
+                    return str(t["function"].get("name", ""))
+                return str(t.get("name", ""))
+
+            aligned_tools = sorted(tools, key=_tool_key)
+
+        return aligned_messages, aligned_tools
 
 
 # Global singleton instance

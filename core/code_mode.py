@@ -102,9 +102,37 @@ class CodeModeEngine:
         """
         Executes a Python script in a controlled sandbox with an injected 'tools' facade.
         Captures stdout and returns structured execution results.
+        Supports standard safe library modules (csv, io, json, re, time, math, webbrowser).
         """
+        import csv
+        import math
+        import re
+        import time
+        import urllib.parse
+        import webbrowser
+
         stdout_capture = io.StringIO()
         old_stdout = sys.stdout
+
+        safe_modules = {
+            "csv": csv,
+            "io": io,
+            "json": json,
+            "re": re,
+            "math": math,
+            "time": time,
+            "urllib": urllib,
+            "urllib.parse": urllib.parse,
+            "webbrowser": webbrowser,
+        }
+
+        def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name in safe_modules:
+                return safe_modules[name]
+            base = name.split(".")[0]
+            if base in safe_modules:
+                return __import__(name, globals, locals, fromlist, level)
+            raise ImportError(f"Import of module '{name}' is restricted inside the SpaceV CodeMode sandbox.")
 
         class ToolProxy:
             def __getattr__(self, name: str):
@@ -124,15 +152,38 @@ class CodeModeEngine:
                 "dict": dict,
                 "list": list,
                 "set": set,
+                "tuple": tuple,
                 "min": min,
                 "max": max,
                 "sum": sum,
+                "abs": abs,
+                "round": round,
                 "enumerate": enumerate,
                 "zip": zip,
+                "sorted": sorted,
+                "reversed": reversed,
+                "any": any,
+                "all": all,
+                "filter": filter,
+                "map": map,
+                "isinstance": isinstance,
+                "issubclass": issubclass,
+                "Exception": Exception,
+                "ValueError": ValueError,
+                "KeyError": KeyError,
+                "IndexError": IndexError,
+                "TypeError": TypeError,
                 "json": json,
+                "__import__": _safe_import,
             },
             "tools": ToolProxy(),
             "json": json,
+            "csv": csv,
+            "io": io,
+            "re": re,
+            "math": math,
+            "time": time,
+            "webbrowser": webbrowser,
         }
 
         try:
