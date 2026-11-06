@@ -207,7 +207,7 @@ class SpaceVWorkflowEngine:
                     if all_finished:
                         workflow.status = WorkflowStatus.COMPLETED
                     else:
-                        has_waiting = any(n.status == NodeStatus.WAITING_APPROVAL for n in workflow.nodes)
+                        has_waiting = any(n.status in (NodeStatus.WAITING_APPROVAL, NodeStatus.WAITING_INPUT) for n in workflow.nodes)
                         has_failures = any(n.status == NodeStatus.FAILED for n in workflow.nodes)
                         if has_waiting:
                             workflow.status = WorkflowStatus.PAUSED
@@ -248,7 +248,7 @@ class SpaceVWorkflowEngine:
 
                 if not runnable_nodes:
                     # If all ready nodes are waiting for approval, pause workflow
-                    if any(n.status == NodeStatus.WAITING_APPROVAL for n in ready_nodes):
+                    if any(n.status in (NodeStatus.WAITING_APPROVAL, NodeStatus.WAITING_INPUT) for n in workflow.nodes):
                         workflow.status = WorkflowStatus.PAUSED
                     break
 
@@ -263,10 +263,15 @@ class SpaceVWorkflowEngine:
             logger.error(f"[WORKFLOW] Execution failure in workflow {workflow.workflow_id}: {e}", exc_info=True)
             workflow.status = WorkflowStatus.FAILED
 
-        workflow.completed_at = time.time()
+        if workflow.status in (WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.CANCELLED):
+            workflow.completed_at = time.time()
         self.state_manager.save_workflow(workflow)
 
-        event_name = "workflow.completed" if workflow.status == WorkflowStatus.COMPLETED else "workflow.failed"
+        event_name = (
+            "workflow.completed" if workflow.status == WorkflowStatus.COMPLETED
+            else "workflow.paused" if workflow.status == WorkflowStatus.PAUSED
+            else "workflow.failed"
+        )
         self._emit_event(event_name, workflow.to_dict())
 
         logger.info(f"[WORKFLOW] Workflow '{workflow.name}' finished with status '{workflow.status.value}' "
@@ -306,6 +311,19 @@ class SpaceVWorkflowEngine:
                     timeout=node.timeout_sec
                 )
                 node.result = result
+                clarification = self._clarification_from_result(result)
+                if clarification:
+                    node.result = clarification
+                    node.status = NodeStatus.WAITING_INPUT
+                    node.error = ""
+                    node.completed_at = 0.0
+                    self._emit_event("workflow.input_needed", {
+                        "workflow_id": workflow.workflow_id,
+                        "node_id": node.node_id,
+                        "question": clarification,
+                    })
+                    logger.info("[WORKFLOW] Node '%s' paused for user input", node.name)
+                    return
                 node.status = NodeStatus.COMPLETED
                 node.completed_at = time.time()
 
@@ -359,11 +377,34 @@ class SpaceVWorkflowEngine:
             return {"status": "success", "note": "noop"}
         try:
             res = execute_tool(node.action, **node.action_args)
+            clarification = self._clarification_from_result(res)
+            if clarification:
+                return {"status": "needs_input", "question": clarification}
             return {"status": "success", "output": res}
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    async def resume_workflow(self, workflow_id: str) -> Workflow | None:
+    @staticmethod
+    def _clarification_from_result(result: Any) -> str | None:
+        marker = "SPACEV_NEEDS_USER_INPUT:"
+        if isinstance(result, dict):
+            status = str(result.get("status", "")).casefold()
+            if status in ("needs_input", "waiting_input"):
+                question = result.get("question") or result.get("clarification_question") or result.get("data") or result.get("output")
+                return str(question or "I need more information to continue.").removeprefix(marker).strip()
+            for key in ("data", "output", "result"):
+                value = result.get(key)
+                if isinstance(value, str) and value.startswith(marker):
+                    return value[len(marker):].strip()
+            return None
+        text = str(result or "")
+        return text[len(marker):].strip() if text.startswith(marker) else None
+
+    async def resume_workflow(
+        self,
+        workflow_id: str,
+        node_inputs: dict[str, dict[str, Any]] | None = None,
+    ) -> Workflow | None:
         """
         Resumes a paused workflow (e.g. after approval is granted or human intervention).
         """
@@ -379,6 +420,14 @@ class SpaceVWorkflowEngine:
                 if req_id and self.approval_store.is_approved(req_id):
                     node.status = NodeStatus.PENDING
                     node.requires_approval = False
+            elif node.status == NodeStatus.WAITING_INPUT and node_inputs and node.node_id in node_inputs:
+                supplied = node_inputs[node.node_id]
+                if not isinstance(supplied, dict):
+                    raise TypeError(f"Input for node '{node.node_id}' must be a dictionary.")
+                node.action_args.update(supplied)
+                node.status = NodeStatus.PENDING
+                node.error = ""
+                node.completed_at = 0.0
 
         return await self.execute_workflow(wf)
 
@@ -391,7 +440,7 @@ class SpaceVWorkflowEngine:
         wf.status = WorkflowStatus.CANCELLED
         wf.completed_at = time.time()
         for node in wf.nodes:
-            if node.status in (NodeStatus.PENDING, NodeStatus.RUNNING, NodeStatus.WAITING_APPROVAL):
+            if node.status in (NodeStatus.PENDING, NodeStatus.RUNNING, NodeStatus.WAITING_APPROVAL, NodeStatus.WAITING_INPUT):
                 node.status = NodeStatus.CANCELLED
         self.state_manager.save_workflow(wf)
         self._emit_event("workflow.cancelled", {"workflow_id": workflow_id})

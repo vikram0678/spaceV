@@ -29,6 +29,7 @@ class NodeStatus(str, Enum):
     FAILED = "failed"
     SKIPPED = "skipped"
     WAITING_APPROVAL = "waiting_approval"
+    WAITING_INPUT = "waiting_input"
     CANCELLED = "cancelled"
 
 
@@ -135,7 +136,7 @@ class Workflow:
         return ready
 
     def has_active_nodes(self) -> bool:
-        return any(n.status in (NodeStatus.RUNNING, NodeStatus.WAITING_APPROVAL) for n in self.nodes)
+        return any(n.status in (NodeStatus.RUNNING, NodeStatus.WAITING_APPROVAL, NodeStatus.WAITING_INPUT) for n in self.nodes)
 
     def to_dict(self) -> dict[str, Any]:
         return {
