@@ -151,6 +151,15 @@ class MultiModelRouter:
         return OLLAMA_KEEP_ALIVE
 
     @staticmethod
+    def is_colibri_available() -> bool:
+        """Checks if local Colibrì MoE engine is installed and responsive."""
+        try:
+            from core.colibri_client import colibri_client
+            return colibri_client.is_installed() and colibri_client.is_server_running()
+        except Exception:
+            return False
+
+    @staticmethod
     def get_cloud_provider_fallback_chain() -> list[str]:
         """Returns the priority cloud provider fallback chain."""
         from core.provider_failover import DEFAULT_FAILOVER_CASCADE
