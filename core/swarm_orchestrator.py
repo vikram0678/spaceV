@@ -88,6 +88,22 @@ class SwarmOrchestrator:
         """
         text_lower = text.lower()
 
+        # Give public issue-to-reproduction work its own workflow prompt before
+        # generic "test", "review", or "inspect" requests route to the auditor.
+        issue_url = "github.com/" in text_lower and "/issues/" in text_lower
+        issue_reproduction = any(
+            phrase in text_lower
+            for phrase in (
+                "failing test",
+                "reproduce the issue",
+                "reproduce this issue",
+                "issue reproduction",
+                "issue-to-test",
+            )
+        )
+        if issue_url or issue_reproduction:
+            return AgentRole.ISSUE_TEST
+
         # 1. Auditing & verification intents
         auditor_triggers = [
             "audit", "verify", "check", "test", "review", "lint", "validate",

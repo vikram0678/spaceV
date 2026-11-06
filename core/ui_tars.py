@@ -213,6 +213,8 @@ class UITARSEngine:
         """
         Executes a planned UI-TARS action on the host Windows desktop with safety bounds.
         """
+        from tools.gui_tools import safety
+        safety.check()
         if action.action_type == "finished":
             return f"UI-TARS: {action.thought or 'Navigation completed.'}"
 
@@ -282,5 +284,7 @@ def ui_tars_navigate_and_act(instruction: str) -> str:
     Autonomous GUI Computer Control & Mouse Navigation powered by UI-TARS (OSWorld SOTA).
     Interprets user desktop instructions, grounds target elements on screen, and executes actions.
     """
+    from tools.gui_tools import safety
+    safety.check()
     res = ui_tars_engine.navigate_and_execute(instruction)
     return res["result"]

@@ -113,7 +113,7 @@ def find_control_by_name(
     return None
 
 
-def list_interactive_controls(hwnd: int | None = None, limit: int = 15) -> list[dict[str, Any]]:
+def list_interactive_controls(hwnd: int | None = None, limit: int = 15, max_depth: int = 4) -> list[dict[str, Any]]:
     """
     Lists interactive buttons, menus, and controls in the active or specified window.
     """
@@ -128,12 +128,13 @@ def list_interactive_controls(hwnd: int | None = None, limit: int = 15) -> list[
             return []
 
         walker = uia.ControlViewWalker
-        child = walker.GetFirstChildElement(root)
-        while child and len(controls) < limit:
+        queue = [(root, 0)]
+        while queue and len(controls) < limit:
+            elem, depth = queue.pop(0)
             try:
-                name = child.CurrentName
-                ctrl_type = child.CurrentLocalizedControlType
-                rect = child.CurrentBoundingRectangle
+                name = elem.CurrentName
+                ctrl_type = elem.CurrentLocalizedControlType
+                rect = elem.CurrentBoundingRectangle
                 w = rect.right - rect.left
                 h = rect.bottom - rect.top
                 if name and w > 4 and h > 4:
@@ -142,10 +143,21 @@ def list_interactive_controls(hwnd: int | None = None, limit: int = 15) -> list[
                         "type": str(ctrl_type),
                         "x": int(rect.left + w // 2),
                         "y": int(rect.top + h // 2),
+                        "enabled": bool(elem.CurrentIsEnabled),
+                        "offscreen": bool(elem.CurrentIsOffscreen),
                     })
             except Exception:
                 pass
-            child = walker.GetNextSiblingElement(child)
+            if depth < max_depth:
+                try:
+                    child = walker.GetFirstChildElement(elem)
+                    child_count = 0
+                    while child and child_count < 30:
+                        queue.append((child, depth + 1))
+                        child = walker.GetNextSiblingElement(child)
+                        child_count += 1
+                except Exception:
+                    pass
     except Exception as e:
         logger.debug(f"[UIA] List controls error: {e}")
 
@@ -159,7 +171,7 @@ def gui_click_control(target_name: str) -> str:
     2. If not found in UIA tree, falls back to Windows Native OCR visual grounding.
     Glides cursor to exact center and clicks.
     """
-    safety.reset()
+    safety.check()
     try:
         # Tier 1: UIA Native Control Fast-Path
         uia_match = find_control_by_name(target_name)

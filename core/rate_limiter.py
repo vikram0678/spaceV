@@ -175,6 +175,10 @@ class ProviderRateLimiter:
                 if curr_rpm < data["rpm"] and (curr_tpm + estimated_tokens) <= data["tpm"]:
                     data["calls"].append(now)
                     data["token_usage"].append((now, estimated_tokens))
+                    # Micro-pacing burst smoothing when headroom is within 15% of limit
+                    headroom = data["tpm"] - (curr_tpm + estimated_tokens)
+                    if headroom < 2500 and data["tpm"] > 5000:
+                        time.sleep(0.08)
                     return True
 
                 # If we cannot wait, fail immediately so caller can failover

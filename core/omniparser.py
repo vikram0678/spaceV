@@ -96,10 +96,12 @@ class OmniParserEngine:
 
         # 2. Integrate Windows Native OCR for Text Widgets
         try:
-            from core.vision_grounding import _get_winocr
+            from core.vision_grounding import _get_winocr, recognize_screen_text_bounded
             ocr = _get_winocr()
             if ocr:
-                res = ocr.recognize_pil_sync(img, lang="en-US")
+                res = recognize_screen_text_bounded(ocr, img)
+                if res is None:
+                    return parsed_elements
                 lines = res.get("lines", [])
                 for line in lines:
                     for word in line.get("words", []):
@@ -258,7 +260,7 @@ class OmniParserEngine:
         Searches the screen for an icon or UI widget matching target_description,
         glides cursor with human acceleration, and clicks its center.
         """
-        safety.reset()
+        safety.check()
         try:
             match = self.find_icon_or_element(target_description)
             if not match:

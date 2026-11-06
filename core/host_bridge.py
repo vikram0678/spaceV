@@ -138,7 +138,15 @@ class HostBridge:
 
         # 1. WSL: Bridge to Host Windows Apps
         if cls.is_wsl():
-            win_target = WINDOWS_COMMON_APPS.get(clean, clean)
+            if clean in ("browser", "web browser", "web_browser"):
+                try:
+                    from core.app_catalog import app_catalog
+                    def_browser, _ = app_catalog.get_default_browser()
+                    win_target = def_browser
+                except Exception:
+                    win_target = "chrome"
+            else:
+                win_target = WINDOWS_COMMON_APPS.get(clean, clean)
             cmd = ["cmd.exe", "/c", "start", "", win_target]
             if args:
                 cmd.append(args)
@@ -150,7 +158,15 @@ class HostBridge:
 
         # 2. Native Windows
         if sys.platform == "win32":
-            win_target = WINDOWS_COMMON_APPS.get(clean, clean)
+            if clean in ("browser", "web browser", "web_browser"):
+                try:
+                    from core.app_catalog import app_catalog
+                    def_browser, _ = app_catalog.get_default_browser()
+                    win_target = def_browser
+                except Exception:
+                    win_target = "chrome"
+            else:
+                win_target = WINDOWS_COMMON_APPS.get(clean, clean)
             cmd_str = f'start "" {win_target} {args}'.strip()
             try:
                 subprocess.Popen(cmd_str, shell=True)
@@ -298,6 +314,22 @@ class HostBridge:
     @classmethod
     def get_active_window_title(cls) -> str:
         """Retrieves the title of the currently focused window on the host desktop."""
+        if sys.platform == "win32" and not cls.is_wsl():
+            try:
+                import ctypes
+                user32 = ctypes.windll.user32
+                hwnd = user32.GetForegroundWindow()
+                if hwnd:
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    if length > 0:
+                        buff = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, buff, length + 1)
+                        res = buff.value.strip()
+                        if res:
+                            return res
+            except Exception:
+                pass
+
         if cls.is_wsl() or sys.platform == "win32":
             ps_script = (
                 "Add-Type -TypeDefinition '"
@@ -322,6 +354,8 @@ class HostBridge:
         Dispatches native mouse click event directly to the Windows Host at (x, y)
         via PowerShell / user32.dll mouse_event API, bypassing X11/Xauthority completely.
         """
+        from tools.gui_tools import safety
+        safety.check()
         if cls.is_wsl() or sys.platform == "win32":
             btn_down = "0x0002" if button == "left" else "0x0008"
             btn_up = "0x0004" if button == "left" else "0x0010"
@@ -347,6 +381,8 @@ class HostBridge:
         Dispatches native keyboard hotkey event to the Windows Host
         via PowerShell / WScript.Shell SendKeys, bypassing X11/Xauthority completely.
         """
+        from tools.gui_tools import safety
+        safety.check()
         if cls.is_wsl() or sys.platform == "win32":
             key_map = {
                 "alt": "%",

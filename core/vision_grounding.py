@@ -4,6 +4,8 @@ Powered by Windows Native OCR (Windows.Media.Ocr / winocr) with high-res boundin
 and sub-pixel human-like cursor gliding to any on-screen text, button, or link.
 """
 import difflib
+import queue
+import threading
 import time
 from typing import Any
 
@@ -26,6 +28,51 @@ try:
 except Exception:
     from tools.gui_tools import pyautogui
 from tools.gui_tools import human_move_to, safety
+
+_OCR_STATE_LOCK = threading.Lock()
+_OCR_IN_FLIGHT = False
+_OCR_DISABLED_REASON: str | None = None
+OCR_TIMEOUT_SECONDS = 3.0
+
+
+def recognize_screen_text_bounded(ocr_engine: Any, image: Image.Image, lang: str = "en-US") -> dict[str, Any] | None:
+    """Run native OCR without allowing a blocked WinRT event loop to freeze SpaceV.
+
+    The single daemon worker is circuit-broken after a timeout: WinRT calls may
+    not be safely cancellable, so repeated calls would otherwise leak workers.
+    """
+    global _OCR_IN_FLIGHT, _OCR_DISABLED_REASON
+    if ocr_engine is None or image is None:
+        return None
+    with _OCR_STATE_LOCK:
+        if _OCR_DISABLED_REASON or _OCR_IN_FLIGHT:
+            return None
+        _OCR_IN_FLIGHT = True
+
+    result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+
+    def run_ocr() -> None:
+        global _OCR_IN_FLIGHT
+        try:
+            result_queue.put((True, ocr_engine.recognize_pil_sync(image, lang=lang)))
+        except Exception as exc:
+            result_queue.put((False, exc))
+        finally:
+            with _OCR_STATE_LOCK:
+                _OCR_IN_FLIGHT = False
+
+    worker = threading.Thread(target=run_ocr, name="SpaceV-Native-OCR", daemon=True)
+    worker.start()
+    worker.join(OCR_TIMEOUT_SECONDS)
+    if worker.is_alive():
+        with _OCR_STATE_LOCK:
+            _OCR_DISABLED_REASON = f"Native OCR exceeded {OCR_TIMEOUT_SECONDS:.1f}s; disabled for this process"
+        return None
+    try:
+        succeeded, result = result_queue.get_nowait()
+    except queue.Empty:
+        return None
+    return result if succeeded and isinstance(result, dict) else None
 
 
 def capture_screen_pil() -> Image.Image | None:
@@ -54,13 +101,9 @@ def find_text_coordinates(
     if img is None:
         return None
 
-    try:
-        res = ocr_engine.recognize_pil_sync(img, lang="en-US")
-    except Exception:
-        try:
-            res = ocr_engine.recognize_pil_sync(img)
-        except Exception:
-            return None
+    res = recognize_screen_text_bounded(ocr_engine, img)
+    if res is None:
+        return None
 
     target_clean = target_text.lower().strip()
     best_match = None
@@ -110,8 +153,8 @@ def read_screen_text(image: Image.Image | None = None) -> str:
 
     if ocr_engine is not None and img is not None:
         try:
-            res = ocr_engine.recognize_pil_sync(img, lang="en-US")
-            text = res.get("text", "").strip()
+            res = recognize_screen_text_bounded(ocr_engine, img)
+            text = res.get("text", "").strip() if res else ""
             if text:
                 return text
         except Exception:
@@ -138,7 +181,7 @@ def gui_click_text(target_text: str) -> str:
     Autonomously searches the current display for specified text, button, or link,
     glides the virtual cursor to its pixel center, and clicks it.
     """
-    safety.reset()
+    safety.check()
     try:
         match = find_text_coordinates(target_text)
         if not match:
@@ -274,7 +317,7 @@ def gui_click_som_index(element_index: int, som_elements: list[dict[str, Any]] |
     Clicks the on-screen element corresponding to Set-of-Mark integer index [element_index].
     """
     global _CACHED_SOM_ELEMENTS
-    safety.reset()
+    safety.check()
     elements = som_elements or _CACHED_SOM_ELEMENTS
 
     if not elements:
