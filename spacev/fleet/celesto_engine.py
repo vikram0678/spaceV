@@ -81,11 +81,32 @@ class CelestoSandboxInstance:
             elif provider == "local":
                 if os.name == "nt":
                     raise RuntimeError("Local Celesto virtualization is unavailable on Windows; configure the cloud provider or use a supported Linux/macOS host.")
-                self._live_computer = Computer()
+                # Computer() lets Celesto generate a short friendly name. Its
+                # local name generator does not consult the VM inventory, so a
+                # stale VM can make the *first command* fail with a name
+                # collision. Build the normal Celesto config with SpaceV's
+                # UUID-backed name so the name shown in session logs is the
+                # actual VM ID, not a separate SDK-generated name.
+                from celesto.facade import _build_auto_config
+
+                config, ssh_key_path = _build_auto_config(
+                    vm_name=self.name,
+                    os=self.os_type,
+                    backend=settings.celesto_backend or None,
+                    memory=self.memory_mb,
+                    disk_size_mib=self.disk_mb,
+                )
+                self._live_computer = Computer(config=config, ssh_key_path=ssh_key_path)
             else:
                 raise RuntimeError(f"Unsupported CELESTO_PROVIDER: {provider}")
+            # Computer construction is lazy. Start here so a session is not
+            # advertised as ready until Celesto has actually booted the VM.
+            self._live_computer.start()
             self.state = "ready"
         except Exception as exc:
+            # Computer.start() owns startup-failure cleanup. Do not issue a
+            # second delete here: a failed name-collision startup must never
+            # cause SpaceV to remove an already-existing Celesto computer.
             self._live_computer = None
             self.backend_error = f"{type(exc).__name__}: {exc}"
             self.state = "unavailable"
@@ -95,8 +116,10 @@ class CelestoSandboxInstance:
             self.boot_time_s = elapsed
             self.phase_timings_ms["vm_startup_ms"] = round(elapsed * 1000.0, 2)
 
-    def run(self, command: str) -> SandboxExecutionResult:
+    def run(self, command: str, timeout_seconds: int = 30) -> SandboxExecutionResult:
         """Execute once in a live Celesto computer, or fail closed."""
+        if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 900:
+            raise ValueError("timeout_seconds must be an integer between 1 and 900.")
         started = time.perf_counter()
         self.command_count += 1
         try:
@@ -112,7 +135,7 @@ class CelestoSandboxInstance:
                 try:
                     # Audit only here; execute the approved command exactly once below.
                     safety_auditor.audit_and_execute(self.name, command)
-                    res = self._live_computer.run(command, timeout=30)
+                    res = self._live_computer.run(command, timeout=timeout_seconds)
                     result = SandboxExecutionResult(
                         int(getattr(res, "exit_code", 0)),
                         str(getattr(res, "stdout", "") or ""),
