@@ -1,0 +1,91 @@
+# ==============================================================================
+# SpaceV Multi-Brain Provider & Model Configuration Template (.example)
+# ==============================================================================
+version: "2.0"
+
+# ------------------------------------------------------------------------------
+# 1. Virtual Aliases (Intelligent Task Routing)
+# ------------------------------------------------------------------------------
+aliases:
+  spacev/fast:
+    description: "Ultra-fast streaming for casual chat and voice responses"
+    preferred_providers: ["cerebras", "groq"]
+    fallback: "ollama"
+
+  spacev/coder:
+    description: "High-precision code generation and refactoring"
+    preferred_providers: ["mistral", "groq", "ollama"]
+    fallback: "ollama"
+
+  spacev/smart:
+    description: "Deep reasoning, large document analysis, complex logic"
+    preferred_providers: ["gemini", "sambanova", "groq"]
+    fallback: "ollama"
+
+# ------------------------------------------------------------------------------
+# 2. Specialized Task Roles (Defaults if not specified by Cloud)
+# ------------------------------------------------------------------------------
+roles:
+  fast_chat: "llama-3.1-8b-instant"
+  coder: "qwen2.5-coder:7b"
+  vision: "moondream:latest"
+  ui_tars: "ui-tars:7b"
+
+# ------------------------------------------------------------------------------
+# 3. Free Cloud Provider Key Pools & Quotas
+# ------------------------------------------------------------------------------
+providers:
+  groq:
+    base_url: "https://api.groq.com/openai/v1"
+    fast_model: "openai/gpt-oss-20b"
+    smart_model: "openai/gpt-oss-120b"
+    rpm_limit: 30
+    tpm_limit: 20000
+    keys:
+      - "gsk-your-groq-key-here"
+
+  cerebras:
+    base_url: "https://api.cerebras.ai/v1"
+    fast_model: "llama3.1-8b"
+    smart_model: "llama3.1-70b"
+    rpm_limit: 30
+    tpm_limit: 60000
+    keys:
+      - "csk-your-cerebras-key-here"
+
+  gemini:
+    base_url: "https://generativelanguage.googleapis.com/v1beta/openai"
+    smart_model: "gemini-3.5-flash"
+    rpm_limit: 15
+    tpm_limit: 1000000
+    keys:
+      - "your-gemini-key-here"
+
+  sambanova:
+    base_url: "https://api.sambanova.ai/v1"
+    smart_model: "DeepSeek-V3.1"
+    rpm_limit: 20
+    tpm_limit: 100000
+    keys:
+      - "your-sambanova-key-here"
+
+  mistral:
+    base_url: "https://api.mistral.ai/v1"
+    coder_model: "codestral-latest"
+    smart_model: "mistral-small-latest"
+    rpm_limit: 30
+    tpm_limit: 500000
+    keys: 
+      - "your-mistral-key-here"
+
+# ------------------------------------------------------------------------------
+# 4. Optional Local Ollama Settings (Only used when offline or cloud fails)
+# ------------------------------------------------------------------------------
+ollama:
+  enabled: true
+  base_url: "http://localhost:11434"
+  fast_model: "qwen2.5:3b"
+  coder_model: "qwen2.5-coder:7b"
+  smart_model: "qwen2.5:7b-instruct-q5_0"
+  vision_model: "moondream:latest"
+  keep_alive: "30m"

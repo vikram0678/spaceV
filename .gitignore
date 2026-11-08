@@ -19,6 +19,8 @@ cua/
 .env
 .env.*
 !.env.example
+config/providers.yaml
+!config/providers.yaml.example
 
 # Temporary Artifacts, OS and IDE files
 .DS_Store
