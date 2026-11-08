@@ -1,7 +1,7 @@
 # SpaceV Control Plane & MicroVM Orchestration Dependencies
 
 # Celesto MicroVM SDK (Requires Python 3.11+)
-celesto>=0.1.0; python_version >= '3.11'
+celesto>=0.1.12; python_version >= '3.11'
 
 # HTTP REST API & Async Server
 fastapi>=0.110.0
