@@ -53,6 +53,11 @@ class GroundedGoal(BaseModel):
         return value
 
 
+def goal_interpretation_requires_clarification(source: str) -> bool:
+    """Raw-request fallback is retained for context but is not safe for tool planning."""
+    return str(source or "") == "raw_request_fallback_unstructured"
+
+
 def interpret_goal(
     prompt: str,
     agent: Any,
@@ -62,6 +67,7 @@ def interpret_goal(
 ) -> tuple[GroundedGoal, str]:
     """Ask the configured model to turn a natural-language request into a validated goal."""
     schema = GroundedGoal.model_json_schema()
+    schema_text = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
     messages = [
         {
             "role": "system",
@@ -78,7 +84,8 @@ def interpret_goal(
                 "entities.expected_failure_signal; do not invent one when the expected behavior is unclear. "
                 "A request to work with an external repository in an "
                 "isolated guest belongs to sandbox. Users describe outcomes in natural language and do not need "
-                "to know or name internal tool functions. A goal may need more than one domain."
+                "to know or name internal tool functions. A goal may need more than one domain. "
+                f"The required JSON Schema is: {schema_text}"
             ),
         },
     ]
@@ -89,7 +96,7 @@ def interpret_goal(
             messages.append({"role": role, "content": content[-3000:]})
     messages.append({"role": "user", "content": prompt})
 
-    try:
+    def request_goal_json(request_messages: list[dict[str, Any]]) -> str:
         cloud_client = getattr(agent, "cloud_client", None)
         if getattr(agent, "provider", "ollama") != "ollama" and cloud_client is not None:
             # Goal interpretation runs before the graph's reasoning node selects
@@ -98,7 +105,7 @@ def interpret_goal(
             # example, qwen2.5:3b), which cloud endpoints cannot serve.
             cloud_model = cloud_client.select_cloud_model(prompt, requires_tools=False)
             response = cloud_client.chat(
-                messages=messages,
+                messages=request_messages,
                 tools=None,
                 model=cloud_model,
                 temperature=0.0,
@@ -111,7 +118,7 @@ def interpret_goal(
                 f"{ollama_base_url.rstrip('/')}/api/chat",
                 json={
                     "model": getattr(agent, "model", "qwen2.5:7b-instruct-q5_0"),
-                    "messages": messages,
+                    "messages": request_messages,
                     "format": schema,
                     "stream": False,
                     "options": {"temperature": 0, "num_ctx": min(max(num_ctx, 1024), 4096), "num_predict": 700},
@@ -120,18 +127,47 @@ def interpret_goal(
             )
             response.raise_for_status()
             content = str(response.json().get("message", {}).get("content", "")).strip()
+        return content
 
-        if content.startswith("```"):
-            content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-        goal = GroundedGoal.model_validate_json(content)
+    def parse_goal_json(content: str) -> GroundedGoal:
+        normalized = str(content or "").strip()
+        if normalized.startswith("```"):
+            normalized = normalized.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        goal = GroundedGoal.model_validate_json(normalized)
         if not goal.objective.strip():
             raise ValueError("The model returned an empty objective")
-        return goal, "model"
+        return goal
+
+    try:
+        content = request_goal_json(messages)
+        try:
+            return parse_goal_json(content), "model"
+        except Exception as first_error:
+            normalized = str(content or "").strip()
+            # Provider/network error prose is not a malformed JSON response to
+            # repair. Retry only an apparent JSON/code-fence response, once.
+            if not normalized.startswith(("{", "```")):
+                raise first_error
+            repair_messages = [
+                *messages,
+                {"role": "assistant", "content": normalized},
+                {
+                    "role": "user",
+                    "content": (
+                        "Your previous response was not valid JSON for the required schema. Repair its structure only. "
+                        "Preserve the original user request and every constraint; do not add actions or omit restrictions. "
+                        "Return one complete JSON object and no surrounding prose. The schema is: "
+                        f"{schema_text}"
+                    ),
+                },
+            ]
+            repaired_content = request_goal_json(repair_messages)
+            return parse_goal_json(repaired_content), "model_repaired"
     except Exception as exc:
-        logger.warning("Structured goal interpretation failed; preserving the raw request: %s", exc)
+        logger.warning("Structured goal interpretation failed after bounded repair; preserving the raw request: %s", exc)
         return (
             GroundedGoal(objective=prompt.strip() or "Unspecified request", requires_action=True, confidence=0.0),
-            "raw_request_fallback",
+            "raw_request_fallback_unstructured",
         )
 
 
