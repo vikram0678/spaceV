@@ -11,7 +11,9 @@ import importlib.util
 import json
 import logging
 import os
+import posixpath
 import re
+import shlex
 import sys
 import threading
 import time
@@ -24,6 +26,183 @@ from core.task_input import unresolved_template_marker
 
 logger = logging.getLogger("SpaceV.Sandbox")
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+DEFAULT_GUEST_COMMAND_TIMEOUT_SECONDS = 30
+MAX_GUEST_COMMAND_TIMEOUT_SECONDS = 900
+
+
+def validate_approved_guest_command(task_description: str, command: str) -> str | None:
+    """Fail closed unless a guest command is read-only and confined to the approved checkout."""
+    task = str(task_description or "")
+    text = str(command or "").strip()
+    scope = re.search(
+        r"(?:shallow[- ]clone|clone)\s+(https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\.git)\s+"
+        r"(?:(?:to|into)\s+)?(/tmp/[A-Za-z0-9_.-]+)",
+        task,
+        re.IGNORECASE,
+    )
+    if not scope:
+        return "the approved task does not define a repository and checkout path that can be safely enforced"
+    repo_url = scope.group(1).rstrip("/")
+    raw_root = scope.group(2).rstrip(".,;:")
+    root = posixpath.normpath(raw_root)
+    if root != raw_root or root == "/tmp" or "/../" in f"{root}/":
+        return "the approved checkout path is not a safe fixed /tmp directory"
+    if not text or "\n" in text or "\r" in text:
+        return "only one bounded guest command can be classified at a time"
+    try:
+        lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|<>`$")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return "the command has invalid quoting and cannot be safely classified"
+    if not tokens or any(token and all(char in ";&|<>`$" for char in token) for token in tokens):
+        return "shell chaining, redirection, substitution, and pipelines are not allowed"
+
+    if tokens in (["git", "--version"], ["command", "-v", "git"], ["which", "git"]):
+        return None
+    clone_prefix = (
+        2 if tokens[:2] == ["git", "clone"]
+        else 4 if tokens[:3] == ["git", "-c", "core.hooksPath=/dev/null"] and tokens[3:4] == ["clone"]
+        else 0
+    )
+    if clone_prefix:
+        args = tokens[clone_prefix:]
+        saw_depth_one = False
+        i = 0
+        while i < len(args):
+            token = args[i]
+            if token == "--":
+                i += 1
+                break
+            elif token == "--depth":
+                if i + 1 >= len(args) or args[i + 1] != "1" or saw_depth_one:
+                    return "clone must be a shallow depth-1 checkout"
+                saw_depth_one = True
+                i += 2
+            elif token == "--depth=1" and not saw_depth_one:
+                saw_depth_one = True
+                i += 1
+            elif token == "--no-tags":
+                i += 1
+            else:
+                if token.startswith("-"):
+                    return "clone contains an unapproved option"
+                break
+        remaining = args[i:]
+        if saw_depth_one and len(remaining) == 2 and remaining[0].rstrip("/") == repo_url and remaining[1] == root:
+            return None
+        return "clone is limited to the approved GitHub repository and exact /tmp checkout path"
+
+    if tokens[0] == "git":
+        if len(tokens) < 4 or tokens[1:3] != ["-C", root]:
+            return "Git inspection must explicitly target the approved checkout with git -C"
+        subcommand = tokens[3]
+        if subcommand not in {"status", "rev-parse", "log", "show", "diff", "ls-files", "grep"}:
+            return f"Git subcommand {subcommand!r} is not approved for read-only inspection"
+        if any(token in {"--output", "--exec", "--ext-diff", "--textconv"} for token in tokens[4:]):
+            return "the Git inspection contains an option that can write files or execute external programs"
+        args = tokens[4:]
+        if subcommand == "status" and args not in ([], ["--short"], ["--porcelain"]):
+            return "status inspection is limited to the working-tree summary"
+        if subcommand == "rev-parse" and args != ["HEAD"]:
+            return "revision inspection is limited to the checked-out commit"
+        if subcommand == "log" and args not in (["-1"], ["-1", "--format=%H"], ["-1", "--oneline"]):
+            return "log inspection is limited to the current commit"
+        if subcommand == "show":
+            if len(args) != 1 or not args[0].startswith("HEAD:"):
+                return "show may read only a single file blob from the checked-out HEAD commit"
+            pathspec = args[0][5:]
+            if not pathspec or pathspec.startswith("/") or ".." in pathspec.split("/"):
+                return "show path must remain inside the approved repository tree"
+        if subcommand == "ls-files":
+            if any(arg.startswith("/") or ".." in arg.split("/") for arg in args):
+                return "file listing must remain inside the approved repository tree"
+        if subcommand == "diff":
+            if args not in ([], ["--check"], ["--stat"]):
+                return "diff is limited to the approved checkout summary or whitespace check"
+        if subcommand == "grep":
+            # Read from the immutable Git object tree, not the checkout: a
+            # repository can contain symlinks that point outside its directory.
+            if "HEAD" not in args or "--" not in args:
+                return "grep must search the immutable HEAD tree with an explicit in-repository pathspec"
+            separator = args.index("--")
+            before_paths = args[:separator]
+            paths = args[separator + 1:]
+            if not paths or any(path.startswith("/") or ".." in path.split("/") for path in paths):
+                return "grep pathspecs must stay inside the approved repository tree"
+            if before_paths.count("HEAD") != 1:
+                return "grep may search only the checked-out HEAD tree"
+            allowed_flags = {"-n", "-i", "-E", "-F", "-w", "-h", "--full-name"}
+            i = 0
+            saw_pattern = False
+            while i < len(before_paths):
+                arg = before_paths[i]
+                if arg == "HEAD" or arg in allowed_flags:
+                    i += 1
+                elif arg in {"-e", "-A", "-B", "-C"}:
+                    if i + 1 >= len(before_paths):
+                        return "grep option is missing its value"
+                    if arg == "-e":
+                        saw_pattern = True
+                    i += 2
+                elif not arg.startswith("-") and not saw_pattern:
+                    saw_pattern = True
+                    i += 1
+                else:
+                    return "grep contains an unapproved option or ambiguous argument"
+            if not saw_pattern:
+                return "grep requires one explicit search pattern"
+        return None
+
+    return f"command {tokens[0]!r} is not in the approved guest-command allowlist"
+
+
+def _configured_guest_timeout(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None or not raw_value.strip():
+        return default
+    try:
+        configured = int(raw_value)
+    except ValueError:
+        logger.warning("Ignoring invalid %s=%r; using %s seconds", name, raw_value, default)
+        return default
+    if not 1 <= configured <= MAX_GUEST_COMMAND_TIMEOUT_SECONDS:
+        logger.warning(
+            "Ignoring out-of-range %s=%r; expected 1..%s seconds",
+            name,
+            raw_value,
+            MAX_GUEST_COMMAND_TIMEOUT_SECONDS,
+        )
+        return default
+    return configured
+
+
+def guest_command_timeout_seconds(command: str) -> int:
+    """Choose a bounded timeout for common long-running guest operations.
+
+    These are execution deadlines only: a timeout is never retried automatically,
+    because the guest process may have made partial changes before the deadline.
+    """
+    text = str(command or "")
+    if re.search(r"\bgit\b[^\n;&|]*\bclone\b", text, re.IGNORECASE):
+        return _configured_guest_timeout("SPACEV_SANDBOX_CLONE_TIMEOUT_SECONDS", 180)
+    if re.search(
+        r"\b(?:apk\s+add|apt(?:-get)?\s+(?:update|install)|dnf\s+install|"
+        r"pacman\s+-S|pip(?:3)?\s+install|uv\s+sync)\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return _configured_guest_timeout("SPACEV_SANDBOX_SETUP_TIMEOUT_SECONDS", 180)
+    if re.search(
+        r"\b(?:pytest|unittest|tox|nox|cargo\s+test|go\s+test|"
+        r"(?:npm|pnpm|yarn)\s+test|(?:mvn|gradle)\s+test)\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return _configured_guest_timeout("SPACEV_SANDBOX_TEST_TIMEOUT_SECONDS", 300)
+    return _configured_guest_timeout("SPACEV_SANDBOX_COMMAND_TIMEOUT_SECONDS", DEFAULT_GUEST_COMMAND_TIMEOUT_SECONDS)
 
 
 @dataclass
@@ -446,15 +625,26 @@ def _celesto_readiness() -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True)
+class _ApprovedTaskScope:
+    description: str
+
+
 @dataclass
 class _SandboxSession:
     session_id: str
-    task_description: str
+    approved_task_scope: _ApprovedTaskScope
     instance: Any
     started_at: float
     last_activity: float
     command_count: int = 0
     aggregate_command_ms: float = 0.0
+    expired: bool = False
+    cleanup_error: str = ""
+
+    @property
+    def task_description(self) -> str:
+        return self.approved_task_scope.description
 
 
 class SandboxSessionManager:
@@ -490,15 +680,24 @@ class SandboxSessionManager:
             if now >= expiry:
                 self._pending.pop(approval_id, None)
         for session_id, session in list(self._sessions.items()):
+            if session.expired:
+                continue
             idle_expired = now - session.last_activity >= self.IDLE_TTL_SECONDS
             lifetime_expired = now - session.started_at >= self.MAX_LIFETIME_SECONDS
             if idle_expired or lifetime_expired:
-                session.instance.close()
-                self._sessions.pop(session_id, None)
+                session.expired = True
+                try:
+                    session.instance.close()
+                except Exception as exc:
+                    session.cleanup_error = f"{type(exc).__name__}: {exc}"
+                cleanup_failed = getattr(session.instance, "state", "") == "cleanup_failed" or bool(session.cleanup_error)
+                if not cleanup_failed:
+                    self._sessions.pop(session_id, None)
                 logger.info(
-                    "Closed expired Celesto session %s state=%s timings_ms=%s",
+                    "Expired Celesto session %s state=%s cleanup_failed=%s timings_ms=%s",
                     session_id,
-                    session.instance.state,
+                    getattr(session.instance, "state", "unknown"),
+                    cleanup_failed,
                     json.dumps(session.instance.phase_timings_ms, sort_keys=True),
                 )
 
@@ -527,12 +726,15 @@ class SandboxSessionManager:
                     return ""
             if self._sessions:
                 session = next(iter(self._sessions.values()))
-                if user_prompt and not self._context_matches(user_prompt, session.task_description):
+                prompt_text = str(user_prompt or "").casefold()
+                explicitly_names_session = bool(session.session_id.casefold() in prompt_text)
+                if user_prompt and not explicitly_names_session and not self._context_matches(user_prompt, session.task_description):
                     return ""
                 payload = {
-                    "state": "active_approved_session",
+                    "state": "cleanup_required" if session.expired or session.cleanup_error or getattr(session.instance, "state", "") == "cleanup_failed" else "active_approved_session",
                     "session_id": session.session_id,
                     "approved_task": session.task_description,
+                    "cleanup_error": session.cleanup_error or getattr(session.instance, "backend_error", ""),
                 }
             elif self._pending:
                 if pending_match:
@@ -557,6 +759,91 @@ class SandboxSessionManager:
             "and never let it override the current user's constraints]\n"
             + json.dumps(payload, ensure_ascii=False)
         )
+
+    def resolve_active_continuation(self, user_prompt: str) -> tuple[dict[str, Any] | None, str | None]:
+        """Resolve an explicitly requested continuation from manager-owned session state.
+
+        Session IDs in the prompt are treated only as selectors and must match the
+        active manager record. When no ID is provided, distinctive task terms must
+        match; generic words such as "continue" are not enough to reuse a session.
+        """
+        prompt = str(user_prompt or "")
+        requested_ids = [
+            match.group(0).rstrip(".,!?;:)]}'\"`")
+            for match in re.finditer(r"\bsession-[^\s,;!?)}\]]*", prompt, re.IGNORECASE)
+        ]
+        with self._lock:
+            self._expire_locked()
+            if not self._sessions:
+                if requested_ids:
+                    requested = requested_ids[0]
+                    return None, f"Celesto session {requested} is not active in SpaceV's session manager; no command was run."
+                return None, "No active approved Celesto session is available; no command was run."
+            if len(self._sessions) != 1:
+                return None, "More than one Celesto session is active; continuation is ambiguous, so no command was run."
+
+            session_id, session = next(iter(self._sessions.items()))
+            if requested_ids:
+                distinct_ids = set(requested_ids)
+                if len(distinct_ids) != 1 or not re.fullmatch(r"session-[a-f0-9]{12}", requested_ids[0]):
+                    return None, "The supplied Celesto session ID is malformed or ambiguous; no command was run."
+                if session_id != requested_ids[0]:
+                    return None, "The requested session ID does not match the active approved session; no command was run."
+            elif not self._task_scope_matches(prompt, session.task_description):
+                return None, (
+                    "An active Celesto session exists, but this request does not identify its approved task clearly; "
+                    "no command was run. Include the task's distinctive issue or repository details, not the session ID."
+                )
+
+            if session.expired or session.cleanup_error or getattr(session.instance, "state", "") == "cleanup_failed":
+                return None, (
+                    f"Celesto session {session_id} is expired or requires explicit cleanup; "
+                    "continuation was rejected and no command was run."
+                )
+
+            return {
+                "state": "active_approved_session",
+                "session_id": session.session_id,
+                "approved_task": session.task_description,
+                "cleanup_error": session.cleanup_error or getattr(session.instance, "backend_error", ""),
+            }, None
+
+    @staticmethod
+    def _task_scope_matches(user_prompt: str, task_description: str) -> bool:
+        """Match only an exact issue/repository identity or the complete approved task text."""
+        prompt = str(user_prompt or "").casefold()
+        task = str(task_description or "").casefold()
+        task_repo_url = re.search(r"https?://github\.com/([^/\s]+)/([^/\s?#]+)", task)
+        task_repo = (
+            f"{task_repo_url.group(1)}/{task_repo_url.group(2).removesuffix('.git')}"
+            if task_repo_url else None
+        )
+        if not task_repo:
+            task_repo_match = re.search(r"(?<![\w.-])([a-z0-9_.-]+/[a-z0-9_.-]+)(?![\w.-])", task)
+            task_repo = task_repo_match.group(1) if task_repo_match else None
+        task_issues = set(re.findall(r"\bissue\s*#?\s*(\d+)\b", task))
+        task_issues.update(re.findall(r"github\.com/[^/\s]+/[^/\s]+/issues/(\d+)\b", task))
+        if task_repo and task_issues:
+            prompt_repo_url = re.search(r"https?://github\.com/([^/\s]+)/([^/\s?#]+)", prompt)
+            prompt_repos = set()
+            if prompt_repo_url:
+                prompt_repos.add(
+                    f"{prompt_repo_url.group(1)}/{prompt_repo_url.group(2).removesuffix('.git')}"
+                )
+            else:
+                prompt_repos.update(
+                    re.findall(r"(?<![\w.-])([a-z0-9_.-]+/[a-z0-9_.-]+)(?![\w.-])", prompt)
+                )
+            prompt_issues = set(re.findall(r"\bissue\s*#?\s*(\d+)\b", prompt))
+            prompt_issues.update(re.findall(r"github\.com/[^/\s]+/[^/\s]+/issues/(\d+)\b", prompt))
+            return (
+                prompt_repos == {task_repo}
+                and prompt_issues == task_issues
+            )
+
+        normalized_task = " ".join(re.findall(r"\w+", task))
+        normalized_prompt = " ".join(re.findall(r"\w+", prompt))
+        return bool(normalized_task and normalized_task in normalized_prompt)
 
     @staticmethod
     def _context_matches(user_prompt: str, task_description: str) -> bool:
@@ -645,7 +932,9 @@ class SandboxSessionManager:
             from spacev.fleet.celesto_engine import CelestoSandboxInstance
 
             task_started = time.monotonic()
-            instance = CelestoSandboxInstance(f"sbx-{uuid.uuid4().hex[:12]}")
+            # Use enough entropy for Celesto's persistent local VM namespace.
+            # Short friendly SDK-generated names can collide with stale VMs.
+            instance = CelestoSandboxInstance(f"sbx-{uuid.uuid4().hex}")
             if instance.state != "ready" or not instance.backend_connected:
                 error = instance.backend_error or "Celesto did not return a live computer."
                 instance.close()
@@ -659,7 +948,7 @@ class SandboxSessionManager:
             session_id = f"session-{uuid.uuid4().hex[:12]}"
             self._sessions[session_id] = _SandboxSession(
                 session_id=session_id,
-                task_description=task_description,
+                approved_task_scope=_ApprovedTaskScope(task_description),
                 instance=instance,
                 started_at=task_started,
                 last_activity=now,
@@ -679,8 +968,14 @@ class SandboxSessionManager:
             session = self._sessions.get(str(session_id or "").strip())
             if session is None:
                 return "BLOCKED: Celesto session is missing or expired. Create a new approved session."
+            if session.expired or session.cleanup_error or getattr(session.instance, "state", "") == "cleanup_failed":
+                return "BLOCKED: This Celesto session is expired or has unresolved cleanup. Only close_sandbox_session is allowed."
+            policy_error = validate_approved_guest_command(session.task_description, command)
+            if policy_error:
+                return f"BLOCKED: Guest command is outside the approved task scope: {policy_error}. No guest command was executed."
             tool_started = time.perf_counter()
-            result = session.instance.run(command)
+            command_timeout_seconds = guest_command_timeout_seconds(command)
+            result = session.instance.run(command, timeout_seconds=command_timeout_seconds)
             tool_command_ms = round((time.perf_counter() - tool_started) * 1000.0, 2)
             session.command_count += 1
             session.aggregate_command_ms += session.instance.phase_timings_ms["command_ms"]
@@ -688,6 +983,7 @@ class SandboxSessionManager:
             timing = {
                 "command_ms": session.instance.phase_timings_ms["command_ms"],
                 "command_tool_total_ms": tool_command_ms,
+                "command_timeout_seconds": command_timeout_seconds,
                 "session_vm_startup_ms": session.instance.phase_timings_ms["vm_startup_ms"],
                 "session_commands_total_ms": round(session.aggregate_command_ms, 2),
                 "session_lifetime_ms": round((time.monotonic() - session.started_at) * 1000.0, 2),
@@ -703,16 +999,33 @@ class SandboxSessionManager:
         with self._lock:
             self._expire_locked()
             session_id = str(session_id or "").strip()
-            session = self._sessions.pop(session_id, None)
+            session = self._sessions.get(session_id)
             if session is None:
                 return "Celesto session is already closed, missing, or expired."
-            session.instance.close()
+            try:
+                session.instance.close()
+                if getattr(session.instance, "state", "") == "cleanup_failed":
+                    session.cleanup_error = str(getattr(session.instance, "backend_error", "Cleanup failed."))
+                    session.expired = True
+                else:
+                    self._sessions.pop(session_id, None)
+                    session.cleanup_error = ""
+            except Exception as exc:
+                session.cleanup_error = f"{type(exc).__name__}: {exc}"
+                session.expired = True
             timing = {
-                "vm_startup_ms": session.instance.phase_timings_ms["vm_startup_ms"],
+                "vm_startup_ms": session.instance.phase_timings_ms.get("vm_startup_ms", 0.0),
                 "commands_total_ms": round(session.aggregate_command_ms, 2),
-                "cleanup_ms": session.instance.phase_timings_ms["cleanup_ms"],
+                "cleanup_ms": session.instance.phase_timings_ms.get("cleanup_ms", 0.0),
                 "total_task_session_ms": round((time.monotonic() - session.started_at) * 1000.0, 2),
             }
+            if session.cleanup_error or getattr(session.instance, "state", "") == "cleanup_failed":
+                return (
+                    f"[CELESTO SESSION CLEANUP FAILED] Session: {session_id}; sandbox: {session.instance.name}; "
+                    f"state: cleanup_failed; session retained for explicit cleanup retry. "
+                    f"Error: {session.cleanup_error or getattr(session.instance, 'backend_error', 'unknown cleanup error')}\n"
+                    f"Phase timings (ms): {json.dumps(timing, sort_keys=True)}"
+                )
             return (
                 f"[CELESTO SESSION CLOSED] Sandbox: {session.instance.name}; "
                 f"commands: {session.command_count}; state: {session.instance.state}. "
@@ -759,7 +1072,7 @@ def detonate_in_sandbox(command: str) -> str:
 
         from spacev.fleet.celesto_engine import CelestoSandboxInstance
 
-        instance = CelestoSandboxInstance(f"sbx-{uuid.uuid4().hex[:8]}")
+        instance = CelestoSandboxInstance(f"sbx-{uuid.uuid4().hex}")
         if instance.state != "ready" or not instance.backend_connected:
             error = instance.backend_error or "Celesto did not return a live computer."
             instance.close()
@@ -770,10 +1083,12 @@ def detonate_in_sandbox(command: str) -> str:
                 f"{error}\nPhase timings (ms): {json.dumps(timings, sort_keys=True)}"
             )
         try:
-            result = instance.run(command)
+            command_timeout_seconds = guest_command_timeout_seconds(command)
+            result = instance.run(command, timeout_seconds=command_timeout_seconds)
         finally:
             instance.close()
         timings = dict(instance.phase_timings_ms)
+        timings["command_timeout_seconds"] = command_timeout_seconds
         timings["total_ms"] = round((time.perf_counter() - total_started) * 1000.0, 2)
         return (
             f"[CELESTO SDK EXECUTION] Sandbox ID: {instance.name}; exit code: {result.exit_code}; "
