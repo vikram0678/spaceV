@@ -1039,7 +1039,7 @@ class SpaceVGraphEngine:
                     "goal_interpretation": "missing_required_task_input",
                     "is_complete": True,
                 }
-        if is_explicit_vm_proposal:
+        if is_explicit_vm_proposal:  
             from tools.sandbox_tools import sandbox_session_manager
 
             sandbox_context = sandbox_session_manager.continuation_context(task_description)

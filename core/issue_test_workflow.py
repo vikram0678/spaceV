@@ -12,6 +12,8 @@ _TEST_COMMAND = re.compile(
     r"\bcargo\s+test\b|\bgo\s+test\b|\b(?:npm|pnpm|yarn)\s+test\b|\b(?:mvn|gradle)\s+test\b",
     re.IGNORECASE,
 )
+
+
 _EXIT_CODE = re.compile(r"\bexit code:\s*(-?\d+)", re.IGNORECASE)
 _PORCELAIN = re.compile(r"^(?:\?\?|[ MADRCUT?!S]{2})\s+(.+)$")
 _MAX_TEST_PATCH_PATHS = 2
@@ -320,17 +322,23 @@ def ensure_github_issue_repository_followup(summary: str) -> str:
 def sandbox_proposal_requested(prompt: str) -> bool:
     """Recognize common natural-language requests for an approval-gated VM proposal."""
     text = str(prompt or "").casefold()
+    
+    # Priority Guard: Questions, reviews, caveats, or denials must NEVER trigger a new proposal
+    is_review_or_denial = bool(
+        re.search(r"\b(?:do not|don't|dont|never)\b.{0,30}\b(?:approve|start|run|create|proceed)\b", text)
+        or re.search(r"\b(?:review|clarify|explain|why does|why is|question|confirm)\b", text)
+    )
+    if is_review_or_denial:
+        return False
     asks_for_proposal = bool(
         re.search(r"\b(?:prepare|make|create|show|give|submit|propose|request)\b.{0,100}\b(?:proposal|approval)\b", text)
         or re.search(r"\b(?:proposal|approval)\b.{0,100}\b(?:celesto|sandbox|vm|microvm)\b", text)
-        or re.search(r"\bwait for my approval\b", text)
     )
     sandbox_task = bool(re.search(r"\b(?:celesto|sandbox|microvm|vm)\b", text))
     issue_test_task = bool(
         re.search(r"\b(?:clone|repository|repo|failing test|test-only diff|timeout test)\b", text)
     )
     return asks_for_proposal and sandbox_task and issue_test_task
-
 
 def build_issue_test_sandbox_description(prompt: str, context: str = "") -> str | None:
     """Build a concise, safety-preserving proposal for a recognized issue-test task.
@@ -368,12 +376,27 @@ def build_issue_test_sandbox_description(prompt: str, context: str = "") -> str 
             re.IGNORECASE,
         )
     )
-    task = (
-        f"Inspect {issue['owner']}/{repo} issue #{number} in one disposable Celesto VM. "
-        "Check Git; if missing, stop and ask before installing. "
-        f"Shallow-clone {issue['clone_url']} to {destination}; record the commit and initial git status --short; "
-        "inspect the related test and source; show a minimal test-only diff for review. "
+    is_inspection_only = bool(
+        re.search(r"\b(?:inspection[- ]only|inspect only|read[- ]only|no diff|do not (?:modify|edit|create|test))\b", source_text, re.IGNORECASE)
     )
+    if is_inspection_only:
+        task = (
+            f"Inspect {issue['owner']}/{repo} issue #{number} in one disposable Celesto VM. "
+            "Check Git; if missing, stop and ask before installing. "
+            f"Shallow-clone {issue['clone_url']} to {destination}; record the commit and initial git status --short; "
+            "inspect the related test and source files for root-cause analysis only. "
+            "Do not create or edit files, do not produce diffs, and do not run tests. "
+            "Do not access the host or SpaceV checkout. Stop on failure."
+        )
+    else:
+        task = (
+            f"Inspect {issue['owner']}/{repo} issue #{number} in one disposable Celesto VM. "
+            "Check Git; if missing, stop and ask before installing. "
+            f"Shallow-clone {issue['clone_url']} to {destination}; record the commit and initial git status --short; "
+            "inspect the related test and source; show a minimal test-only diff for review. "
+            "Do not access the host or SpaceV checkout. Do not install dependencies, edit files, or run tests. "
+            "Stop on failure. Require separate approval before any edit or test."
+        )
     if no_fetch:
         task += "Do not fetch the issue. "
     task += (
