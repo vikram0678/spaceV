@@ -153,7 +153,6 @@ OUTPUT: concise issue summary; expected/actual behavior; target commit; relevant
     temperature=0.1,
     allowed_tools=[
         "read_web_page",
-        "clone_public_repository",
         "list_workspace_files",
         "read_file_content",
         "search_file_content",
