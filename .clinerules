@@ -4,8 +4,8 @@
 SpaceV is an Autonomous AI Workforce running inside Celesto Firecracker microVM sandboxes for the Celesto Hackathon.
 
 ## System & Environment
-- **Workspace**: `/home/vikram/agentSpace`
-- **Python**: `.venv/bin/python` (Python 3.12)
+- **Workspace**: Project root directory ($PWD / %CD%)
+- **Python**: `.venv/bin/python` or `venv/Scripts/python.exe`
 - **Test Runner**: `.venv/bin/pytest tests/ -v` (Currently 58/58 tests passing)
 - **Linter & Formatter**: `.venv/bin/ruff check --fix` and `.venv/bin/ruff format`
 

@@ -167,9 +167,12 @@ class ProactiveCompanion(QThread):
                 ("👤 3: Fixed / Resume", "continue"),
             ]
         if "who's using chrome" in text or "which profile" in text or "chrome profile" in text:
+            from core.modal_interceptor import get_detected_chrome_profiles
+            profs = get_detected_chrome_profiles()
+            if profs:
+                return [(f"👤 {p['display'][:18]}", f"use chrome profile {p['id']}") for p in profs[:4]]
             return [
-                ("👤 n. vikram", "use chrome profile vikram"),
-                ("👤 Vicky Space", "use chrome profile vicky"),
+                ("👤 Default Profile", "use chrome profile Default"),
             ]
         if "paint" in text or "draw" in text or "sketch" in text:
             return TOOL_FOLLOWUP_MAP["gui_draw_in_paint"]

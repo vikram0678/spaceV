@@ -70,32 +70,65 @@ class PlatformAdapter:
         return cls._is_wsl_cached
 
     @classmethod
-    def launch_app(cls, app_name: str) -> str:
+    def launch_app(cls, app_name: str, profile_dir: str | None = None) -> str:
         """
         Launches an application cross-platform without platform command failures.
+        Supports passing profile_dir (e.g. for Chrome multi-profile targeting).
         """
         clean = app_name.strip().lower()
+
+        # Auto-resolve preferred Chrome profile if not passed explicitly
+        if clean == "chrome" and not profile_dir:
+            try:
+                from core.memory import memory
+                profile_dir = memory.get_preference("chrome", "profile") or memory.get("preferred_chrome_profile")
+            except Exception:
+                pass
 
         # 1. WSL: Bridge to Host Windows Desktop
         if cls.is_wsl():
             win_target = WINDOWS_APP_MAP.get(clean, clean)
             try:
-                # cmd.exe /c start "" <target> handles Windows GUI launching from WSL
+                cmd_args = ["cmd.exe", "/c", "start", "", win_target]
+                if clean == "chrome" and profile_dir:
+                    cmd_args.append(f"--profile-directory={profile_dir}")
                 subprocess.Popen(
-                    ["cmd.exe", "/c", "start", "", win_target],
+                    cmd_args,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
-                return f"Launched Windows application: '{clean}'"
+                return f"Launched Windows application: '{clean}'" + (f" (Profile: {profile_dir})" if profile_dir else "")
             except Exception as e:
                 logger.warning(f"[PlatformAdapter] WSL cmd.exe bridge failed: {e}")
 
         # 2. Native Windows
         if sys.platform == "win32":
-            win_target = WINDOWS_APP_MAP.get(clean, clean)
             try:
-                subprocess.Popen(f"start \"\" \"{win_target}\"", shell=True)
-                return f"Launched Windows application: '{clean}'"
+                from core.app_catalog import app_catalog
+
+                # If generic 'browser' was requested, resolve to user's actual default browser
+                if clean in ("browser", "web browser"):
+                    def_browser, _ = app_catalog.get_default_browser()
+                    clean = def_browser
+
+                entry = app_catalog.find_app(clean)
+                if not entry:
+                    legacy_target = WINDOWS_APP_MAP.get(clean)
+                    if legacy_target:
+                        entry = app_catalog.find_app(legacy_target)
+
+                if entry:
+                    extra_args = []
+                    if clean in ("chrome", "brave", "edge", "google chrome") and profile_dir:
+                        extra_args.append(f"--profile-directory={profile_dir}")
+                    ok, msg = app_catalog.launch(entry, extra_args=extra_args)
+                    if ok:
+                        return f"Launched Windows application: '{entry.display_name}'" + (f" (Profile: {profile_dir})" if profile_dir else "")
+                    return msg
+
+                # Truthful pre-flight rejection when application does not exist on workstation
+                return f"Application '{app_name}' is not installed on this workstation."
+
             except Exception as e:
                 return f"Failed to launch '{clean}': {e}"
 

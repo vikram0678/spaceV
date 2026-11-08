@@ -6,6 +6,7 @@ and automatically retries without troubling the user.
 from __future__ import annotations
 
 import logging
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,50 @@ class SelfHealingEngine:
             or args.get("command")
             or tool_name
         )
+
+        # A guest command failure must never be "healed" by installing on the
+        # SpaceV host. Package managers vary by sandbox image (Alpine uses apk,
+        # Debian/Ubuntu use apt); inspect the guest first and leave installation
+        # behind the user's explicit authorization.
+        if tool_name == "run_sandbox_session_command" and any(
+            marker in err_lower
+            for marker in (
+                "command not found",
+                "not found",
+                "exit code: 127",
+                "apt-get: not found",
+                "apk: not found",
+            )
+        ):
+            missing = str(args.get("command", "guest command")).strip() or "guest command"
+            package_manager_error = bool(
+                re.search(r"(?:apt-get|apt|apk|dnf|yum|pacman):\s*(?:not found|command not found)", err_lower)
+            )
+            return {
+                "category": "GUEST_PACKAGE_MANAGER_MISMATCH" if package_manager_error else "GUEST_EXECUTABLE_MISSING",
+                "tool": tool_name,
+                "args": args,
+                "locus": missing,
+                "original_error": error_str,
+                "strategy": "inspect_guest_os_and_ask_before_install",
+                "explanation": (
+                    "A package-manager command is unavailable in the Celesto guest."
+                    if package_manager_error
+                    else "The requested executable is missing in the Celesto guest."
+                ),
+                "remediation_options": [
+                    {
+                        "index": 1,
+                        "name": "Inspect the guest distribution",
+                        "action_type": "manual",
+                        "description": (
+                            "Use run_sandbox_session_command in this same session to read /etc/os-release, "
+                            "then ask before installing with that distribution's package manager. Do not use "
+                            "the host terminal or assume apt/apk."
+                        ),
+                    }
+                ],
+            }
 
         # 1. Dependency or command missing errors
         if any(w in err_lower for w in ["modulenotfounderror", "no module named", "command not found", "not recognized as an internal or external command", "executable file not found in $path", "exit code 127"]):
@@ -393,11 +438,14 @@ class SelfHealingEngine:
                 from config import USER_DESKTOP_DIR
                 p = Path(filename)
 
-                # Check /tmp and /tmp/test candidates first
+                temp_dir = Path(tempfile.gettempdir())
+                spacev_temp_dir = temp_dir / "spacev"
+                # Check SpaceV's portable temporary locations first.
                 tmp_candidates = [
-                    Path("/tmp") / p.name,
-                    Path("/tmp/test") / p.name,
-                    Path("/tmp/spacev_test") / p.name,
+                    spacev_temp_dir / p.name,
+                    spacev_temp_dir / "test" / p.name,
+                    spacev_temp_dir / "exec" / p.name,
+                    temp_dir / "test" / p.name,
                     USER_DESKTOP_DIR / p.name,
                     Path.cwd() / p.name
                 ]

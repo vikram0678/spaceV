@@ -147,8 +147,34 @@ class MultiModelRouter:
 
     @staticmethod
     def get_keep_alive() -> str:
-        """Returns the configured Ollama keep_alive parameter to release memory."""
+        """Returns the configured Ollama keep-alive duration."""
         return OLLAMA_KEEP_ALIVE
+
+    @staticmethod
+    def is_colibri_available() -> bool:
+        """Checks if local Colibrì MoE engine is installed and responsive."""
+        try:
+            from core.colibri_client import colibri_client
+            return colibri_client.is_installed() and colibri_client.is_server_running()
+        except Exception:
+            return False
+
+    @staticmethod
+    def get_cloud_provider_fallback_chain() -> list[str]:
+        """Returns the priority cloud provider fallback chain."""
+        from core.provider_failover import DEFAULT_FAILOVER_CASCADE
+        return list(DEFAULT_FAILOVER_CASCADE)
+
+    def select_healthy_cloud_provider(self, preferred: str = "groq") -> str:
+        """Selects the first cloud provider in the fallback chain that is currently under rate limits."""
+        from core.rate_limiter import rate_limiter
+        chain = self.get_cloud_provider_fallback_chain()
+        if preferred in chain and rate_limiter.is_available(preferred):
+            return preferred
+        for provider in chain:
+            if rate_limiter.is_available(provider):
+                return provider
+        return "ollama"
 
 # Global singleton router
 model_router = MultiModelRouter()

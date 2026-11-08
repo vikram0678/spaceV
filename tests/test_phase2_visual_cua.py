@@ -8,6 +8,7 @@ Verifies:
 """
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -48,7 +49,10 @@ def test_som_coordinate_normalization():
 def test_set_of_marks_overlay_generation():
     # Create synthetic test canvas with distinct button-like rectangles
     test_img = Image.new("RGB", (800, 600), color=(30, 30, 35))
-    annotated, marks = generate_set_of_marks(test_img)
+    # This test covers SoM annotation, not native OCR. The host's winocr sync
+    # wrapper blocks while creating its asyncio socketpair in the sandbox.
+    with patch("core.vision_grounding._get_winocr", return_value=None):
+        annotated, marks = generate_set_of_marks(test_img)
 
     assert annotated is not None
     assert annotated.size == (800, 600)

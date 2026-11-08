@@ -88,6 +88,26 @@ class MissionCommander:
         durable_ledger.update_mission_status(self.mission_id, "READY")
         return self.execution_order
 
+    def resume_with_user_input(self, task_id: str, tool_arguments: Dict[str, Any]) -> None:
+        """Resume a paused mission after the user supplies missing tool arguments."""
+        if self.state_machine.current_state != "WAITING_INPUT":
+            raise ValueError("Mission is not waiting for user input.")
+        node = self.tasks.get(task_id)
+        if node is None or node.status != "WAITING_INPUT":
+            raise ValueError(f"Task '{task_id}' is not waiting for input.")
+        if not isinstance(tool_arguments, dict):
+            raise TypeError("tool_arguments must be a dictionary.")
+        arguments = node.payload.setdefault("arguments", {})
+        if not isinstance(arguments, dict):
+            raise ValueError("Waiting task has no argument object to update.")
+        arguments.update(tool_arguments)
+        node.status = "PENDING"
+        node.error = None
+        self.state_machine.transition_to("READY", f"User supplied missing input for {task_id}")
+        durable_ledger.update_task_node(task_id, "PLANNED")
+        durable_ledger.record_event(task_id, "USER_INPUT_RECEIVED", {"argument_keys": sorted(tool_arguments)})
+        durable_ledger.update_mission_status(self.mission_id, "READY")
+
     def execute_mission(self) -> Dict[str, Any]:
         """
         Executes all planned tasks in dependency order with empirical postcondition verification.
@@ -98,11 +118,15 @@ class MissionCommander:
 
         from tools.registry import execute_tool_normalized
 
-        completed_task_ids = set()
+        completed_task_ids = {task_id for task_id, node in self.tasks.items() if node.status == "COMPLETED"}
         failed_tasks = []
+        waiting_input = None
 
         for task_id in self.execution_order:
             node = self.tasks[task_id]
+
+            if node.status == "COMPLETED":
+                continue
 
             # Check dependencies
             unmet = [dep for dep in node.dependencies if dep not in completed_task_ids]
@@ -129,6 +153,7 @@ class MissionCommander:
                     raw_sbx_res = runner.run_in_sandbox(cmd)
                     exec_res = {
                         "success": raw_sbx_res.exit_code == 0 and not raw_sbx_res.blocked,
+                        "status": "success" if raw_sbx_res.exit_code == 0 and not raw_sbx_res.blocked else "failed",
                         "data": raw_sbx_res.stdout,
                         "error": raw_sbx_res.stderr if raw_sbx_res.exit_code != 0 else None,
                         "metadata": {"environment": "celesto_microvm", "exit_code": raw_sbx_res.exit_code}
@@ -139,6 +164,7 @@ class MissionCommander:
                     raw_tool_res = execute_tool_normalized(tool_name, tool_args)
                     exec_res = {
                         "success": raw_tool_res.success,
+                        "status": raw_tool_res.status,
                         "data": raw_tool_res.data,
                         "error": raw_tool_res.error,
                         "metadata": raw_tool_res.metadata
@@ -146,6 +172,18 @@ class MissionCommander:
 
                 node.result = exec_res.get("data")
                 duration_s = time.perf_counter() - t_exec_start
+
+                if exec_res.get("status") == "needs_input":
+                    result_text = str(node.result or "")
+                    marker = "SPACEV_NEEDS_USER_INPUT:"
+                    question = result_text.split(marker, 1)[1].strip() if marker in result_text else result_text
+                    node.status = "WAITING_INPUT"
+                    node.error = None
+                    node.finished_at = None
+                    waiting_input = {"task_id": task_id, "question": question}
+                    durable_ledger.update_task_node(task_id, "WAITING_INPUT", error_summary=question, duration_s=duration_s)
+                    durable_ledger.record_event(task_id, "USER_INPUT_REQUIRED", {"question": question})
+                    break
 
                 if not exec_res.get("success"):
                     node.status = "FAILED"
@@ -218,6 +256,21 @@ class MissionCommander:
                 failed_tasks.append(task_id)
 
         total_duration = time.perf_counter() - t0
+        if waiting_input:
+            self.state_machine.transition_to("WAITING_INPUT", f"Task {waiting_input['task_id']} requires user input")
+            durable_ledger.update_mission_status(self.mission_id, "WAITING_INPUT")
+            return {
+                "mission_id": self.mission_id,
+                "status": "WAITING_INPUT",
+                "total_tasks": len(self.execution_order),
+                "completed_tasks": len(completed_task_ids),
+                "failed_tasks": len(failed_tasks),
+                "clarification_question": waiting_input["question"],
+                "waiting_task_id": waiting_input["task_id"],
+                "total_duration_s": total_duration,
+                "evidence": {t_id: {"status": self.tasks[t_id].status, "result": self.tasks[t_id].result, "error": self.tasks[t_id].error} for t_id in self.execution_order},
+            }
+
         final_status = "COMPLETED" if not failed_tasks and len(completed_task_ids) == len(self.execution_order) else (
             "PARTIAL" if completed_task_ids else "FAILED"
         )

@@ -154,13 +154,29 @@ class VoiceListener(QThread):
         if not pcm_bytes or len(pcm_bytes) < 3200:
             return ""
 
-        # Zero-Hallucination Energy Gate: Drop ultra-faint room murmurs / mic hiss
+        # Zero-Hallucination Adaptive SNR Gate: Drop room murmurs, typing, and fan hum
         try:
             import numpy as np
-            samples = np.frombuffer(pcm_bytes, dtype=np.int16)
-            rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
-            if rms < 65.0:
-                logger.debug(f"[STT] Ambient noise below speech threshold (rms={rms:.1f}), dropping.")
+            samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32)
+            signal_energy = float(np.mean(samples ** 2))
+            signal_rms = float(np.sqrt(signal_energy))
+
+            # Estimate ambient noise floor from the quietest 200ms segment (3200 samples)
+            frame_len = 3200
+            if len(samples) >= frame_len:
+                min_noise_energy = min(
+                    float(np.mean(samples[i : i + frame_len] ** 2))
+                    for i in range(0, len(samples) - frame_len + 1, frame_len // 2)
+                )
+                snr_db = 10.0 * np.log10((signal_energy + 1e-6) / (min_noise_energy + 1e-6))
+            else:
+                snr_db = 20.0
+
+            # Reject if either absolute volume is near-zero silence or signal does not rise above ambient floor
+            if signal_rms < 25.0 or (snr_db < 7.5 and signal_rms < 120.0):
+                logger.debug(
+                    f"[STT] Ambient audio below speech SNR threshold (snr={snr_db:.1f}dB, rms={signal_rms:.1f}), dropping."
+                )
                 return ""
         except Exception:
             pass

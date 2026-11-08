@@ -3,6 +3,7 @@ Fast-Path Intent Dispatcher for Zero-Latency Instant Responses (0ms).
 Bypasses LLM inference for trivial system commands with authentic SpaceV personality.
 """
 import re
+import time
 
 from tools.file_tools import list_desktop_files
 from tools.system_tools import (
@@ -56,12 +57,23 @@ class FastRouter:
         if suspended and suspended.get("options"):
             matched_opt = None
             clean_text = text.lower().strip()
-            for label, opt_val in suspended["options"]:
-                clean_label = re.sub(r"[^a-zA-Z0-9\s]", "", label).strip().lower()
-                clean_val = opt_val.lower().strip()
-                if clean_text in [clean_val, clean_label] or clean_val in clean_text or clean_label in clean_text:
-                    matched_opt = (label, opt_val)
-                    break
+
+            # Check 1: Did the user type a number ("1", "2", "3", "4", "5", etc.)?
+            num_match = re.match(r"^(?:option\s+)?#?(\d+)$", clean_text)
+            if num_match:
+                idx = int(num_match.group(1)) - 1
+                if 0 <= idx < len(suspended["options"]):
+                    matched_opt = suspended["options"][idx]
+
+            # Check 2: Match by profile name or keyword
+            if not matched_opt:
+                for label, opt_val in suspended["options"]:
+                    clean_label = re.sub(r"[^a-zA-Z0-9\s]", "", label).strip().lower()
+                    clean_val = opt_val.lower().strip()
+                    tokens = [clean_val, clean_label] + [w for w in clean_label.split() if len(w) > 2]
+                    if any(tok in clean_text for tok in tokens) or clean_text in clean_label:
+                        matched_opt = (label, opt_val)
+                        break
 
             if matched_opt:
                 label, opt_val = matched_opt
@@ -71,30 +83,254 @@ class FastRouter:
 
                 # Persist to dynamic hierarchical memory
                 memory.set_preference(domain, prop_key, opt_val)
+                if domain in ("chrome", "browser", "brave", "edge") and prop_key == "profile":
+                    memory.set("preferred_chrome_profile", opt_val)
+                    memory.set("preferred_browser_profile", opt_val)
                 memory.clear_suspended_disambiguation()
+
+                # Dismiss Holographic Visor attention & target overlay
+                try:
+                    from ui.holographic_visor import HolographicVisor
+                    visor = HolographicVisor.get_instance()
+                    if visor:
+                        visor.clear_targets()
+                        visor.clear_attention()
+                except Exception:
+                    pass
+
+                from core.app_catalog import app_catalog
+                def_browser, _ = app_catalog.get_default_browser()
+                browser_title = (
+                    domain.title()
+                    if domain in ("chrome", "brave", "edge")
+                    else def_browser.title()
+                )
+
+                # Career Application Human Confirmation Handler
+                if domain == "career_application":
+                    payload = suspended.get("payload", {})
+                    job_url = payload.get("job_url", "")
+                    resume_file = payload.get("resume_file", "")
+                    if opt_val == "submit_confirmed":
+                        from tools.career_tools import apply_to_job
+                        res = apply_to_job(job_url, resume_path=resume_file, auto_submit=False)
+                        return ("apply_to_job", res, f"I prepared the review, but this integration cannot submit the form. The application has not been marked as applied.\n\n{res}")
+                    elif opt_val == "inspect_manually":
+                        from tools.web_tools import open_url
+                        open_url(job_url)
+                        return ("open_url", job_url, f"Opening application form in {browser_title} for your manual review, Sir:\n{job_url}")
+                    elif opt_val == "cancel":
+                        return ("cancel_application", "Cancelled", "Application cancelled, Sir. No data was submitted.")
+
+                # If the chosen option is a direct URL, open it in browser!
+                if opt_val.startswith("http://") or opt_val.startswith("https://"):
+                    from tools.web_tools import open_url
+                    res = open_url(opt_val)
+                    return ("open_url", opt_val, f"Right away, Sir. Opening **'{label}'** in your browser:\n{opt_val}")
+
+                # Launch / switch browser to the selected profile
+                if domain in ("chrome", "browser", "brave", "edge") and prop_key == "profile":
+                    from core.platform_adapter import PlatformAdapter
+                    target_b = domain if domain in ("chrome", "brave", "edge") else def_browser
+                    PlatformAdapter.launch_app(target_b, profile_dir=opt_val)
+                    time.sleep(1.2)
 
                 # Resume suspended task if present
                 if suspended_task:
-                    if domain == "chrome" and prop_key == "profile":
+                    st_lower = suspended_task.lower()
+                    if any(k in st_lower for k in ["click", "first", "organic"]):
+                        from tools.gui_tools import gui_human_search_and_open
+                        clean_t = re.sub(r"^(?:search\s+(?:google\s+(?:for\s+)?)?|google\s+)", "", suspended_task, flags=re.IGNORECASE).strip()
+                        clean_t = re.sub(r"(?:and\s+)?(?:click|open)\s+(?:the\s+)?(?:first|top)?\s*results?", "", clean_t, flags=re.IGNORECASE).strip()
+                        clean_t = re.sub(r"^(?:for\s+)", "", clean_t).strip()
+                        res = gui_human_search_and_open(clean_t, click_first_result=True)
+                        return ("resolve_disambiguation", opt_val, f"Understood, Sir. Saved **'{label}'** for {browser_title}.\n\nOpening {browser_title} under **'{label}'** and completing your search:\n{res}")
+                    elif any(k in st_lower for k in ["play", "youtube", "music", "song", "video"]):
                         from tools.web_tools import play_youtube
                         res = play_youtube(suspended_task)
-                        return ("resolve_disambiguation", opt_val, f"Understood, Sir. Saved **'{label}'** for {domain.capitalize()} in memory.\n\nResuming your request for **'{suspended_task}'** now:\n{res}")
+                        return ("resolve_disambiguation", opt_val, f"Understood, Sir. Saved **'{label}'** for {browser_title}.\n\nOpening media for **'{suspended_task}'**:\n{res}")
+                    elif any(k in st_lower for k in ["search", "google", "find", "lookup"]):
+                        from tools.gui_tools import gui_search_google_browser
+                        res = gui_search_google_browser(suspended_task)
+                        return ("resolve_disambiguation", opt_val, f"Understood, Sir. Saved **'{label}'** for {browser_title}.\n\nSearching the web for **'{suspended_task}'**:\n{res}")
+                    elif any(k in st_lower for k in ["open", "links", "tabs", "neatly", "one by one"]):
+                        from tools.web_tools import open_browser_urls
+                        res = open_browser_urls(suspended_task)
+                        return ("resolve_disambiguation", opt_val, f"Understood, Sir. Saved **'{label}'** for {browser_title}.\n\nOpening links:\n{res}")
                     else:
                         return ("resolve_disambiguation", opt_val, f"Understood, Sir. Saved **'{label}'** for {domain.capitalize()} in memory.\n\nResuming your suspended request: **'{suspended_task}'**...")
 
                 return ("resolve_disambiguation", opt_val, f"Understood, Sir. Saved preference **'{label}'** for {domain.capitalize()}. I will automatically remember this choice.")
 
-        # Tier 1: Aurelio Semantic-Router / SpaceV Vector Centroid Fast-Path (<0.1ms)
-        # Bypasses LLM and brittle regex sprawl for natural phrasing across all core desktop actions
+        # Tier 1: Unified Intent Resolution Pipeline (Sub-millisecond Semantic + Grounded Execution)
+        # Replaces brittle regex sprawl with semantic capability retrieval, typed parameter binding,
+        # negation/constraint enforcement, ambiguity detection, and empirical outcome verification.
         try:
-            from core.semantic_router_engine import semantic_router_engine
-            semantic_match = semantic_router_engine.route(user_prompt)
-            if semantic_match:
-                intent_name, _confidence, _latency_ms = semantic_match
-                dispatched = semantic_router_engine.dispatch(intent_name, user_prompt=user_prompt)
-                if dispatched:
-                    return dispatched
-        except Exception:
+            from core.intent import unified_resolver, outcome_verifier, IntentType
+
+            resolution = unified_resolver.resolve(user_prompt)
+
+            # 1. Ambiguous or incomplete request -> Return clarification question
+            if resolution.is_ambiguous or resolution.intent_type == IntentType.CLARIFICATION:
+                if resolution.clarification_question:
+                    return (
+                        "clarification",
+                        resolution.ambiguity_reason or "Ambiguous Request",
+                        resolution.clarification_question,
+                    )
+
+            # 2. Negated action -> Acknowledge user constraint without executing
+            if resolution.intent_type == IntentType.NEGATED:
+                reply = resolution.clarification_question or f"Understood, Sir. I will NOT execute {resolution.capability_name} as requested."
+                return (resolution.intent, "negated", reply)
+
+            # 3. Composite task or deep generative cognitive task -> Defer to LangGraph / Planner
+            if resolution.intent_type == IntentType.COMPOSITE_TASK or resolution.requires_planning:
+                return None
+
+            # 4. Simple Executable Action -> Dispatch and verify
+            if resolution.is_executable and resolution.tool_name:
+                t_name = resolution.tool_name
+                params = resolution.parameters
+
+                if t_name == "open_application":
+                    app_name = params.get("app_name", "")
+                    disp_name = params.get("display_name", app_name.title())
+                    if params.get("uninstalled"):
+                        return (
+                            "app_not_found",
+                            app_name,
+                            f"Sir, I inspected your workstation applications and Start Menu, but **'{app_name}'** is not installed on this PC.",
+                        )
+                    res_out = open_application(app_name)
+                    outcome_verifier.verify(resolution, res_out)
+                    return (
+                        "open_application",
+                        res_out,
+                        f"Right away, Sir. Initializing **{disp_name}** from your workstation applications.",
+                    )
+
+                elif t_name == "media_control":
+                    act = params.get("action", "play_pause")
+                    res_out = media_control(act)
+                    outcome_verifier.verify(resolution, res_out)
+                    action_msgs = {
+                        "mute": "Toggled system audio mute, Sir.",
+                        "volume_up": "Increased volume level, Sir.",
+                        "volume_down": "Decreased volume level, Sir.",
+                        "play_pause": "Toggled media playback for you, Sir.",
+                        "next": "Skipped to the next track, Sir.",
+                        "previous": "Returned to the previous track, Sir.",
+                    }
+                    reply = action_msgs.get(act, f"Executed media {act}, Sir.")
+                    return ("media_control", res_out, reply)
+
+                elif t_name == "set_system_brightness":
+                    level = params.get("level", 50)
+                    from tools.system_tools import set_system_brightness
+                    res_out = set_system_brightness(level)
+                    outcome_verifier.verify(resolution, res_out)
+                    return ("set_system_brightness", res_out, res_out)
+
+                elif t_name == "set_timer":
+                    from tools.system_tools import set_timer
+                    mins = params.get("minutes", 5.0)
+                    lbl = params.get("label", "Timer")
+                    res_out = set_timer(mins, label=lbl)
+                    outcome_verifier.verify(resolution, res_out)
+                    return ("set_timer", res_out, res_out)
+
+                elif t_name == "get_current_time":
+                    res_out = get_current_time()
+                    return ("get_current_time", res_out, f"At your service, Sir. {res_out}")
+
+                elif t_name == "get_system_stats":
+                    res_out = get_system_stats()
+                    return ("get_system_stats", res_out, f"System diagnostics at your disposal, Sir:\n\n{res_out}")
+
+                elif t_name == "optimize_system_memory":
+                    res_out = optimize_system_memory()
+                    return ("optimize_system_memory", res_out, res_out)
+
+                elif t_name == "get_network_info":
+                    res_out = get_network_info()
+                    return ("get_network_info", res_out, f"Network diagnostics ready, Sir:\n\n{res_out}")
+
+                elif t_name == "lock_workstation":
+                    res_out = lock_workstation()
+                    return ("lock_workstation", res_out, "Workstation locked and secured for you, Sir.")
+
+                elif t_name == "empty_recycle_bin":
+                    res_out = empty_recycle_bin()
+                    return ("empty_recycle_bin", res_out, "Recycle bin successfully purged, Sir.")
+
+                elif t_name == "take_screen_snapshot":
+                    res_out = take_screen_snapshot()
+                    outcome_verifier.verify(resolution, res_out)
+                    return ("take_screen_snapshot", res_out, f"Screen snapshot captured and saved, Sir:\n{res_out}")
+
+                elif t_name == "get_active_window_info":
+                    res_out = get_active_window_info()
+                    return ("get_active_window_info", res_out, f"Focused application details, Sir:\n\n{res_out}")
+
+                elif t_name == "read_clipboard_text":
+                    res_out = read_clipboard_text()
+                    return ("read_clipboard_text", res_out, f"Inspecting your clipboard buffer, Sir:\n\n{res_out}")
+
+                elif t_name == "list_running_apps":
+                    res_out = list_running_apps()
+                    return ("list_running_apps", res_out, f"Scanning your active desktop workspace, Sir:\n\n{res_out}")
+
+                elif t_name == "list_desktop_files":
+                    res_out = list_desktop_files()
+                    return ("list_desktop_files", res_out, f"Here are the items on your Desktop, Sir:\n\n{res_out}")
+
+                elif t_name == "search_google":
+                    from tools.web_tools import search_google
+                    q = params.get("query", "Google")
+                    res_out = search_google(q)
+                    return ("search_google", res_out, f"Right away, Sir. {res_out}")
+
+                elif t_name == "play_youtube":
+                    from tools.web_tools import play_youtube
+                    q = params.get("query", "music")
+                    res_out = play_youtube(q)
+                    return ("play_youtube", res_out, f"Right away, Sir. Opening media playback for '{q}'.")
+
+                elif t_name in ("search_and_harvest_jobs", "scrape_jobs") or resolution.capability_name == "career.search_jobs":
+                    from tools.career_tools import search_and_harvest_jobs
+                    role = params.get("role", "")
+                    loc = params.get("location", "")
+                    save_desktop = params.get("save_to_desktop", False)
+                    res_out = search_and_harvest_jobs(role=role, location=loc, save_to_desktop=save_desktop)
+                    if str(res_out).startswith("SPACEV_NEEDS_USER_INPUT:"):
+                        question = str(res_out).split("SPACEV_NEEDS_USER_INPUT:", 1)[1].strip()
+                        return ("career_clarification", res_out, question)
+                    return ("scrape_jobs", res_out, f"Job search results for **'{role}'** in **{loc}**:\n\n{res_out}")
+
+                elif t_name == "gui_human_search_and_open" or resolution.capability_name == "web.gui_search":
+                    from tools.gui_tools import gui_human_search_and_open
+                    q = params.get("query", "Google")
+                    res_out = gui_human_search_and_open(q, click_first_result=True)
+                    if "modal blocker:" in str(res_out).lower():
+                        modal_question = str(res_out).replace("⚠️ Modal Blocker:", "").strip()
+                        return ("modal_disambiguation", modal_question, modal_question)
+                    return ("gui_human_search_and_open", res_out, f"Right away, Sir. {res_out}")
+
+                elif t_name == "greeting":
+                    return ("greeting", "SpaceV Systems Online", "SpaceV online and operational, Sir. All cybernetic systems green. How may I assist your workflow today?")
+                elif t_name == "gratitude":
+                    return ("gratitude", "SpaceV Acknowledged", "My absolute pleasure, Sir. Always at your service. Let me know what you'd like to tackle next!")
+                elif t_name == "farewell":
+                    return ("farewell", "SpaceV Standby", "Standing by in low-power standby mode, Sir. Call upon me whenever you need assistance.")
+                elif t_name == "status_ping":
+                    return ("status_ping", "SpaceV Primed", "SpaceV systems fully operational, primed, and awaiting your command, Sir.")
+                elif t_name == "identity":
+                    from core.intent.capability_registry import capability_registry
+                    id_cap = capability_registry.get("general.identity")
+                    return ("identity", "SpaceV Identity & Capabilities", id_cap.default_response if id_cap else "SpaceV Autonomous Engine.")
+
+        except Exception as e:
             pass
 
         # 0.1 Gratitude & Politeness (0ms)
@@ -242,12 +478,21 @@ class FastRouter:
             res = activate_workspace_mode(mode_name)
             return ("activate_workspace_mode", res, res)
 
-        # 13. Quick App Launches ("open calc", "open notepad", "open chrome")
-        app_match = re.match(r"^(open|launch)\s+(calculator|calc|notepad|chrome|paint|task manager|taskmgr|vs code|vscode|settings)$", text)
-        if app_match:
-            app_name = app_match.group(2)
-            res = open_application(app_name)
-            return ("open_application", res, f"Right away, Sir. Initializing {app_name} for you now.")
+        # 13. Dynamic Application Launches Grounded in System App Catalog (Zero Hardcoded App Whitelist)
+        app_match = re.match(
+            r"^(?:please\s+|can\s+you\s+|hey\s+spacev\s+)?(?:open|launch)\s+([a-zA-Z0-9_\-\.\s]+?)(?:\s+(?:app|application|program))?$",
+            text
+        )
+        if app_match and not any(k in text for k in [" and ", "youtube", "http", "folder", "search", "write", "brightness", "mode", "terminal"]):
+            raw_target = app_match.group(1).strip()
+            if raw_target not in ("coding", "focus", "research", "ghost"):
+                from core.app_catalog import app_catalog
+                matched = app_catalog.find_app(raw_target)
+                if matched:
+                    res = open_application(matched.name)
+                    return ("open_application", res, f"Right away, Sir. Initializing **{matched.display_name}** from your workstation applications.")
+                else:
+                    return ("app_not_found", raw_target, f"Sir, I inspected your workstation applications and Start Menu, but **'{raw_target}'** is not installed on this PC.")
 
         # 14. Autonomous Cursor Drawing in MS Paint ("draw a house in paint", "draw a smiling face", "draw a star")
         draw_match = re.match(r"^(?:please\s+)?draw(?:\s+(?:a|an|the|me\s+a|me\s+an))?\s+(.+?)(?:\s+in\s+paint|\s+in\s+mspaint|\s+with\s+cursor|\s+on\s+canvas)?$", text)
@@ -259,29 +504,118 @@ class FastRouter:
                 res = gui_draw_in_paint(raw_shape)
                 return ("gui_draw_in_paint", res, res)
 
+        # 14.5 Autonomous Human-like Web Search & Click ("search google for ... and click the first result")
+        human_search_match = re.match(
+            r"^(?:hey\s+|please\s+)?(?:open\s+(?:browser|web\s+browser|chrome|brave|edge)\s+and\s+)?(?:search\s+(?:google\s+(?:for\s+)?)?|search\s+(?:the\s+web\s+(?:for\s+)?)?|google\s+)(.+?)(?:\s+(?:and\s+)?(?:click|open)\s+(?:the\s+)?(?:first|top)?\s*results?|\s+like\s+(?:a\s+)?human)?$",
+            text
+        )
+        if human_search_match and any(k in text.lower() for k in ["click", "first", "open", "like human", "like a human"]):
+            target_q = human_search_match.group(1).strip()
+            clean_q = re.sub(r"\b(?:and\s+)?(?:click|open)\s+(?:the\s+)?(?:first|top)?\s*results?\b", "", target_q, flags=re.IGNORECASE).strip()
+            clean_q = re.sub(r"^(?:for\s+)", "", clean_q).strip()
+            from tools.gui_tools import gui_human_search_and_open
+            res = gui_human_search_and_open(clean_q or target_q, click_first_result=True)
+            if "modal blocker:" in str(res).lower():
+                modal_question = str(res).replace("⚠️ Modal Blocker:", "").strip()
+                return ("modal_disambiguation", modal_question, modal_question)
+            return ("gui_human_search_and_open", res, f"Right away, Sir. {res}")
+
+        # 14.8 Direct Navigation / Website Launch ("take me to ... website", "takem to the smart india hackathon 2026 website and timeline")
+        nav_match = re.match(
+            r"^(?:hey\s+|please\s+)?(?:take\s*m[ye]\s+to|takem\s+to|navigate\s+to|go\s+to|bring\s+up)\s+(?:the\s+)?(.+)$",
+            text,
+            re.IGNORECASE,
+        )
+        if nav_match:
+            from core.query_parser import parse_search_intent
+            clean_q, _, _ = parse_search_intent(text)
+            target_q = clean_q or nav_match.group(1).strip()
+            from tools.gui_tools import gui_human_search_and_open
+            res = gui_human_search_and_open(target_q, click_first_result=True)
+            if "modal blocker:" in str(res).lower():
+                modal_question = str(res).replace("⚠️ Modal Blocker:", "").strip()
+                return ("modal_disambiguation", modal_question, modal_question)
+            return ("gui_human_search_and_open", res, f"Right away, Sir! Navigating to **'{target_q}'**:\n\n{res}")
+
         # 15. Quick Web Searches & Job/Internship Scraping ("open browser and search for ai intern", "search google for python")
         search_match = re.match(
-            r"^(?:hey\s+|please\s+)?(?:open\s+(?:browser|browswer|chrome|web\s+browser)\s+and\s+)?(?:search\s+(?:for\s+|google\s+(?:for\s+)?)?|google\s+)(.+?)(?:\s+and\s+(?:make\s+(?:a\s+|the\s+)?list.*|list\s+them.*|show\s+them.*))?$",
+            r"^(?:hey\s+|please\s+)?(?:open\s+(?:browser|browswer|chrome|brave|edge|web\s+browser)\s+and\s+)?(?:search\s+(?:for\s+|the\s+web\s+for\s+|google\s+(?:for\s+)?)?|google\s+)(.+)$",
             text
         )
         if search_match:
-            query = search_match.group(1).strip()
-            if any(k in query.lower() for k in ["job", "jobs", "intern", "internship", "internships", "vacancies", "openings"]):
-                from tools.scraper_tools import scrape_jobs
+            from core.query_parser import parse_search_intent, get_curated_learning_sources
+            from core.app_catalog import app_catalog
+            def_browser, _ = app_catalog.get_default_browser()
+            browser_title = def_browser.title()
+
+            clean_q, followup, meta = parse_search_intent(text)
+            clean_q = clean_q or search_match.group(1).strip()
+
+            if any(k in clean_q.lower() for k in ["job", "jobs", "intern", "internship", "internships", "vacancies", "openings"]) and not any(k in text.lower() for k in ["click", "first", "like human", "like a human"]):
+                from tools.career_tools import search_and_harvest_jobs
+                from core.memory import memory
+                # Extract location if specified (e.g., 'in Bengaluru', 'in London', 'remote')
+                loc_m = re.search(r"\b(?:in|at|near|around)\s+([a-zA-Z\s]+?)(?:\s+and\s+save|\s+and|\s*$)", clean_q, re.IGNORECASE)
+                user_target_loc = memory.get_preference("career", "target_location") or memory.get("target_location") or ""
+                explicitly_remote = bool(re.search(r"\bremote\b", clean_q, re.IGNORECASE))
+                location = loc_m.group(1).strip() if loc_m else ("remote" if explicitly_remote else user_target_loc)
+
+                role_str = re.sub(r"\b(?:in|at|near|around)\s+([a-zA-Z\s]+)", "", clean_q, flags=re.IGNORECASE)
+                role_clean = re.sub(r"\b(?:remote|or\s+related|or\s+similar|jobs?|internships?|openings?|vacancies|and\s+save\s+to\s+desktop|save\s+to\s+desktop)\b", "", role_str, flags=re.IGNORECASE).strip()
+                user_target_role = memory.get_preference("career", "target_role") or memory.get("target_role") or ""
+                target_role = role_clean or user_target_role
+
+                res = search_and_harvest_jobs(role=target_role, location=location, save_to_desktop=False)
+                if str(res).startswith("SPACEV_NEEDS_USER_INPUT:"):
+                    question = str(res).split("SPACEV_NEEDS_USER_INPUT:", 1)[1].strip()
+                    return ("career_clarification", res, question)
+                return ("scrape_jobs", res, f"Job search results for **'{target_role}'** in **{location}**:\n\n{res}")
+
+            # Check if this is an interactive source evaluation / comparison request
+            sources = get_curated_learning_sources(clean_q)
+            if meta.get("has_comparison") and sources:
                 from tools.web_tools import search_google
-                search_google(f"{query} internships")
-                scrape_role = re.sub(r"\b(?:or\s+related|or\s+similar|jobs?|internships?)\b", "", query, flags=re.IGNORECASE).strip()
-                res = scrape_jobs(role=scrape_role or query, location="remote", save_to_desktop=True)
-                return ("scrape_jobs", res, f"Opened your browser and retrieved active tech opportunities for '{query}', Sir:\n\n{res}")
+                search_res = search_google(clean_q)
+                if "modal blocker:" in str(search_res).lower():
+                    modal_question = str(search_res).replace("⚠️ Modal Blocker:", "").strip()
+                    return ("modal_disambiguation", modal_question, modal_question)
+
+                options = []
+                lines = [
+                    f"Sir, I have searched the web in {browser_title} for **'{clean_q}'**.\n",
+                    "Here is my analysis of the top learning links and sources to help you choose the best fit:\n"
+                ]
+                for idx, (title, org, link, desc) in enumerate(sources, 1):
+                    badge = "🏆" if idx == 1 else ("🧠" if idx == 2 else ("⚡" if idx == 3 else "🚀"))
+                    lines.append(f"{idx}. {badge} **{title}** ({org})\n   • **Analysis**: {desc}\n   • **Link**: `{link}`\n")
+                    options.append((f"{idx}. {title}", link))
+
+                lines.append(f"Which link and source would you prefer me to open for you, Sir? (Reply with **1** to **{len(sources)}** or the name)")
+                reply_text = "\n".join(lines)
+
+                from core.memory import memory
+                memory.set_suspended_disambiguation({
+                    "domain": "web",
+                    "property_key": "selected_source",
+                    "question": reply_text,
+                    "options": options,
+                    "suspended_task": None,
+                    "timestamp": time.time()
+                })
+                return ("search_and_recommend_sources", clean_q, reply_text)
+
             else:
                 from tools.web_tools import search_google
-                res = search_google(query)
+                res = search_google(clean_q)
+                if "modal blocker:" in str(res).lower():
+                    modal_question = str(res).replace("⚠️ Modal Blocker:", "").strip()
+                    return ("modal_disambiguation", modal_question, modal_question)
                 return ("search_google", res, f"Right away, Sir. {res}")
 
-        # 16. YouTube Video & Music Playback ("open chrome open youtube play...", "play ... on youtube", "search youtube for...")
+        # 16. YouTube Video & Media Playback ("open browser play...", "play ... on youtube", "play some lofi music")
         yt_query = None
         m_yt1 = re.match(
-            r"^(?:(?:hey|hi|hello|please)\s+)?(?:open\s+(?:chrome|browser|web\s+browser)\s+)?(?:open\s+)?youtube\s+(?:and\s+)?(?:play\s+|search\s+(?:for\s+)?)?(.+?)(?:\s+(?:play(?:\s+also)?|video|song))?$",
+            r"^(?:(?:hey|hi|hello|please)\s+)?(?:open\s+(?:chrome|brave|edge|browser|web\s+browser)\s+)?(?:open\s+)?youtube\s+(?:and\s+)?(?:play\s+|search\s+(?:for\s+)?)?(.+?)(?:\s+(?:play(?:\s+also)?|video|song))?$",
             text
         )
         if m_yt1:
@@ -291,7 +625,7 @@ class FastRouter:
             if raw_q:
                 yt_query = raw_q
         else:
-            m_yt2 = re.match(r"^(?:(?:hey|hi|hello|please)\s+)?play\s+(.+?)(?:\s+(?:on|in)\s+youtube|\s+video|\s+song)?$", text)
+            m_yt2 = re.match(r"^(?:(?:hey|hi|hello|please)\s+)?(?:play|listen\s+to|watch)\s+(.+?)(?:\s+(?:on|in)\s+(?:youtube|spotify|browser)|\s+video|\s+song)?$", text)
             if m_yt2:
                 candidate = m_yt2.group(1).strip()
                 if candidate not in ["music", "song", "audio", "pause", ""]:
@@ -304,7 +638,10 @@ class FastRouter:
         if yt_query:
             from tools.web_tools import play_youtube
             res = play_youtube(yt_query)
-            return ("play_youtube", res, f"Right away, Sir. Opening YouTube to play '{yt_query}'.")
+            if "modal blocker:" in str(res).lower():
+                modal_question = str(res).replace("⚠️ Modal Blocker:", "").strip()
+                return ("modal_disambiguation", modal_question, modal_question)
+            return ("play_youtube", res, f"Right away, Sir. Opening media playback for '{yt_query}'.")
 
         # 17. Desktop Dictation Mode ("dictation mode", "start dictation", "dictate text")
         if re.search(r"^(?:activate\s+|start\s+|toggle\s+)?dictat(?:e|ion)(?:\s+mode)?$", text):
@@ -324,29 +661,99 @@ class FastRouter:
             res = list_running_apps()
             return ("list_running_apps", res, f"Scanning your active desktop workspace, Sir:\n\n{res}")
 
-        # 19. Chrome Profile Preferences ("use chrome profile vicky", "set chrome profile to vikram", "use vikram", "switch to vicky")
-        profile_set_match = re.search(r"^(?:use|set|switch\s+to|select)?\s*(?:chrome\s+profile\s+(?:to\s+)?|(?:the\s+)?(?:profile\s+)?)?(vikram|vicky|vicky\s+space|n\.\s*vikram)(?:\s+profile)?$", text)
-        if profile_set_match:
+        # 19. Dynamic Browser Profile Preferences & Switching
+        profile_set_match = re.search(
+            r"^(?:use|set|switch(?:\s+to)?|select)\s+(?:(?:browser|chrome|brave|edge)\s+profile\s+(?:to\s+)?|(?:the\s+)?(?:profile\s+)?)?([a-zA-Z0-9_\-\.\s]+?)(?:\s+profile)?$",
+            text,
+            re.IGNORECASE,
+        )
+        if profile_set_match and ("profile" in text or any(k in text for k in ["chrome", "brave", "edge", "browser"])):
             from core.memory import memory
-            raw_prof = profile_set_match.group(1).strip()
-            prof_val = "vicky" if "vicky" in raw_prof else "vikram"
-            prof_label = "Vicky Space" if prof_val == "vicky" else "n. vikram"
+            from core.modal_interceptor import get_detected_chrome_profiles
+            from core.platform_adapter import PlatformAdapter
+            from core.app_catalog import app_catalog
+
+            def_browser, _ = app_catalog.get_default_browser()
+            browser_title = def_browser.title()
+
+            raw_target = profile_set_match.group(1).strip()
+            profs = get_detected_chrome_profiles()
+            chosen_prof = None
+
+            # 1. Match numeric index (1-based)
+            if raw_target.isdigit():
+                idx = int(raw_target) - 1
+                if 0 <= idx < len(profs):
+                    chosen_prof = profs[idx]
+
+            # 2. Match profile ID, name, email, or display
+            if not chosen_prof and profs:
+                rt_lower = raw_target.lower()
+                for p in profs:
+                    if (
+                        rt_lower == p["id"].lower()
+                        or rt_lower in p["display"].lower()
+                        or rt_lower in p["name"].lower()
+                        or (p.get("email") and rt_lower in p["email"].lower())
+                    ):
+                        chosen_prof = p
+                        break
+
+            if chosen_prof:
+                prof_val = chosen_prof["id"]
+                prof_label = chosen_prof["display"]
+            else:
+                prof_val = raw_target
+                prof_label = raw_target
+
+            memory.set("preferred_browser_profile", prof_val)
             memory.set("preferred_chrome_profile", prof_val)
+            memory.set_preference("browser", "profile", prof_val)
+            memory.set_preference("chrome", "profile", prof_val)
+            PlatformAdapter.launch_app(def_browser, profile_dir=prof_val)
+
+            # Clear Holographic Visor targeting reticles and attention banner
+            try:
+                from ui.holographic_visor import HolographicVisor
+                visor = HolographicVisor.get_instance()
+                if visor:
+                    visor.clear_targets()
+                    visor.clear_attention()
+            except Exception:
+                pass
 
             pending_task = memory.get("pending_resume_task")
             if pending_task:
                 memory.set("pending_resume_task", None)
-                from tools.web_tools import play_youtube
-                res = play_youtube(pending_task)
-                return ("set_chrome_profile", prof_val, f"Understood, Sir. Preferred Chrome profile updated to **'{prof_label}'** in memory.\n\nResuming your request for **'{pending_task}'** now:\n{res}")
+                if any(k in pending_task.lower() for k in ["song", "play", "music", "video"]):
+                    from tools.web_tools import play_youtube
+                    res = play_youtube(pending_task)
+                else:
+                    from tools.web_tools import search_google
+                    res = search_google(pending_task)
+                return ("set_chrome_profile", prof_val, f"Understood, Sir. Preferred {browser_title} profile updated to **'{prof_label}'** in memory.\n\nResuming your request for **'{pending_task}'** now:\n{res}")
 
-            return ("set_chrome_profile", prof_val, f"Right away, Sir. Preferred Chrome profile updated to **'{prof_label}'** in persistent memory. I will automatically use it for browser automation.")
+            return ("set_chrome_profile", prof_val, f"Right away, Sir. Preferred {browser_title} profile updated to **'{prof_label}'** in persistent memory. I will automatically use it for browser automation.")
 
         if re.search(r"^(?:which|what)\s+chrome\s+profile(?:\s+am\s+i\s+using|\s+is\s+set|\s+is\s+active|\s+is\s+default)?$", text):
             from core.memory import memory
-            current = memory.get("preferred_chrome_profile", "vikram")
-            label = "Vicky Space" if current == "vicky" else "n. vikram"
-            return ("get_chrome_profile", current, f"Your current preferred Chrome automation profile is set to **'{label}'**, Sir.")
+            from core.modal_interceptor import get_detected_chrome_profiles
+            from core.app_catalog import app_catalog
+
+            def_browser, _ = app_catalog.get_default_browser()
+            browser_title = def_browser.title()
+
+            current = memory.get("preferred_browser_profile") or memory.get("preferred_chrome_profile") or memory.get_preference("chrome", "profile")
+            profs = get_detected_chrome_profiles()
+            label = current
+            if profs and current:
+                for p in profs:
+                    if p["id"] == current or p["display"] == current:
+                        label = p["display"]
+                        break
+            if not label:
+                label = profs[0]["display"] if profs else "Default"
+            return ("get_chrome_profile", current or "Default", f"Your current preferred {browser_title} automation profile is set to **'{label}'**, Sir.")
 
         # 20. Ghost Mode Background Automation ("activate ghost mode", "turn off ghost mode", "ghost mode status")
         if re.search(r"^(?:activate|enable|turn\s+on|start)\s+ghost\s+mode$", text):
@@ -384,20 +791,7 @@ class FastRouter:
         except Exception:
             pass
 
-        # 22. Aurelio Semantic-Router Fuzzy Natural Language Fast-Path (<4ms)
-        # Bypasses LLM for natural phrasing of system, media, clipboard, and desktop intents
-        try:
-            from core.semantic_router_engine import semantic_router_engine
-            semantic_match = semantic_router_engine.route(user_prompt)
-            if semantic_match:
-                intent_name, _confidence, _latency_ms = semantic_match
-                dispatched = semantic_router_engine.dispatch(intent_name, user_prompt=user_prompt)
-                if dispatched:
-                    return dispatched
-        except Exception:
-            pass
-
-        # Not matched -> Send to Ollama Brain
+        # Not matched -> Send to Ollama Brain / LangGraph
         return None
 
     @staticmethod

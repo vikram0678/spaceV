@@ -31,6 +31,18 @@ class AECReferenceGuard:
         self._speaker_start_time = 0.0
         self._last_barge_in_time = 0.0
         self._on_barge_in_callback: Callable[[], None] | None = None
+        self._headphone_mode = False
+        self.barge_in_rms_threshold = 0.040  # Distinguishes laptop speaker bleed from deliberate user voice
+        self.barge_in_prob_threshold = 0.70  # Neural confidence requirement
+
+    def set_headphone_mode(self, enabled: bool) -> None:
+        """Enables zero-bleed headphone mode for feather-light conversational barge-in."""
+        self._headphone_mode = enabled
+        logger.info(f"[AEC] Headphone mode set to: {enabled}")
+
+    @property
+    def headphone_mode(self) -> bool:
+        return self._headphone_mode
 
     def set_speaker_active(self, active: bool) -> None:
         """Sets outgoing TTS speaker status."""
@@ -59,12 +71,16 @@ class AECReferenceGuard:
         if not self._is_speaker_active:
             return is_speech, prob
 
+        min_rms = 0.020 if self._headphone_mode else self.barge_in_rms_threshold
+        min_prob = 0.65 if self._headphone_mode else self.barge_in_prob_threshold
+
         # 1. High-confidence direct human voice detected during playback -> Conversational Barge-In!
-        if (prob >= 0.70 and rms > 0.018) or (rms > 0.035):
+        # Strict neural voice and energy differential: rejects speaker bleed while allowing user speech
+        if prob >= min_prob and rms >= min_rms:
             now = time.time()
-            if now - self._last_barge_in_time > 0.6:
+            if now - self._last_barge_in_time > 0.3:
                 self._last_barge_in_time = now
-                logger.info("[AEC] 🗣️ Conversational Barge-In detected! Immediate TTS halt triggered.")
+                logger.info(f"[AEC] 🗣️ Conversational Barge-In detected! (prob={prob:.2f}, rms={rms:.3f}) Immediate TTS halt triggered.")
                 try:
                     from voice.frame_pipeline import frame_pipeline
                     frame_pipeline.interrupt(reason="aec_conversational_turn_taking")
@@ -77,7 +93,7 @@ class AECReferenceGuard:
                         logger.debug(f"[AEC] Barge-in callback error: {e}")
             return True, prob
 
-        # 2. Speaker is active and no intentional barge-in voice: suppress speaker echo
+        # 2. Speaker is active and audio is within speaker bleed floor: suppress speaker echo
         return False, prob * 0.2
 
 

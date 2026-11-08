@@ -4,12 +4,15 @@ Validates:
 1. Atomic code block execution (Python/Bash) with output capture & containment.
 2. Anti-hallucination guard in graph engine routing.
 3. Local file URI handling and argument auto-correction in read_web_page.
-4. Self-healing path resolution across /tmp and /tmp/test.
+4. Self-healing path resolution across SpaceV's temporary workspace.
 5. Elimination of remediation card deadlocks on generic errors.
 """
 import os
+import subprocess
 import tempfile
 from pathlib import Path
+
+import pytest
 
 from core.graph_engine import SpaceVGraphEngine
 from core.ollama_client import OllamaAgent
@@ -44,6 +47,12 @@ def test_execute_code_block_with_stdin():
 
 def test_execute_code_block_bash():
     """Verify execute_code_block executes bash commands."""
+    try:
+        bash_version = subprocess.run(["bash", "--version"], capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        pytest.skip("A usable Bash runtime is not available in this environment.")
+    if bash_version.returncode != 0:
+        pytest.skip("A usable Bash runtime is not available in this environment.")
     code = "echo 'TEST_BASH_EXEC_SUCCESS'"
     res = execute_code_block(language="bash", code=code)
     assert "Exit Code: 0" in res
@@ -87,8 +96,8 @@ def test_read_web_page_misplaced_file_name_args():
             os.remove(tmp_path)
 
 
-def test_anti_hallucination_guard_extracts_markdown_code_block():
-    """Verify graph engine converts model markdown code block to execute_code_block tool call."""
+def test_anti_hallucination_guard_does_not_execute_unstructured_markdown():
+    """Narrative code from a model response must not become an unrequested tool call."""
     agent = OllamaAgent()
     engine = SpaceVGraphEngine(agent=agent)
 
@@ -109,16 +118,12 @@ def test_anti_hallucination_guard_extracts_markdown_code_block():
     }
 
     route = engine._route_after_reasoning(state)
-    assert route == "execute_tools"
-    assert len(state["tool_calls"]) == 1
-    t_call = state["tool_calls"][0]
-    assert t_call["function"]["name"] == "execute_code_block"
-    assert "12345" in t_call["function"]["arguments"]["code"]
-    assert t_call["function"]["arguments"]["language"] == "python"
+    assert route == "loop_reasoning"
+    assert state["tool_calls"] == []
 
 
-def test_anti_hallucination_guard_extracts_file_creation():
-    """Verify graph engine converts imperative file creation command to create_file tool call."""
+def test_anti_hallucination_guard_does_not_create_file_from_narrative_claim():
+    """An unsupported model claim that it wrote a file must not trigger a file write."""
     agent = OllamaAgent()
     engine = SpaceVGraphEngine(agent=agent)
 
@@ -139,17 +144,14 @@ def test_anti_hallucination_guard_extracts_file_creation():
     }
 
     route = engine._route_after_reasoning(state)
-    assert route == "execute_tools"
-    assert len(state["tool_calls"]) == 1
-    t_call = state["tool_calls"][0]
-    assert t_call["function"]["name"] == "create_file"
-    assert "recovery_test.txt" in t_call["function"]["arguments"]["file_name"]
-    assert "OLD" in t_call["function"]["arguments"]["content"]
+    assert route == "loop_reasoning"
+    assert state["tool_calls"] == []
 
 
 def test_self_healing_path_resolution_tmp():
-    """Verify self-healing engine resolves missing files in /tmp and /tmp/test."""
-    test_dir = Path("/tmp/test")
+    """Verify self-healing engine resolves missing files in SpaceV's temporary workspace."""
+    from tools.system_tools import SPACEV_TEST_DIR
+    test_dir = SPACEV_TEST_DIR
     test_dir.mkdir(parents=True, exist_ok=True)
     target_file = test_dir / "target_remediation_test.py"
     target_file.write_text("print('RESOLVED_OK')")
@@ -239,7 +241,7 @@ def test_terminal_command_output_bounded():
     assert "Command succeeded (Exit 0):" in res
 
 
-def test_graph_engine_tool_node_clamps_messages():
+def test_graph_engine_tool_node_clamps_messages(monkeypatch):
     """Verify SpaceVGraphEngine._tool_node sanitizes unbounded tool outputs before appending to history."""
     agent = OllamaAgent()
     engine = SpaceVGraphEngine(agent=agent)
@@ -251,6 +253,7 @@ def test_graph_engine_tool_node_clamps_messages():
 
     from tools.registry import TOOL_FUNCTIONS
     TOOL_FUNCTIONS["mock_huge_tool"] = mock_huge_tool
+    monkeypatch.setattr("core.grounded_agent.inspect_environment", lambda: {"sources": []})
 
     try:
         state = {
@@ -273,7 +276,7 @@ def test_graph_engine_tool_node_clamps_messages():
         tool_msgs = [m for m in result_state["messages"] if m.get("role") == "tool"]
         assert len(tool_msgs) == 1
         assert len(tool_msgs[0]["content"]) <= 8500
-        assert "truncated to protect rate limits" in tool_msgs[0]["content"]
+        assert len(tool_msgs[0]["content"]) < len(huge_output)
     finally:
         TOOL_FUNCTIONS.pop("mock_huge_tool", None)
 

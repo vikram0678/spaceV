@@ -5,11 +5,18 @@ import pytest
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-# Mock audio stream to prevent contention with running agent
-mock_stream = MagicMock()
-mock_stream.is_running = False
-mock_stream.read_chunk.return_value = b"\x00" * 1024
-sys.modules["voice.audio_stream"] = MagicMock(audio_stream=mock_stream)
+@pytest.fixture(scope="module", autouse=True)
+def _mock_audio_stream_scoped():
+    orig = sys.modules.get("voice.audio_stream")
+    mock_stream = MagicMock()
+    mock_stream.is_running = False
+    mock_stream.read_chunk.return_value = b"\x00" * 1024
+    sys.modules["voice.audio_stream"] = MagicMock(audio_stream=mock_stream)
+    yield
+    if orig is not None:
+        sys.modules["voice.audio_stream"] = orig
+    else:
+        sys.modules.pop("voice.audio_stream", None)
 
 from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QApplication
@@ -38,7 +45,8 @@ def test_floating_icon_bottom_right_positioning(qapp):
 
 def test_chat_window_dock_near_directly_above(qapp):
     """Verify that ChatWindow.dock_near docks directly above the floating icon."""
-    with patch("core.proactive_companion.companion_engine.start"):
+    with patch("core.proactive_companion.companion_engine.start"), \
+         patch("ui.chat_window.WakeWordDetector"):
         from ui.chat_window import ChatWindow
         agent_mock = MagicMock()
         agent_mock.model = "qwen2.5:3b"
@@ -59,7 +67,8 @@ def test_chat_window_dock_near_directly_above(qapp):
 
 def test_toggle_chat_visibility_minimize_maximize(qapp):
     """Verify that clicking toggle hides when visible, and docks & restores when hidden."""
-    with patch("core.proactive_companion.companion_engine.start"):
+    with patch("core.proactive_companion.companion_engine.start"), \
+         patch("ui.chat_window.WakeWordDetector"):
         from ui.chat_window import ChatWindow
         from ui.floating_icon import FloatingIcon
 

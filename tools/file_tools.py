@@ -141,7 +141,13 @@ def list_workspace_files(subfolder: str = "", max_files: int = 50) -> str:
     except Exception as e:
         return f"Failed to list workspace files: {e!s}"
 
-def read_file_content(file_name_or_path: str = "", location: str = "Desktop", max_lines: int = 40, **kwargs) -> str:
+def read_file_content(
+    file_name_or_path: str = "",
+    location: str = "Desktop",
+    max_lines: int = 40,
+    start_line: int = 1,
+    **kwargs,
+) -> str:
     """
     Reads the text/code content of a specified file on the Desktop, Workspace, or disk.
     """
@@ -155,6 +161,12 @@ def read_file_content(file_name_or_path: str = "", location: str = "Desktop", ma
         if not file_name_or_path:
             return "Failed to read file: no file path or name specified."
 
+        try:
+            max_lines = max(1, min(int(max_lines), 400))
+            start_line = max(1, int(start_line))
+        except (TypeError, ValueError):
+            return "Failed to read file: max_lines and start_line must be integers."
+
         # Cross-Zone Translation: check if target refers to an isolated Celesto MicroVM guest path
         candidate_guest = file_name_or_path
         if location and any(k in location for k in ("quarantine", "sandbox", "/workspace")):
@@ -167,10 +179,12 @@ def read_file_content(file_name_or_path: str = "", location: str = "Desktop", ma
             if res.exit_code == 0 and not res.blocked:
                 lines = res.stdout.splitlines(keepends=True)
                 total_lines = len(lines)
-                snippet = "".join(lines[:max_lines])
-                truncated_note = f"\n\n... [Showing first {max_lines} of {total_lines} lines]" if total_lines > max_lines else ""
+                start_index = min(start_line - 1, total_lines)
+                end_index = min(total_lines, start_index + max_lines)
+                snippet = "".join(lines[start_index:end_index])
+                truncated_note = f"\n\n... [Showing lines {start_index + 1}-{end_index} of {total_lines}]" if start_index > 0 or end_index < total_lines else ""
                 file_basename = Path(clean_guest_target).name
-                return f"Content of quarantined guest file '{file_basename}' ({total_lines} lines) in Celesto Sandbox:\n\n```\n{snippet}\n```{truncated_note}"
+                return f"Content of quarantined guest file '{file_basename}' (lines {start_index + 1}-{end_index} of {total_lines}) in Celesto Sandbox:\n\n```\n{snippet}\n```{truncated_note}"
             elif res.blocked:
                 return f"🛡️ [SANDBOX CONTAINMENT ALERT] Quarantined file read blocked: {res.stderr}"
             return f"File '{file_name_or_path}' could not be found in Celesto MicroVM sandbox at {clean_guest_target}."
@@ -194,10 +208,12 @@ def read_file_content(file_name_or_path: str = "", location: str = "Desktop", ma
             lines = f.readlines()
 
         total_lines = len(lines)
-        snippet = "".join(lines[:max_lines])
+        start_index = min(start_line - 1, total_lines)
+        end_index = min(total_lines, start_index + max_lines)
+        snippet = "".join(lines[start_index:end_index])
 
-        truncated_note = f"\n\n... [Showing first {max_lines} of {total_lines} lines]" if total_lines > max_lines else ""
-        return f"Content of '{target.name}' ({total_lines} lines):\n\n```\n{snippet}\n```{truncated_note}"
+        truncated_note = f"\n\n... [Showing lines {start_index + 1}-{end_index} of {total_lines}]" if start_index > 0 or end_index < total_lines else ""
+        return f"Content of '{target.name}' (lines {start_index + 1}-{end_index} of {total_lines}):\n\n```\n{snippet}\n```{truncated_note}"
     except Exception as e:
         return f"Failed to read file '{file_name_or_path}': {e!s}"
 

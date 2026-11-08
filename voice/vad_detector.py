@@ -26,6 +26,7 @@ class SileroVADDetector:
     Enterprise-grade Neural Voice Activity Detector.
     Processes 512-sample (32ms at 16kHz) 16-bit PCM frames using Silero VAD ONNX.
     """
+    _shared_session: ort.InferenceSession | None = None
 
     def __init__(
         self,
@@ -48,24 +49,31 @@ class SileroVADDetector:
 
         resolved_path = Path(model_path) if model_path else MODEL_PATH
         if HAS_ORT and resolved_path.exists():
-            try:
-                # Optimize inference session for low latency CPU execution
-                opts = ort.SessionOptions()
-                opts.intra_op_num_threads = 1
-                opts.inter_op_num_threads = 1
-                opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-                opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-
-                self._session = ort.InferenceSession(
-                    str(resolved_path),
-                    sess_options=opts,
-                    providers=["CPUExecutionProvider"],
-                )
+            if SileroVADDetector._shared_session is not None and model_path is None:
+                self._session = SileroVADDetector._shared_session
                 self._is_active = True
-                logger.info("[VAD] 🧠 Silero VAD ONNX model initialized successfully.")
-            except Exception as e:
-                logger.warning(f"[VAD] Failed to load Silero VAD ONNX: {e}. Falling back to energy VAD.")
-                self._session = None
+            else:
+                try:
+                    # Optimize inference session for low latency CPU execution
+                    opts = ort.SessionOptions()
+                    opts.intra_op_num_threads = 1
+                    opts.inter_op_num_threads = 1
+                    opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+                    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+                    session = ort.InferenceSession(
+                        str(resolved_path),
+                        sess_options=opts,
+                        providers=["CPUExecutionProvider"],
+                    )
+                    self._session = session
+                    self._is_active = True
+                    if model_path is None:
+                        SileroVADDetector._shared_session = session
+                    logger.info("[VAD] 🧠 Silero VAD ONNX model initialized successfully.")
+                except Exception as e:
+                    logger.warning(f"[VAD] Failed to load Silero VAD ONNX: {e}. Falling back to energy VAD.")
+                    self._session = None
         else:
             logger.info("[VAD] ONNX Runtime or model file not present; using energy-based fallback.")
 
@@ -122,16 +130,13 @@ class SileroVADDetector:
                 self._context = x[:, -self.context_size:]
 
                 neural_prob = float(out[0][0])
-                energy_prob = min(1.0, rms * 20.0)
+                is_speech = neural_prob >= self.threshold
 
-                # Combine neural probability with energy boost for low-gain laptop microphones
-                prob = max(neural_prob, energy_prob if rms > 0.02 else neural_prob)
-                is_speech = neural_prob >= self.threshold or (rms > 0.02 and neural_prob > 0.25)
                 try:
                     from voice.aec_guard import aec_guard
-                    is_speech, prob = aec_guard.evaluate_frame(is_speech, prob, rms)
+                    is_speech, prob = aec_guard.evaluate_frame(is_speech, neural_prob, rms)
                 except Exception:
-                    pass
+                    prob = neural_prob
                 return is_speech, prob
             except Exception as e:
                 logger.debug(f"[VAD] Neural inference error: {e}")

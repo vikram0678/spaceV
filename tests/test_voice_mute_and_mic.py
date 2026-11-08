@@ -108,4 +108,7 @@ def test_in_window_hotkey_registered():
     window = ChatWindow(mock_agent)
     assert hasattr(window, "mic_shortcut"), "ChatWindow must have mic_shortcut attribute"
     assert window.mic_shortcut.key().toString() == "Ctrl+Space"
+    window.cleanup()
     window.close()
+    window.deleteLater()
+    app.processEvents()

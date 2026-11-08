@@ -157,16 +157,28 @@ class AntiBotDetector:
                     )
 
         # Tier 3 Evaluation (Empty SPA Shell Check)
-        stripped = re.sub(r"<[^>]+>", "", html_or_text).strip()
-        if len(html_or_text) > 1000 and len(stripped) < 40 and status_code == 200:
-            return AntiBotResult(
-                is_blocked=True,
-                provider="Silent_Empty_Shell",
-                tier=3,
-                rule="Suspicious empty shell layout with <40 characters visible text",
-                confidence=0.75,
-                action="wait_and_retry",
-            )
+        if len(html_or_text) > 1000 and status_code == 200:
+            # Fast early-exit character scanner: checks for >=40 visible non-whitespace characters without full regex allocation
+            in_tag = False
+            text_chars = 0
+            for ch in html_or_text:
+                if ch == "<":
+                    in_tag = True
+                elif ch == ">":
+                    in_tag = False
+                elif not in_tag and not ch.isspace():
+                    text_chars += 1
+                    if text_chars >= 40:
+                        break
+            if text_chars < 40:
+                return AntiBotResult(
+                    is_blocked=True,
+                    provider="Silent_Empty_Shell",
+                    tier=3,
+                    rule="Suspicious empty shell layout with <40 characters visible text",
+                    confidence=0.75,
+                    action="wait_and_retry",
+                )
 
         return AntiBotResult(
             is_blocked=False,

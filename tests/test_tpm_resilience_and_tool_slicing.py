@@ -80,6 +80,9 @@ def test_cloud_client_token_estimation_with_tools():
 
 def test_groq_429_model_hopping():
     """Verify Groq 429 cascades to llama-3.1-8b-instant."""
+    from core.rate_limiter import rate_limiter
+    rate_limiter.reset_all()
+
     client = UniversalBrainClient(
         api_key="gsk_mock_groq",
         gemini_api_key="",

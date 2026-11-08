@@ -19,6 +19,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB_PATH = REPO_ROOT / "reports" / "run_ledger.db"
 
 
+class _ClosingSQLiteConnection(sqlite3.Connection):
+    """Close each short-lived ledger connection after its transaction context."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 class DurableLedger:
     """
     Embedded SQLite Task Ledger configured in WAL mode.
@@ -31,7 +41,7 @@ class DurableLedger:
         self._init_database()
 
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path), timeout=5.0)
+        conn = sqlite3.connect(str(self.db_path), timeout=5.0, factory=_ClosingSQLiteConnection)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode = WAL;")
         conn.execute("PRAGMA synchronous = NORMAL;")

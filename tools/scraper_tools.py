@@ -2,21 +2,29 @@
 Web Scraping & Live Intelligence Tools for SpaceV.
 Scrapes jobs, news headlines, weather, and encyclopedia summaries.
 """
+from __future__ import annotations
+
 import csv
 import urllib.parse
+from dataclasses import asdict, dataclass
+from typing import Any
 
 import requests
 
 from config import USER_DESKTOP_DIR
 
 
-def scrape_jobs(role: str = "python", location: str = "remote", save_to_desktop: bool = True) -> str:
+def scrape_jobs(role: str = "", location: str = "", save_to_desktop: bool = False) -> str:
     """
     Scrapes real-time tech and remote jobs, formats top listings,
     and optionally exports them to a CSV file on your Desktop.
     """
     try:
-        clean_role = role.strip().lower()
+        clean_role = (role or "").strip().lower()
+        clean_location = (location or "").strip().lower()
+        if not clean_role or not clean_location:
+            missing = "job role and target location" if not clean_role and not clean_location else ("job role" if not clean_role else "target location")
+            return f"SPACEV_NEEDS_USER_INPUT: I need your {missing} before searching. What {missing} should I use?"
         # RemoteOK API (Public endpoint returning JSON listings)
         url = "https://remoteok.com/api"
         headers = {
@@ -39,7 +47,11 @@ def scrape_jobs(role: str = "python", location: str = "remote", save_to_desktop:
             desc = job.get("description", "")
             full_text = f"{position} {tags} {desc}".lower()
 
-            if clean_role in full_text or any(w in full_text for w in clean_role.split()):
+            raw_location = str(job.get("location", ""))
+            location_text = f"{raw_location} {'remote' if 'remote' in raw_location.lower() or 'remote' in full_text else ''}".lower()
+            role_match = clean_role in full_text or any(w in full_text for w in clean_role.split())
+            location_match = clean_location in ("any", "all", "global") or clean_location in location_text
+            if role_match and location_match:
                 matched_jobs.append({
                     "Title": position,
                     "Company": job.get("company", "Unknown"),
@@ -52,14 +64,8 @@ def scrape_jobs(role: str = "python", location: str = "remote", save_to_desktop:
                 break
 
         if not matched_jobs:
-            # Fallback if specific keyword didn't match
-            matched_jobs = [{
-                "Title": j.get("position", "Software Engineer"),
-                "Company": j.get("company", "Tech Company"),
-                "Location": j.get("location", "Remote"),
-                "Tags": ", ".join(j.get("tags", [])[:4]),
-                "URL": j.get("url", "https://remoteok.com")
-            } for j in job_list[:5]]
+            return (f"SPACEV_NEEDS_USER_INPUT: No RemoteOK listings matched **{role}** in **{location}**. "
+                    "Would you like to broaden the role, change the location, or include remote positions?")
 
         # Optionally save to CSV on Desktop
         csv_msg = ""
@@ -172,12 +178,28 @@ def get_wikipedia_summary(query: str) -> str:
         return f"Failed to search Wikipedia: {e!s}"
 
 
-def scrape_web_page_crawl4ai(url: str, max_chars: int = 12000) -> str:
+@dataclass
+class CrawlResult:
+    """Structured extraction result inspired by crawl4ai."""
+    url: str
+    title: str
+    markdown: str
+    links: list[str]
+    status_code: int = 200
+    success: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def scrape_web_page_crawl4ai(url: str, max_chars: int = 12000, return_json: bool = False) -> str:
     """
     High-throughput resilient web extraction inspired by crawl4ai.
-    Uses clean HTTP fetching with anti-bot headers and semantic markdown distillation.
+    Uses clean HTTP fetching with anti-bot headers, link extraction,
+    and semantic markdown distillation.
     Provides immediate zero-crash fallback when full Playwright headless browsers are offline or blocked.
     """
+    import re
     import urllib.request
     from tools.semantic_distiller import distill_html_to_markdown
 
@@ -195,10 +217,37 @@ def scrape_web_page_crawl4ai(url: str, max_chars: int = 12000) -> str:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=12) as response:
             html = response.read().decode("utf-8", errors="replace")
+            status_code = getattr(response, "status", 200)
+
+        # Extract title
+        title_match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+        title = title_match.group(1).strip() if title_match else url
+
+        # Extract top hyperlinks (crawl4ai pattern)
+        raw_links = re.findall(r'href=[\'"](https?://[^\'">\s]+)[\'"]', html, re.IGNORECASE)
+        unique_links = list(dict.fromkeys(raw_links))[:10]
 
         md = distill_html_to_markdown(html, max_chars=max_chars)
-        if md:
-            return md
-        return f"Retrieved web page from {url}, but no readable content was found."
+        content = md if md else f"Retrieved web page from {url}, but no readable content was found."
+
+        result = CrawlResult(
+            url=url,
+            title=title,
+            markdown=content,
+            links=unique_links,
+            status_code=status_code,
+            success=True,
+        )
+
+        if return_json:
+            import json
+            return json.dumps(result.to_dict())
+
+        links_section = "\n\n🔗 **Extracted Links:**\n" + "\n".join(f"- {link}" for link in unique_links[:5]) if unique_links else ""
+        return f"# {title}\n\n{content}{links_section}"
+
     except Exception as e:
+        if return_json:
+            import json
+            return json.dumps({"url": url, "error": str(e), "success": False})
         return f"HTTP web extraction failed for {url}: {e!s}"

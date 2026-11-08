@@ -8,8 +8,15 @@ import shlex
 import socket
 import subprocess
 import sys
+import tempfile
 import uuid
 from pathlib import Path
+
+TEMP_DIR = Path(tempfile.gettempdir())
+SPACEV_TEMP_DIR = TEMP_DIR / "spacev"
+SPACEV_EXEC_DIR = SPACEV_TEMP_DIR / "exec"
+SPACEV_TEST_DIR = SPACEV_TEMP_DIR / "test"
+SPOOL_DIR = SPACEV_TEMP_DIR / "spool"
 
 try:
     import psutil
@@ -367,10 +374,10 @@ def execute_code_block(
     if fname:
         target_path = resolve_path(fname)
         if not target_path.is_absolute():
-            target_path = Path("/tmp/spacev_test") / fname if "test" in fname.lower() else Path.cwd() / fname
+            target_path = SPACEV_TEST_DIR / fname if "test" in fname.lower() else Path.cwd() / fname
     else:
         ext = ".py" if "py" in lang else ".sh"
-        target_path = Path(f"/tmp/spacev_exec/script_{uuid.uuid4().hex[:8]}{ext}")
+        target_path = SPACEV_EXEC_DIR / f"script_{uuid.uuid4().hex[:8]}{ext}"
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(clean_code, encoding="utf-8")
@@ -462,22 +469,16 @@ def run_python_script(file_name_or_path: str = "", args: str = "", timeout: int 
     target_path = resolve_path(target_str)
 
     if not target_path.exists():
-        candidates = [
-            USER_DESKTOP_DIR / target_str,
-            Path.cwd() / target_str,
-            Path("/tmp") / target_str,
-            Path("/tmp/test") / target_str,
-            Path("/tmp/spacev_test") / target_str,
-        ]
+        candidate_roots = [TEMP_DIR, SPACEV_TEMP_DIR, SPACEV_TEST_DIR, SPACEV_EXEC_DIR]
+        candidates = [USER_DESKTOP_DIR / target_str, Path.cwd() / target_str]
+        candidates.extend(root / target_str for root in candidate_roots)
         if not target_str.endswith(".py"):
             candidates.extend([
                 resolve_path(f"{target_str}.py"),
                 USER_DESKTOP_DIR / f"{target_str}.py",
                 Path.cwd() / f"{target_str}.py",
-                Path("/tmp") / f"{target_str}.py",
-                Path("/tmp/test") / f"{target_str}.py",
-                Path("/tmp/spacev_test") / f"{target_str}.py",
             ])
+            candidates.extend(root / f"{target_str}.py" for root in candidate_roots)
 
         found = False
         for c in candidates:
@@ -489,13 +490,13 @@ def run_python_script(file_name_or_path: str = "", args: str = "", timeout: int 
         if not found:
             # Check recursive /tmp directory for test files
             try:
-                for match in Path("/tmp").glob(f"**/{target_str}"):
+                for match in SPACEV_TEMP_DIR.glob(f"**/{target_str}"):
                     if match.is_file():
                         target_path = match
                         found = True
                         break
                 if not found and not target_str.endswith(".py"):
-                    for match in Path("/tmp").glob(f"**/{target_str}.py"):
+                    for match in SPACEV_TEMP_DIR.glob(f"**/{target_str}.py"):
                         if match.is_file():
                             target_path = match
                             found = True
@@ -577,9 +578,16 @@ def resolve_interpreter_command(command: str) -> str:
     parts = cmd_str.split()
     first = parts[0]
 
+    # Resolve common Python aliases to this runtime on Windows, where python3.exe
+    # is often absent even though the active interpreter is available.
+    if sys.platform == "win32" and first.lower() in {"python3", "python3.exe"}:
+        remainder = cmd_str[len(first):].lstrip()
+        return f'{subprocess.list2cmdline([sys.executable])} {remainder}'.strip()
+
     # Auto-prepend python3 for direct script executions
     if first.endswith(".py") and not any(p in cmd_str.lower() for p in ("python", "python3")):
-        return f"python3 -u {cmd_str}"
+        interpreter = subprocess.list2cmdline([sys.executable]) if sys.platform == "win32" else "python3"
+        return f"{interpreter} -u {cmd_str}"
 
     # Auto-prepend bash for direct shell scripts
     if first.endswith(".sh") and not any(p in cmd_str.lower() for p in ("bash", "sh")):
@@ -589,7 +597,6 @@ def resolve_interpreter_command(command: str) -> str:
 
 
 MAX_TOOL_OUTPUT_CHARS = 8000
-SPOOL_DIR = Path("/tmp/spacev_spool")
 
 
 def sanitize_tool_output(output: str, max_chars: int = MAX_TOOL_OUTPUT_CHARS) -> str:
@@ -658,10 +665,12 @@ def execute_terminal_command(command: str = "", timeout: int = 30, **kwargs) -> 
     should_sandbox, reason = ContainmentGatekeeper.should_sandbox(cmd)
     if should_sandbox:
         from tools.sandbox_tools import detonate_in_sandbox
+        sandbox_result = detonate_in_sandbox(cmd)
+        if "[CELESTO SDK EXECUTION]" in sandbox_result:
+            return f"[AUTO-CONTAINED: CELESTO SDK] Intercepted by policy ({reason}).\n\n{sandbox_result}"
         return (
-            f"🛡️ [AUTO-CONTAINED] Command intercepted by Celesto Containment Gate "
-            f"(reason: {reason}). Executed inside isolated microVM sandbox.\n\n"
-            + detonate_in_sandbox(cmd)
+            f"[CONTAINMENT NOT EXECUTED] Intercepted by policy ({reason}); no real sandbox result was produced.\n\n"
+            f"{sandbox_result}"
         )
 
     try:

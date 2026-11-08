@@ -1,11 +1,12 @@
 @echo off
 title SpaceV Cybernetic Desktop Assistant
-wsl.exe -d Ubuntu -e bash -lic "cd /home/vikram/agentSpace && .venv/bin/python main.py"
+cd /d "%~dp0"
+
+if exist ".\venv\Scripts\python.exe" (
+    echo [SpaceV] Starting natively on Windows via venv...
+    call .\venv\Scripts\python.exe main.py
+) else (
+    echo [SpaceV] Windows venv not found. Attempting WSL fallback...
+    wsl.exe -e bash -lic "cd \"$(wslpath '%~dp0')\" && (python3 main.py || .venv/bin/python main.py)"
+)
 pause
-
-
-@REM @echo off
-@REM title SpaceV Cybernetic Desktop Assistant
-@REM cd /d "%~dp0"
-@REM call .\venv\Scripts\python.exe main.py
-@REM pause

@@ -121,6 +121,8 @@ class DictationManager(QObject):
         """
         def _worker():
             try:
+                from tools.gui_tools import safety
+                safety.check()
                 # 1. Backup existing clipboard content
                 try:
                     original_clipboard = pyperclip.paste()

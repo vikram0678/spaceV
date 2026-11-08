@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -60,7 +61,10 @@ def test_omniparser_synthetic_icon_classification():
     draw.rectangle([(400, 115), (440, 125)], fill=(0, 0, 0))
 
     parser = OmniParserEngine(min_size=10, max_size=200)
-    elements = parser.parse_screen(img)
+    # This test targets geometric classification. Native Windows OCR starts an
+    # asyncio loop whose socketpair setup is blocked in the restricted test host.
+    with patch("core.vision_grounding._get_winocr", return_value=None):
+        elements = parser.parse_screen(img)
 
     labels = {e.label for e in elements}
     print("Detected synthetic labels:", labels)

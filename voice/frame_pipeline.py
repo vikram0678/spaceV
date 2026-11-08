@@ -216,7 +216,7 @@ class VADFrameProcessor(FrameProcessor):
     Ingests continuous AudioRawFrames, tracks state via Silero VAD,
     and emits UserStartedSpeakingFrame, SpeechProgressFrame, and UserStoppedSpeakingFrame.
     """
-    def __init__(self, vad_detector=None, pre_speech_chunks: int = 10, silence_debounce_chunks: int = 13, draft_interval_chunks: int = 8):
+    def __init__(self, vad_detector=None, pre_speech_chunks: int = 4, silence_debounce_chunks: int = 5, draft_interval_chunks: int = 4):
         super().__init__("VADProcessor")
         from voice.vad_detector import SileroVADDetector
         self.vad = vad_detector or SileroVADDetector()

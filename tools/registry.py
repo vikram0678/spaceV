@@ -2,6 +2,7 @@
 Tool Registry and Schema Definitions for Ollama native function calling.
 """
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -17,12 +18,36 @@ from tools.file_tools import (
 )
 from tools.gui_tools import (
     gui_draw_in_paint,
+    gui_human_search_and_open,
     gui_open_and_search_app,
+    gui_open_browser_urls,
     gui_play_youtube,
     gui_search_google_browser,
     gui_type_text,
 )
 from tools.scraper_tools import fetch_news_headlines, get_weather, get_wikipedia_summary, scrape_jobs
+from tools.career_tools import (
+    search_and_harvest_jobs,
+    track_career_application,
+    list_career_applications,
+    prepare_job_application,
+    analyze_job_description,
+    tailor_careerflow_resume,
+    apply_to_job,
+    create_career_goal,
+    get_career_goal,
+    activate_career_goal,
+    record_career_activity,
+    update_career_plan_task,
+    get_career_daily_review,
+    create_career_reminder,
+    list_career_reminders,
+    cancel_career_reminder,
+    snooze_career_reminder,
+    list_career_opportunities,
+    track_career_opportunity,
+    delete_career_assistant_data,
+)
 from tools.system_tools import (
     activate_workspace_mode,
     empty_recycle_bin,
@@ -43,7 +68,7 @@ from tools.system_tools import (
     set_timer,
 )
 from tools.vision_tools import get_active_window_info, read_clipboard_text, take_screen_snapshot, write_clipboard_text
-from tools.web_tools import open_url, play_youtube, read_web_page, search_google
+from tools.web_tools import open_browser_urls, open_url, play_youtube, read_web_page, search_google
 
 
 def search_memory(query: str) -> str:
@@ -106,6 +131,7 @@ TOOL_FUNCTIONS: dict[str, Callable] = {
     "search_google": search_google,
     "play_youtube": play_youtube,
     "open_url": open_url,
+    "open_browser_urls": open_browser_urls,
     "get_current_time": get_current_time,
     "open_application": open_application,
     "get_system_stats": get_system_stats,
@@ -121,6 +147,8 @@ TOOL_FUNCTIONS: dict[str, Callable] = {
     "list_active_timers": list_active_timers,
     "gui_open_and_search_app": gui_open_and_search_app,
     "gui_search_google_browser": gui_search_google_browser,
+    "gui_human_search_and_open": gui_human_search_and_open,
+    "gui_open_browser_urls": gui_open_browser_urls,
     "gui_type_text": gui_type_text,
     "gui_play_youtube": gui_play_youtube,
     "gui_draw_in_paint": gui_draw_in_paint,
@@ -150,6 +178,26 @@ TOOL_FUNCTIONS: dict[str, Callable] = {
     "toggle_ghost_mode": toggle_ghost_mode,
     "get_ghost_mode_status": get_ghost_mode_status,
     "scrape_jobs": scrape_jobs,
+    "search_and_harvest_jobs": search_and_harvest_jobs,
+    "track_career_application": track_career_application,
+    "list_career_applications": list_career_applications,
+    "prepare_job_application": prepare_job_application,
+    "analyze_job_description": analyze_job_description,
+    "tailor_careerflow_resume": tailor_careerflow_resume,
+    "apply_to_job": apply_to_job,
+    "create_career_goal": create_career_goal,
+    "get_career_goal": get_career_goal,
+    "activate_career_goal": activate_career_goal,
+    "record_career_activity": record_career_activity,
+    "update_career_plan_task": update_career_plan_task,
+    "get_career_daily_review": get_career_daily_review,
+    "create_career_reminder": create_career_reminder,
+    "list_career_reminders": list_career_reminders,
+    "cancel_career_reminder": cancel_career_reminder,
+    "snooze_career_reminder": snooze_career_reminder,
+    "list_career_opportunities": list_career_opportunities,
+    "track_career_opportunity": track_career_opportunity,
+    "delete_career_assistant_data": delete_career_assistant_data,
     "fetch_news_headlines": fetch_news_headlines,
     "get_weather": get_weather,
     "get_wikipedia_summary": get_wikipedia_summary,
@@ -164,7 +212,13 @@ TOOL_FUNCTIONS: dict[str, Callable] = {
     "execute_code_block": execute_code_block,
     "execute_terminal_command": execute_terminal_command,
     "execute_in_vscode_terminal": execute_in_vscode_terminal,
+    "clone_public_repository": lambda repository_url, destination, approval_id="", approval_text="": __import__("tools.repo_tools", fromlist=["clone_public_repository"]).clone_public_repository(repository_url, destination, approval_id, approval_text),
     "detonate_in_sandbox": lambda command: __import__("tools.sandbox_tools", fromlist=["detonate_in_sandbox"]).detonate_in_sandbox(command),
+    "create_sandbox_session": lambda task_description="", approval_id="", approval_text="": __import__("tools.sandbox_tools", fromlist=["create_sandbox_session"]).create_sandbox_session(task_description, approval_id, approval_text),
+    "run_sandbox_session_command": lambda session_id, command: __import__("tools.sandbox_tools", fromlist=["run_sandbox_session_command"]).run_sandbox_session_command(session_id, command),
+    "close_sandbox_session": lambda session_id: __import__("tools.sandbox_tools", fromlist=["close_sandbox_session"]).close_sandbox_session(session_id),
+    "get_sandbox_status": lambda: __import__("tools.sandbox_tools", fromlist=["get_sandbox_status"]).get_sandbox_status(),
+    "inspect_file_security": lambda file_path: __import__("tools.sandbox_tools", fromlist=["inspect_file_security"]).inspect_file_security(file_path),
     "run_sandboxed_workflow": lambda workflow_name="celesto_deployment_pipeline": __import__("tools.sandbox_tools", fromlist=["run_sandboxed_workflow"]).run_sandboxed_workflow(workflow_name),
     "get_run_ledger_summary": lambda: __import__("core.run_ledger", fromlist=["get_run_ledger_summary"]).get_run_ledger_summary(),
     "spacev_search_tools": lambda query="": __import__("core.code_mode", fromlist=["code_mode_engine"]).code_mode_engine.search_tools(query),
@@ -180,6 +234,13 @@ TOOL_FUNCTIONS: dict[str, Callable] = {
 
 # Resilient Canonical Tool Aliases (prevents model hallucination failures across providers)
 TOOL_ALIASES: dict[str, str] = {
+    # Natural names commonly emitted by models for an already-approved guest
+    # command. These remain bound to the session tool, never the host shell.
+    "run_guest_command": "run_sandbox_session_command",
+    "execute_guest_command": "run_sandbox_session_command",
+    "sandbox_command": "run_sandbox_session_command",
+    "run_command_in_sandbox": "run_sandbox_session_command",
+    "run_command_in_vm": "run_sandbox_session_command",
     "code_graph": "query_code_graph",
     "blast_radius": "get_code_blast_radius",
     "inspect_symbol": "get_code_node",
@@ -238,11 +299,42 @@ TOOL_ALIASES: dict[str, str] = {
     "run_in_vscode_terminal": "execute_in_vscode_terminal",
     "run_in_vscode": "execute_in_vscode_terminal",
     "execute_in_vscode": "execute_in_vscode_terminal",
-    "clone_repo": "detonate_in_sandbox",
-    "git_clone": "detonate_in_sandbox",
+    "clone_repo": "clone_public_repository",
+    "git_clone": "clone_public_repository",
     "install_package": "detonate_in_sandbox",
     "run_untrusted": "detonate_in_sandbox",
     "sandbox_detonate": "detonate_in_sandbox",
+    "verify_file_security": "inspect_file_security",
+    "scan_file_security": "inspect_file_security",
+    "check_file_security": "inspect_file_security",
+    "harvest_jobs": "search_and_harvest_jobs",
+    "search_jobs": "search_and_harvest_jobs",
+    "find_jobs": "search_and_harvest_jobs",
+    "job_search": "search_and_harvest_jobs",
+    "apply_job": "track_career_application",
+    "track_job": "track_career_application",
+    "track_application": "track_career_application",
+    "list_applications": "list_career_applications",
+    "get_applications": "list_career_applications",
+    "application_status": "list_career_applications",
+    "draft_application": "prepare_job_application",
+    "prepare_application": "prepare_job_application",
+    "analyze_jd": "analyze_job_description",
+    "parse_jd": "analyze_job_description",
+    "tailor_resume": "tailor_careerflow_resume",
+    "careerflow_tailor": "tailor_careerflow_resume",
+    "apply_job_wingman": "apply_to_job",
+    "submit_application": "apply_to_job",
+    "open_urls": "open_browser_urls",
+    "open_links": "open_browser_urls",
+    "batch_open_urls": "open_browser_urls",
+    "open_all_urls": "open_browser_urls",
+    "open_all_links": "open_browser_urls",
+    "open_tabs": "open_browser_urls",
+    "human_search": "gui_human_search_and_open",
+    "human_search_and_open": "gui_human_search_and_open",
+    "search_and_open": "gui_human_search_and_open",
+    "browse_and_open": "gui_human_search_and_open",
 }
 
 # Standard Ollama JSON Tool Schemas
@@ -426,6 +518,28 @@ OLLAMA_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "open_browser_urls",
+            "description": "Opens multiple website URLs sequentially in the user's default browser (Chrome/Edge/Firefox) tabs with smooth pacing.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "urls": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of URLs to open in new browser tabs."
+                    },
+                    "delay_sec": {
+                        "type": "number",
+                        "description": "Delay in seconds between opening tabs (default 0.5s)."
+                    }
+                },
+                "required": ["urls"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_current_time",
             "description": "Gets the current system date, time, and day of week.",
             "parameters": {
@@ -540,24 +654,185 @@ OLLAMA_TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "scrape_jobs",
-            "description": "Scrapes live tech and remote job listings for any role (e.g. 'python developer', 'data scientist', 'frontend') and optionally saves them to a CSV on the user's Desktop.",
+            "description": "Searches jobs using a role and location stated by the user. If either is missing or nothing matches, ask rather than assuming defaults or loosening filters. CSV export is opt-in.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "role": {
                         "type": "string",
-                        "description": "The job role or keyword to search for (e.g. 'python', 'react', 'machine learning')."
+                        "description": "Role from the user; if missing, ask instead of guessing."
                     },
                     "location": {
                         "type": "string",
-                        "description": "Location or 'remote'."
+                        "description": "Target location/work mode from the user; do not assume remote."
                     },
                     "save_to_desktop": {
                         "type": "boolean",
-                        "description": "Whether to export findings to a CSV on the Desktop (defaults to True)."
+                        "description": "Export to Desktop only when the user explicitly asks."
                     }
                 },
-                "required": ["role"]
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_career_goal",
+            "description": "Save a user's career goal and proposed dated plan as a draft. First clarify target roles, location/work mode, deadline, and daily available time when missing. Draft realistic editable tasks from the conversation; show the plan and wait for explicit user approval before calling activate_career_goal; never promise a job outcome.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "goal": {"type": "string"},
+                    "target_roles": {"type": "array", "items": {"type": "string"}},
+                    "location": {"type": "string"},
+                    "deadline": {"type": "string", "description": "YYYY-MM-DD"},
+                    "duration_days": {"type": "integer", "description": "Relative deadline in days if the user said, for example, 'in 20 days'."},
+                    "available_hours": {"type": "number", "description": "Realistic hours available on a typical day."},
+                    "resume_path": {"type": "string", "description": "Optional path to a real resume file provided by the user."},
+                    "plan_items": {"type": "array", "items": {"type": "object", "properties": {"title": {"type": "string"}, "due_date": {"type": "string"}, "estimated_minutes": {"type": "integer"}, "category": {"type": "string"}}, "required": ["title", "due_date"]}}
+                },
+                "required": []
+            }
+        }
+    },
+    {"type": "function", "function": {"name": "get_career_goal", "description": "Read the active saved career goal and its dated tasks.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "activate_career_goal", "description": "Activate a saved draft career goal only after the user has reviewed the dated plan and explicitly said to start it.", "parameters": {"type": "object", "properties": {"goal_id": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "record_career_activity", "description": "Record only an activity the user explicitly says they completed. Do not infer progress from screen, app, or clipboard data. Link task_id when the user identifies a plan task.", "parameters": {"type": "object", "properties": {"activity": {"type": "string"}, "minutes": {"type": "integer"}, "task_id": {"type": "string"}, "notes": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "update_career_plan_task", "description": "Edit a dated task from the active career plan. Use the task_id returned by get_career_goal; change only fields the user asked to change.", "parameters": {"type": "object", "properties": {"task_id": {"type": "string"}, "title": {"type": "string"}, "due_date": {"type": "string"}, "estimated_minutes": {"type": "integer"}, "status": {"type": "string", "description": "planned, completed, paused, or cancelled"}}, "required": []}}},
+    {"type": "function", "function": {"name": "get_career_daily_review", "description": "Compare today's dated tasks with user-confirmed activity and identify due, overdue, and upcoming items. State clearly that unreported work is unknown, not necessarily undone.", "parameters": {"type": "object", "properties": {"day": {"type": "string", "description": "Optional date in YYYY-MM-DD."}}, "required": []}}},
+    {"type": "function", "function": {"name": "create_career_reminder", "description": "Save a persistent local reminder for a job application, follow-up, study session, or check-in. Ask for date/time and timezone if unclear. For a scheduled goal progress check-in, set purpose=daily_review. Repeat rule: none, daily, weekdays, weekly. Repeating reminders require an IANA timezone such as Asia/Kolkata.", "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "due_at": {"type": "string", "description": "ISO datetime; include a UTC offset unless timezone_name is supplied."}, "repeat_rule": {"type": "string"}, "goal_id": {"type": "string"}, "purpose": {"type": "string", "description": "notification or daily_review."}, "timezone_name": {"type": "string", "description": "IANA timezone for recurring reminders, e.g. Asia/Kolkata."}}, "required": []}}},
+    {"type": "function", "function": {"name": "list_career_reminders", "description": "List saved career reminders and their due times/status.", "parameters": {"type": "object", "properties": {"include_completed": {"type": "boolean"}}, "required": []}}},
+    {"type": "function", "function": {"name": "cancel_career_reminder", "description": "Cancel a saved reminder by reminder_id.", "parameters": {"type": "object", "properties": {"reminder_id": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "snooze_career_reminder", "description": "Move a saved reminder to a new timezone-aware date/time.", "parameters": {"type": "object", "properties": {"reminder_id": {"type": "string"}, "due_at": {"type": "string", "description": "ISO datetime with timezone offset."}}, "required": []}}},
+    {"type": "function", "function": {"name": "list_career_opportunities", "description": "List persisted job opportunities harvested by SpaceV; stored records include when the source was last checked, not a guarantee that a job is still open.", "parameters": {"type": "object", "properties": {"status": {"type": "string", "description": "new, wishlist, shortlisted, preparing, applied, interview, offer, rejected, or closed; empty for all."}, "limit": {"type": "integer"}, "opportunity_type": {"type": "string", "description": "Optional job, internship, or hackathon filter."}}, "required": []}}},
+    {"type": "function", "function": {"name": "track_career_opportunity", "description": "Save a user-provided opportunity link as a job, internship, or hackathon. Ask for missing title, URL, or type; do not claim the link is active unless verified.", "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "url": {"type": "string"}, "opportunity_type": {"type": "string", "description": "job, internship, or hackathon"}, "company": {"type": "string"}, "location": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "delete_career_assistant_data", "description": "Permanently delete locally saved career goals, plan tasks, progress events, reminders, job leads, and application tracker. Always ask for explicit user confirmation before confirm=true.", "parameters": {"type": "object", "properties": {"confirm": {"type": "boolean"}}, "required": []}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "search_and_harvest_jobs",
+            "description": "Searches job sources using the user's stated role and location. Never assume a role/location or relax filters silently. If either is missing or no matching jobs are found, return a clarification question. CSV export is opt-in.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "description": "Role/keywords from the user. Leave empty if missing so SpaceV can ask; do not invent a role."
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Target location/work mode from the user. Leave empty if missing so SpaceV can ask; do not assume remote."
+                    },
+                    "min_exp": {
+                        "type": "integer",
+                        "description": "Minimum years of experience filter (0 for freshers / entry-level)."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of listings to return (default 10)."
+                    },
+                    "save_to_desktop": {
+                        "type": "boolean",
+                        "description": "Export to a Desktop CSV only if the user explicitly asks."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_job_description",
+            "description": "Fetches and reports the available full job description without inventing details. Optionally compares detected job skills against an actual resume file. If page details or resume input are unavailable, asks the user.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url_or_text": {"type": "string", "description": "Public job listing URL or pasted job description."},
+                    "resume_path": {"type": "string", "description": "Path to the user's real .pdf/.docx/.txt/.md resume when comparing."},
+                    "compare_resume": {"type": "boolean", "description": "Set true when the user asks for a resume comparison; if no resume path was provided, SpaceV will ask for it."}
+                },
+                "required": ["url_or_text"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "track_career_application",
+            "description": "Tracks a job application in the local Career ATS Kanban pipeline (.spacev/career_applications.jsonl). Stages: Wishlist, Applied, Interview, Offer, Rejected.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_title": {
+                        "type": "string",
+                        "description": "The job title or role applied for."
+                    },
+                    "company": {
+                        "type": "string",
+                        "description": "The company name."
+                    },
+                    "job_url": {
+                        "type": "string",
+                        "description": "URL to the job posting or application link."
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Stage in the pipeline: 'Wishlist', 'Applied', 'Interview', 'Offer', or 'Rejected'."
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Optional notes or details about the application."
+                    }
+                },
+                "required": ["job_title", "company"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_career_applications",
+            "description": "Lists all tracked job applications from the local Career ATS Kanban, grouped by status.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status_filter": {
+                        "type": "string",
+                        "description": "Optional status filter ('Wishlist', 'Applied', 'Interview', 'Offer', 'Rejected')."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "prepare_job_application",
+            "description": "Prepares a tailored job application pitch, cold email cover letter, and candidate qualification highlights.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_title": {
+                        "type": "string",
+                        "description": "The target job title."
+                    },
+                    "company": {
+                        "type": "string",
+                        "description": "The company name."
+                    },
+                    "candidate_name": {
+                        "type": "string",
+                        "description": "Applicant's name."
+                    },
+                    "skills": {
+                        "type": "string",
+                        "description": "Key skills or projects to highlight in the application."
+                    }
+                },
+                "required": ["job_title", "company"]
             }
         }
     },
@@ -685,6 +960,14 @@ OLLAMA_TOOLS_SCHEMA = [
                     "location": {
                         "type": "string",
                         "description": "Location of the file (defaults to 'Desktop')."
+                    },
+                    "max_lines": {
+                        "type": "integer",
+                        "description": "Maximum number of lines to return (1-400; defaults to 40)."
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "1-based line number to begin reading from (defaults to 1)."
                     }
                 },
                 "required": ["file_name_or_path"]
@@ -968,14 +1251,31 @@ OLLAMA_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "clone_public_repository",
+            "description": "Approval-gated, source-only clone of a public GitHub repository to a new absolute destination outside the SpaceV project. First call only presents the exact URL/path and waits for user approval; second call requires the same URL/path, returned approval_id, and exact user approval_text. It does not install dependencies or run repository code.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repository_url": {"type": "string", "description": "Public HTTPS GitHub URL in owner/repository form."},
+                    "destination": {"type": "string", "description": "New absolute checkout directory outside the SpaceV project."},
+                    "approval_id": {"type": "string", "description": "Empty for the proposal call; use the returned ID only after the user approves."},
+                    "approval_text": {"type": "string", "description": "After approval, pass the exact user phrase: approve clone <approval_id>."}
+                },
+                "required": ["repository_url", "destination"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "detonate_in_sandbox",
-            "description": "Executes shell commands inside an isolated Celesto MicroVM sandbox. MANDATORY for any command involving: git clone, pip install, npm install, curl/wget downloads, docker run, or any external or untrusted code. Commands are quarantined in microVM at /workspace/quarantine and audited.",
+            "description": "Runs a command in a disposable real Celesto computer selected by CELESTO_PROVIDER and CELESTO_BACKEND in .env, when get_sandbox_status reports it ready. Set CELESTO_PROVIDER=simulation to disable real execution. Never treat simulation output as proof of execution or containment.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "command": {
                         "type": "string",
-                        "description": "The shell command to execute inside the isolated guest microVM sandbox."
+                        "description": "The command to run in the configured Celesto computer; simulation mode executes no command."
                     }
                 },
                 "required": ["command"]
@@ -985,8 +1285,78 @@ OLLAMA_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "create_sandbox_session",
+            "description": "Proposes a task-scoped reusable Celesto VM. First call requires task_description and only asks for approval. After the user supplies the exact approval phrase, call again with approval_id and approval_text; task_description may be omitted because the exact approved task is loaded from the pending approval record. Any task_description sent on approval is ignored in favor of the stored task. Reuse the returned session_id for commands, then close it. One active session maximum; 15-minute idle timeout and 1-hour maximum lifetime.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_description": {"type": "string", "description": "Required for the proposal call (8-800 characters). On approval, the task stored for approval_id is authoritative; this field may be omitted."},
+                    "approval_id": {"type": "string", "description": "Empty to propose the task; use the returned ID only after approval."},
+                    "approval_text": {"type": "string", "description": "After user approval, exact phrase: approve sandbox task <approval_id>."}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_sandbox_session_command",
+            "description": "Executes one audited command inside an existing approved Celesto VM without creating a new VM. Use this for guest commands even if the user calls it a sandbox command, guest command, or VM command. For missing executables/package managers, inspect /etc/os-release in this same session; never fall back to the host or assume apt/apk. Returns command and cumulative session timings.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "Session ID returned by create_sandbox_session."},
+                    "command": {"type": "string", "description": "One command for the approved task; max 10000 characters."}
+                },
+                "required": ["session_id", "command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "close_sandbox_session",
+            "description": "Deletes an active approved Celesto session and reports VM startup, command, cleanup, and total task timings.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "Session ID returned by create_sandbox_session."}
+                },
+                "required": ["session_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_sandbox_status",
+            "description": "Read-only diagnostic: reports whether the sandbox tool is registered, which backend is wired, and whether the Celesto SDK/configuration appear ready. Does not start a VM or execute commands.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "inspect_file_security",
+            "description": "Performs sub-millisecond Google Magika deep learning content-type inspection to verify file safety and detect masqueraded malware (e.g. ELF/PE disguised as .png, .csv, .txt).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to the target file to inspect with Google Magika neural network."
+                    }
+                },
+                "required": ["file_path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_sandboxed_workflow",
-            "description": "Executes a 10-step autonomous workflow inside Celesto MicroVM with automatic Step 7 failure detection and snapshot rollback recovery.",
+            "description": "Runs a deterministic sandbox workflow simulation. It does not start a real Celesto VM; use get_sandbox_status for the current backend diagnostic.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1003,7 +1373,7 @@ OLLAMA_TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "audit_sandbox_containment",
-            "description": "Executes an adversarial prompt injection containment audit inside Celesto MicroVM and generates Contract 8 evidence.",
+            "description": "Runs a containment simulation and writes simulation-only evidence. It does not prove real Celesto VM isolation.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1319,7 +1689,14 @@ def execute_tool_normalized(tool_name: str, arguments: dict[str, Any]) -> Any:
     canonical_name = TOOL_ALIASES.get(tool_name, tool_name)
     func = TOOL_FUNCTIONS.get(canonical_name)
 
-    env = "celesto_microvm" if canonical_name in SANDBOX_TOOL_NAMES else "host_process"
+    if canonical_name in {
+        "get_sandbox_status", "create_sandbox_session", "run_sandbox_session_command", "close_sandbox_session"
+    }:
+        env = "sandbox_control_plane"
+    elif canonical_name in SANDBOX_EXECUTION_TOOL_NAMES:
+        env = "sandbox_simulator"
+    else:
+        env = "host_process"
 
     if not func:
         return ToolResult(
@@ -1363,11 +1740,28 @@ def execute_tool_normalized(tool_name: str, arguments: dict[str, Any]) -> Any:
         finished_at = datetime.now(timezone.utc).isoformat()
         res_str = str(result)
 
+        if canonical_name == "run_sandbox_session_command" and res_str.startswith("[CELESTO SESSION EXECUTION]"):
+            env = "celesto_microvm"
+        elif canonical_name == "detonate_in_sandbox":
+            if res_str.startswith("[CELESTO SDK EXECUTION]"):
+                env = "celesto_microvm"
+            elif "SIMULATION ONLY" in res_str:
+                env = "sandbox_simulator"
+
+        needs_input = res_str.startswith("SPACEV_NEEDS_USER_INPUT:")
         is_failed = res_str.startswith(("Error:", "Failed:", "BLOCKED:", "Folder does not exist:"))
-        status = "failed" if is_failed else "success"
+        # Sandbox helpers return structured human-readable receipts. Treat a
+        # non-zero guest exit or failed VM deletion as a failed tool call too.
+        if canonical_name in {"detonate_in_sandbox", "run_sandbox_session_command"}:
+            exit_code_match = re.search(r"\bexit code:\s*(-?\d+)", res_str, flags=re.IGNORECASE)
+            if exit_code_match and int(exit_code_match.group(1)) != 0:
+                is_failed = True
+        if re.search(r"\b(?:cleanup_state|state):\s*cleanup_failed\b", res_str, flags=re.IGNORECASE):
+            is_failed = True
+        status = "needs_input" if needs_input else ("failed" if is_failed else "success")
 
         return ToolResult(
-            success=not is_failed,
+            success=not is_failed and not needs_input,
             status=status,
             data=res_str,
             error=res_str if is_failed else None,
@@ -1410,6 +1804,13 @@ def execute_tool(tool_name: str, arguments: dict[str, Any]) -> str:
     return str(normalized)
 
 
+SANDBOX_SESSION_TOOL_NAMES = {
+    "get_sandbox_status",
+    "create_sandbox_session",
+    "run_sandbox_session_command",
+    "close_sandbox_session",
+}
+
 CORE_TOOL_NAMES = {
     "create_file", "read_file_content", "run_python_script", "execute_code_block",
     "execute_terminal_command", "list_workspace_files", "scratchpad_view",
@@ -1424,19 +1825,34 @@ GUI_TOOL_NAMES = {
 }
 
 WEB_TOOL_NAMES = {
-    "search_google", "play_youtube", "open_url", "gui_search_google_browser",
+    "search_google", "play_youtube", "open_url", "open_browser_urls", "gui_search_google_browser",
     "gui_play_youtube", "scrape_jobs", "fetch_news_headlines", "get_weather",
     "get_wikipedia_summary", "browse_interactive_dom", "read_web_page",
     "browse_website_stealth", "click_dom_element", "type_dom_element", "scrape_web_page_crawl4ai"
 }
 
 SANDBOX_TOOL_NAMES = {
-    "detonate_in_sandbox", "run_sandboxed_workflow", "audit_sandbox_containment",
-    "get_run_ledger_summary"
+    "detonate_in_sandbox", "create_sandbox_session", "run_sandbox_session_command", "close_sandbox_session",
+    "run_sandboxed_workflow", "audit_sandbox_containment",
+    "get_run_ledger_summary", "get_sandbox_status"
+}
+
+SANDBOX_EXECUTION_TOOL_NAMES = {
+    "detonate_in_sandbox", "run_sandboxed_workflow", "audit_sandbox_containment"
+}
+
+CAREER_TOOL_NAMES = {
+    "search_and_harvest_jobs", "track_career_application", "list_career_applications",
+    "prepare_job_application", "scrape_jobs", "analyze_job_description",
+    "tailor_careerflow_resume", "apply_to_job", "create_career_goal", "get_career_goal", "activate_career_goal",
+    "record_career_activity", "update_career_plan_task", "get_career_daily_review", "create_career_reminder",
+    "list_career_reminders", "cancel_career_reminder", "snooze_career_reminder",
+    "list_career_opportunities", "track_career_opportunity", "delete_career_assistant_data"
 }
 
 CODE_TOOL_NAMES = {
-    "query_code_graph", "get_code_node", "get_code_neighbors", "get_code_blast_radius"
+    "query_code_graph", "get_code_node", "get_code_neighbors", "get_code_blast_radius",
+    "clone_public_repository"
 }
 
 SYSTEM_TOOL_NAMES = {
@@ -1468,8 +1884,9 @@ def get_scoped_tools(prompt: str = "", all_tools: list[dict[str, Any]] | None = 
         return source_tools
 
     p = (prompt or "").lower()
-    selected_names = set(CORE_TOOL_NAMES)
+    selected_names = set(CORE_TOOL_NAMES) | SANDBOX_SESSION_TOOL_NAMES
     category_matched = False
+    sandbox_matched = False
 
     # GUI / Vision
     gui_keywords = ["screen", "click", "mouse", "type", "press", "hotkey", "window", "gui", "paint", "draw", "clipboard", "desktop", "icon", "uia", "tars"]
@@ -1488,9 +1905,16 @@ def get_scoped_tools(prompt: str = "", all_tools: list[dict[str, Any]] | None = 
     if any(k in p for k in sandbox_keywords):
         selected_names.update(SANDBOX_TOOL_NAMES)
         category_matched = True
+        sandbox_matched = True
+
+    # Career / Job Search / Application Intelligence
+    career_keywords = ["job", "career", "apply", "resume", "application", "interview", "hiring", "recruit", "internship", "wishlist", "goal", "progress", "reminder", "milestone", "check-in", "checkin", "career plan", "plan task"]
+    if any(k in p for k in career_keywords):
+        selected_names.update(CAREER_TOOL_NAMES)
+        category_matched = True
 
     # Code Intelligence / AST Graph / Blast Radius
-    code_keywords = ["graph", "ast", "blast", "impact", "callers", "callees", "codebase", "architecture", "dependencies", "god_nodes", "symbol", "affected"]
+    code_keywords = ["graph", "ast", "blast", "impact", "callers", "callees", "codebase", "architecture", "dependencies", "god_nodes", "symbol", "affected", "clone", "repository", "checkout"]
     if any(k in p for k in code_keywords):
         selected_names.update(CODE_TOOL_NAMES)
         category_matched = True
@@ -1503,6 +1927,12 @@ def get_scoped_tools(prompt: str = "", all_tools: list[dict[str, Any]] | None = 
 
     if not category_matched:
         selected_names.update(DEFAULT_ESSENTIAL_TOOL_NAMES)
+
+    # A sandbox request is a trust-boundary decision. Do not expose host-side
+    # command/file tools alongside the guest controls where the model could
+    # accidentally fall back to the host.
+    if sandbox_matched:
+        selected_names = set(SANDBOX_TOOL_NAMES)
 
     scoped = []
     for tool_entry in source_tools:

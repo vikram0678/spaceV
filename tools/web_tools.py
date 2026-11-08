@@ -1,24 +1,38 @@
 import logging
+import json
 import urllib.parse
 import urllib.request
+from typing import Any
 
 logger = logging.getLogger("SpaceV.WebTools")
 
 
-def search_google(query: str) -> str:
+def search_google(query: str, click_first_result: bool = False) -> str:
     """
     Searches Google in the default web browser for the given query.
+    When autonomous cursor mode is active, navigates Chrome like a human and optionally clicks the first result.
+    Automatically parses out conversational and platform noise (e.g. 'in chrome and ask me...').
     """
+    import re
     from core.platform_adapter import PlatformAdapter
-    from tools.gui_tools import HAS_PYAUTOGUI, gui_search_google_browser, safety
+    from core.query_parser import parse_search_intent
+    from tools.gui_tools import HAS_PYAUTOGUI, gui_human_search_and_open, gui_search_google_browser, safety
+
+    # Pure query isolation: strips 'in the chrome', 'and ask me...', etc.
+    clean_q, _, _ = parse_search_intent(query)
+    target_q = clean_q or query
+
     if safety.autonomous_mode_enabled and HAS_PYAUTOGUI and not PlatformAdapter.is_wsl():
-        return gui_search_google_browser(query)
+        if click_first_result or any(k in target_q.lower() for k in ["click", "first result", "open result", "like human", "like a human"]):
+            clean_click_q = re.sub(r"\b(?:and\s+)?(?:click|open)\s+(?:the\s+)?(?:first|top)?\s*results?\b", "", target_q, flags=re.IGNORECASE).strip()
+            return gui_human_search_and_open(clean_click_q or target_q, click_first_result=True)
+        return gui_search_google_browser(target_q)
 
     try:
-        encoded_query = urllib.parse.quote_plus(query)
+        encoded_query = urllib.parse.quote_plus(target_q)
         url = f"https://www.google.com/search?q={encoded_query}"
         PlatformAdapter.open_url(url)
-        return f"Opened Google search for: '{query}'"
+        return f"Opened Google search for: '{target_q}'"
     except Exception as e:
         return f"Failed to search Google: {e!s}"
 
@@ -84,15 +98,77 @@ def play_youtube(video_query: str) -> str:
 def open_url(url: str) -> str:
     """
     Opens any website URL in the default web browser cross-platform.
+    When autonomous cursor mode is active, uses human-like browser navigation.
     """
     from core.platform_adapter import PlatformAdapter
+    from tools.gui_tools import HAS_PYAUTOGUI, gui_open_browser_urls, sanitize_url_tokens, safety
+
+    clean_u = sanitize_url_tokens(url.strip())
+    if not clean_u.startswith("http://") and not clean_u.startswith("https://"):
+        clean_u = "https://" + clean_u
+
+    if safety.autonomous_mode_enabled and HAS_PYAUTOGUI and not PlatformAdapter.is_wsl():
+        return gui_open_browser_urls([clean_u])
+
     try:
-        if not url.startswith("http://") and not url.startswith("https://"):
-            url = "https://" + url
-        PlatformAdapter.open_url(url)
-        return f"Opened website: {url}"
+        PlatformAdapter.open_url(clean_u)
+        return f"Opened website: {clean_u}"
     except Exception as e:
         return f"Failed to open website: {e!s}"
+
+
+def open_browser_urls(urls: list[str] | str, delay_sec: float = 0.5) -> str:
+    """
+    Opens multiple URLs sequentially in the user's default browser (Chrome/Edge/Firefox)
+    with human-like pacing to avoid overwhelming system resources.
+    When autonomous cursor mode is active, glides mouse and types in Chrome like a real human.
+    """
+    import time
+    from core.platform_adapter import PlatformAdapter
+    from tools.gui_tools import HAS_PYAUTOGUI, gui_open_browser_urls, sanitize_url_tokens, safety
+
+    target_urls: list[str] = []
+    if isinstance(urls, str):
+        clean = urls.strip()
+        if clean.startswith("[") and clean.endswith("]"):
+            try:
+                import json
+                target_urls = [str(u) for u in json.loads(clean)]
+            except Exception:
+                target_urls = [u.strip().strip("'\"") for u in clean.strip("[]").split(",") if u.strip()]
+        elif "\n" in clean:
+            target_urls = [u.strip().strip("'\"") for u in clean.split("\n") if u.strip()]
+        elif "," in clean:
+            target_urls = [u.strip().strip("'\"") for u in clean.split(",") if u.strip()]
+        else:
+            target_urls = [clean]
+    elif isinstance(urls, list):
+        target_urls = [str(u).strip() for u in urls if str(u).strip()]
+
+    if not target_urls:
+        return "No valid URLs provided to open."
+
+    # When Cursor Mode is active, execute physical human mouse and keyboard navigation
+    if safety.autonomous_mode_enabled and HAS_PYAUTOGUI and not PlatformAdapter.is_wsl():
+        return gui_open_browser_urls(target_urls, delay_sec=delay_sec)
+
+    clamped = target_urls[:20]
+    opened = 0
+    pacing = max(0.1, min(delay_sec, 5.0))
+
+    for idx, raw_u in enumerate(clamped, 1):
+        clean_u = sanitize_url_tokens(raw_u)
+        if not clean_u.startswith("http://") and not clean_u.startswith("https://"):
+            clean_u = "https://" + clean_u
+        try:
+            PlatformAdapter.open_url(clean_u)
+            opened += 1
+            if idx < len(clamped):
+                time.sleep(pacing)
+        except Exception as e:
+            logger.warning(f"Failed to open URL '{clean_u}': {e}")
+
+    return f"Successfully opened {opened} of {len(target_urls)} links in your browser."
 
 
 def fetch_github_repo_summary(url: str) -> str | None:
@@ -100,16 +176,20 @@ def fetch_github_repo_summary(url: str) -> str | None:
     Zero-browser high-speed GitHub repository distiller (Crawl4AI pattern).
     Fetches raw README markdown and API metadata in <100ms with zero browser overhead.
     """
-    import json
-    import re
     import urllib.request
 
-    m = re.search(r"github\.com/([^/\s]+)/([^/\s#?]+)", url)
-    if not m:
+    parsed = urllib.parse.urlsplit(url)
+    if (parsed.hostname or "").lower() not in {"github.com", "www.github.com"}:
         return None
-
-    owner, repo = m.group(1), m.group(2)
-    repo = repo.rstrip("/").removesuffix(".git")
+    path_parts = [urllib.parse.unquote(part) for part in parsed.path.strip("/").split("/") if part]
+    # This fast path is only for repository roots. Issue, pull-request, file,
+    # and API URLs must keep their full path and use their own reader below.
+    if len(path_parts) != 2:
+        return None
+    owner, repo = path_parts
+    repo = repo.removesuffix(".git")
+    if not owner or not repo:
+        return None
 
     headers = {
         "User-Agent": "SpaceV-Cybernetic-Agent/2.0 (compatible; Mozilla/5.0; OpenSource Scraper)",
@@ -172,6 +252,133 @@ def fetch_github_repo_summary(url: str) -> str | None:
     return meta_info if meta_info else None
 
 
+def _github_issue_api_url(url: str) -> str | None:
+    """Map a GitHub issue URL to its REST API resource without losing path parts."""
+    try:
+        parsed = urllib.parse.urlsplit(str(url or "").strip())
+        port = parsed.port
+    except ValueError:
+        return None
+    host = (parsed.hostname or "").lower()
+    parts = [urllib.parse.unquote(part) for part in parsed.path.strip("/").split("/") if part]
+
+    if (
+        parsed.scheme.casefold() != "https"
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in (None, 443)
+        or parsed.fragment
+    ):
+        return None
+
+    if host in {"github.com", "www.github.com"}:
+        if len(parts) in (4, 5) and parts[2] == "issues" and parts[3].isdigit():
+            suffix = "/comments" if len(parts) == 5 and parts[4] == "comments" else ""
+            if len(parts) == 5 and not suffix:
+                return None
+            return f"https://api.github.com/repos/{parts[0]}/{parts[1]}/issues/{parts[3]}{suffix}"
+        return None
+
+    if host == "api.github.com" and len(parts) in (5, 6) and parts[:1] == ["repos"] and parts[3] == "issues" and parts[4].isdigit():
+        # Preserve caller-supplied API query parameters and subresources.
+        if len(parts) == 6 and parts[5] != "comments":
+            return None
+        return urllib.parse.urlunsplit(("https", "api.github.com", parsed.path, parsed.query, ""))
+    return None
+
+
+def _github_api_get_json(url: str) -> Any:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "SpaceV-Cybernetic-Agent/2.0",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=12) as response:
+        return json.loads(response.read().decode("utf-8", errors="replace"))
+
+
+def fetch_github_issue_content(url: str, *, include_comments: bool = False) -> str:
+    """Read an issue; fetch discussion only when the caller explicitly requests it."""
+    api_url = _github_issue_api_url(url)
+    if not api_url:
+        return f"Failed: URL is not a supported GitHub issue URL: {url}"
+
+    api_parts = [urllib.parse.unquote(part) for part in urllib.parse.urlsplit(api_url).path.strip("/").split("/")]
+    if len(api_parts) < 5 or api_parts[0] != "repos" or api_parts[3] != "issues":
+        return f"Failed: URL is not a supported GitHub issue URL: {url}"
+    expected_issue_url = f"https://github.com/{api_parts[1]}/{api_parts[2]}/issues/{int(api_parts[4])}"
+
+    try:
+        payload = _github_api_get_json(api_url)
+        if isinstance(payload, list):
+            lines = [f"GitHub issue comments from {api_url}"]
+            for comment in payload[:30]:
+                author = (comment.get("user") or {}).get("login", "unknown")
+                lines.extend([f"\n### @{author}", str(comment.get("body") or "(empty comment)")])
+            if len(payload) > 30:
+                lines.append(f"\n[Showing 30 of {len(payload)} comments]")
+            return "\n".join(lines)
+
+        if not isinstance(payload, dict):
+            return f"Failed: GitHub API returned an unexpected issue response for {api_url}."
+
+        title = str(payload.get("title") or "").strip()
+        if not title:
+            return f"Failed: GitHub API returned an issue without a title for {expected_issue_url}."
+        issue_url = str(payload.get("html_url") or "").strip().rstrip("/")
+        if issue_url != expected_issue_url:
+            return (
+                f"Failed: GitHub issue identity mismatch. Requested {expected_issue_url}, "
+                f"but the API returned {issue_url or '(no html_url)'}."
+            )
+        issue_body = payload.get("body")
+        has_description = isinstance(issue_body, str) and bool(issue_body.strip())
+        lines = [
+            f"# {title}",
+            f"Issue: {issue_url}",
+            f"State: {payload.get('state', 'unknown')}",
+            f"Author: @{(payload.get('user') or {}).get('login', 'unknown')}",
+            f"Created: {payload.get('created_at', 'unknown')}",
+            "\n## Issue description\n",
+            str(issue_body).strip() if has_description else "(No issue description was provided; expected behavior is not established by the issue body.)",
+        ]
+
+        comments_count = int(payload.get("comments") or 0)
+        if comments_count and include_comments:
+            # Build the comments endpoint from the validated issue API URL.
+            endpoint = api_url.split("?", 1)[0].rstrip("/") + "/comments?per_page=30"
+            try:
+                comments = _github_api_get_json(endpoint)
+                if isinstance(comments, list):
+                    lines.append(f"\n## Discussion ({min(len(comments), 30)} of {comments_count} comments shown)\n")
+                    for comment in comments[:30]:
+                        author = (comment.get("user") or {}).get("login", "unknown")
+                        lines.extend([f"### @{author}", str(comment.get("body") or "(empty comment)")])
+            except Exception as exc:
+                lines.append(f"\n[Issue comments could not be fetched: {type(exc).__name__}: {exc}]")
+        content = "\n".join(lines)
+        if len(content) > 12000:
+            content = content[:12000] + "\n...[Issue content truncated at 12000 characters]..."
+        return content
+    except Exception as exc:
+        return f"Failed to fetch GitHub issue at {url}: {type(exc).__name__}: {exc}"
+
+
+def fetch_github_api_content(url: str) -> str:
+    """Return a bounded, readable representation of a GitHub API response."""
+    try:
+        payload = _github_api_get_json(url)
+        content = json.dumps(payload, ensure_ascii=False, indent=2)
+        if len(content) > 12000:
+            content = content[:12000] + "\n...[GitHub API response truncated]..."
+        return f"=== GitHub API response: {url} ===\n\n{content}"
+    except Exception as exc:
+        return f"Failed to fetch GitHub API URL {url}: {type(exc).__name__}: {exc}"
+
+
 def read_web_page(url: str = "", **kwargs) -> str:
     """
     Fetches and reads content of any web page or GitHub repository, automatically stripping HTML/CSS clutter
@@ -215,8 +422,17 @@ def read_web_page(url: str = "", **kwargs) -> str:
 
     url = target_str
 
-    # Tier 1: Specialized GitHub Fast-Path
-    if "github.com" in url.lower():
+    # Preserve API/issue resource paths before considering the repo README shortcut.
+    parsed_url = urllib.parse.urlsplit(url)
+    if (parsed_url.hostname or "").lower() == "api.github.com":
+        if _github_issue_api_url(url):
+            return fetch_github_issue_content(url, include_comments=kwargs.get("include_comments") is True)
+        return fetch_github_api_content(url)
+    if _github_issue_api_url(url):
+        return fetch_github_issue_content(url, include_comments=kwargs.get("include_comments") is True)
+
+    # Tier 1: Specialized GitHub repository-root fast path only.
+    if (parsed_url.hostname or "").lower() in {"github.com", "www.github.com"}:
         gh_summary = fetch_github_repo_summary(url)
         if gh_summary:
             return f"=== Distilled Repository Content ===\n\n{gh_summary}"

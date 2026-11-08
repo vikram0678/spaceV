@@ -1,0 +1,65 @@
+{
+  "settings": {
+    "name": "settings",
+    "display_name": "Settings",
+    "target": "ms-settings:",
+    "app_type": "uri",
+    "aliases": []
+  },
+  "calculator": {
+    "name": "calculator",
+    "display_name": "Calculator",
+    "target": "ms-calculator:",
+    "app_type": "uri",
+    "aliases": []
+  },
+  "camera": {
+    "name": "camera",
+    "display_name": "Camera",
+    "target": "microsoft.windows.camera:",
+    "app_type": "uri",
+    "aliases": []
+  },
+  "photos": {
+    "name": "photos",
+    "display_name": "Photos",
+    "target": "ms-photos:",
+    "app_type": "uri",
+    "aliases": []
+  },
+  "clock": {
+    "name": "clock",
+    "display_name": "Clock",
+    "target": "ms-clock:",
+    "app_type": "uri",
+    "aliases": []
+  },
+  "alarms": {
+    "name": "alarms",
+    "display_name": "Alarms & Clock",
+    "target": "ms-clock:",
+    "app_type": "uri",
+    "aliases": []
+  },
+  "code": {
+    "name": "code",
+    "display_name": "CODE",
+    "target": "/mnt/c/Users/nandi/AppData/Local/Programs/Microsoft VS Code/bin/code",
+    "app_type": "cli",
+    "aliases": []
+  },
+  "python": {
+    "name": "python",
+    "display_name": "PYTHON",
+    "target": "/mnt/d/agentSpace/spacev-wsl/bin/python",
+    "app_type": "cli",
+    "aliases": []
+  },
+  "git": {
+    "name": "git",
+    "display_name": "GIT",
+    "target": "/usr/bin/git",
+    "app_type": "cli",
+    "aliases": []
+  }
+}

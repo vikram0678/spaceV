@@ -6,6 +6,7 @@ without consuming LLM tokens, cloud APIs, or GPU inference compute.
 import logging
 import math
 import re
+import sys
 import time
 import urllib.parse
 from dataclasses import dataclass
@@ -267,7 +268,10 @@ class SemanticRouterEngine:
             ]),
         ]
 
-        if _HAS_SEMANTIC_ROUTER and _HAS_NUMPY:
+        # semantic-router's synchronous wrapper creates an asyncio background loop.
+        # CPython on Windows can block while creating its socketpair wake-up channel;
+        # SpaceV has a deterministic native sparse-vector fallback below.
+        if _HAS_SEMANTIC_ROUTER and _HAS_NUMPY and sys.platform != "win32":
             try:
                 self.router = IndexedRouter(
                     encoder=SemanticFastEncoder(),
@@ -388,11 +392,9 @@ class SemanticRouterEngine:
 
     @staticmethod
     def _extract_search_query(user_prompt: str) -> str:
-        text = (user_prompt or "").strip()
-        clean = re.sub(r"^(?:hey\s+|hi\s+|spacev\s+|can\s+you\s+(?:please\s+)?|please\s+)", "", text, flags=re.I).strip()
-        clean = re.sub(r"^(?:search\s+google\s+for|google\s+search\s+for|search\s+for|search\s+google|google\s+search|lookup\s+on\s+google|search\s+the\s+web\s+for|search\s+online\s+for|search)\s+", "", clean, flags=re.I).strip()
-        clean = re.sub(r"\s+on\s+google$", "", clean, flags=re.I).strip()
-        return clean or "Google"
+        from core.query_parser import parse_search_intent
+        clean_q, _, _ = parse_search_intent(user_prompt)
+        return clean_q or "Google"
 
     def dispatch(self, intent_name: str, user_prompt: str = "") -> tuple[str, str, str] | None:
         """
@@ -526,18 +528,54 @@ class SemanticRouterEngine:
                 res = open_url("https://www.youtube.com")
                 return ("open_url", res, f"Opening YouTube homepage for you, Sir: {res}")
             res = play_youtube(query)
+            if "modal blocker:" in str(res).lower():
+                question = str(res).replace("⚠️ Modal Blocker:", "").strip()
+                return ("modal_disambiguation", question, question)
             return ("play_youtube", res, f"Playing '{query}' on YouTube for you, Sir: {res}")
 
         elif intent_name == "open_text_editor":
-            editor_target = "code" if ("vscode" in user_prompt.lower() or "code" in user_prompt.lower()) else "notepad"
+            from core.app_catalog import app_catalog
+            installed_editors = app_catalog.get_installed_editors()
+            editor_target = "notepad"
+            lower_p = user_prompt.lower()
+            if "notepad" in lower_p and app_catalog.find_app("notepad"):
+                editor_target = "notepad"
+            elif "cursor" in lower_p and app_catalog.find_app("cursor"):
+                editor_target = "cursor"
+            elif ("vscode" in lower_p or "code" in lower_p) and app_catalog.find_app("code"):
+                editor_target = "code"
+            elif installed_editors:
+                editor_target = installed_editors[0].name
             res = open_text_editor(file_name="script.py", content="", editor=editor_target)
             return ("open_text_editor", res, f"Launching text editor for you, Sir: {res}")
 
         elif intent_name == "search_google":
-            from tools.web_tools import open_url
             query = self._extract_search_query(user_prompt)
-            encoded = urllib.parse.quote_plus(query)
-            res = open_url(f"https://www.google.com/search?q={encoded}")
+
+            # 1. If explicit cursor clicking or human browsing was requested
+            if any(k in user_prompt.lower() for k in ["click", "first", "open result", "like human", "like a human"]):
+                from tools.gui_tools import gui_human_search_and_open
+                clean_q = re.sub(r"\b(?:and\s+)?(?:click|open)\s+(?:the\s+)?(?:first|top)?\s*results?\b", "", query, flags=re.IGNORECASE).strip()
+                res = gui_human_search_and_open(clean_q or query, click_first_result=True)
+                if "modal blocker:" in str(res).lower():
+                    question = str(res).replace("⚠️ Modal Blocker:", "").strip()
+                    return ("modal_disambiguation", question, question)
+                return ("gui_human_search_and_open", res, f"Right away, Sir: {res}")
+
+            # 2. Check if this is a career, job, or internship opportunity request
+            if any(k in user_prompt.lower() for k in ["job", "jobs", "intern", "internship", "internships", "vacancies", "openings"]):
+                from tools.career_tools import search_and_harvest_jobs
+                loc_m = re.search(r"\b(?:in|at|near|around)\s+([a-zA-Z\s]+?)(?:\s+and\s+save|\s+and|\s*$)", user_prompt, re.IGNORECASE)
+                location = loc_m.group(1).strip() if loc_m else "remote"
+                role_str = re.sub(r"\b(?:in|at|near|around)\s+([a-zA-Z\s]+)", "", user_prompt, flags=re.IGNORECASE)
+                role_clean = re.sub(r"\b(?:search\s+for|search|find|or\s+related|or\s+similar|jobs?|internships?|openings?|vacancies|and\s+save\s+to\s+desktop|save\s+to\s+desktop)\b", "", role_str, flags=re.IGNORECASE).strip()
+                res = search_and_harvest_jobs(role=role_clean or "ai engineer", location=location, save_to_desktop=True)
+                return ("scrape_jobs", res, f"Harvested and exported verified career opportunities for **'{role_clean or user_prompt}'** ({location}) to your desktop, Sir:\n\n{res}")
+            from tools.web_tools import search_google
+            res = search_google(query)
+            if "modal blocker:" in str(res).lower():
+                question = str(res).replace("⚠️ Modal Blocker:", "").strip()
+                return ("modal_disambiguation", question, question)
             return ("search_google", res, f"Searching Google for '{query}', Sir: {res}")
 
         elif intent_name == "capabilities":

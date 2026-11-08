@@ -144,3 +144,42 @@ def test_byok_direct_mode():
     assert pipeline[0]["name"] == "Direct Paid API"
     assert pipeline[0]["api_key"] == "sk-paid-openai-commercial-key"
     assert pipeline[0]["model"] == "gpt-4o"
+
+
+def test_tool_call_sanitization_preserves_assistant_and_tool_pairing():
+    """Verify multi-turn tool conversations strictly preserve assistant calls and include name on tool responses."""
+    client = UniversalBrainClient()
+
+    raw_messages = [
+        {"role": "user", "content": "do you see my screen"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_abc123",
+                    "type": "function",
+                    "function": {"name": "get_active_window_info", "arguments": "{}"},
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_abc123",
+            "content": "Active Window: Terminal (1920x1080)",
+        },
+    ]
+
+    sanitized = client.sanitize_messages(raw_messages)
+    roles = [m["role"] for m in sanitized]
+
+    # Invariant 1: Assistant message with tool_calls MUST NOT be deleted
+    assert roles == ["user", "assistant", "tool"], f"Expected ['user', 'assistant', 'tool'], got {roles}"
+
+    # Invariant 2: Assistant content must not be None (converts to string "")
+    assert sanitized[1]["content"] == ""
+
+    # Invariant 3: Tool message must automatically acquire the matching function name
+    assert sanitized[2]["name"] == "get_active_window_info"
+    assert sanitized[2]["tool_call_id"] == "call_abc123"
+

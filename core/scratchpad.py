@@ -5,8 +5,12 @@ intermediate variable caching (URLs, file paths, coordinates), and self-healing 
 """
 import datetime
 import json
+import logging
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger("SpaceV.Scratchpad")
 
 
 class StepStatus:
@@ -24,6 +28,8 @@ class ScratchpadStep:
     status: str = StepStatus.PENDING
     action_tool: str | None = None
     result_summary: str | None = None
+    acceptance_criteria: str | None = None
+    verification_evidence: str | None = None
     updated_at: str = field(default_factory=lambda: datetime.datetime.now().strftime("%H:%M:%S"))
 
     def to_dict(self) -> dict[str, Any]:
@@ -38,8 +44,10 @@ class SpaceVScratchpad:
     """
     Structured working memory for SpaceV autonomous desktop execution.
     Maintains active task state across multi-step LangGraph iterations.
+    Equipped with durable disk-backed persistence ('planning-with-files')
+    to survive context compactions, process resets, and thread interruptions.
     """
-    def __init__(self, goal: str = ""):
+    def __init__(self, goal: str = "", state_dir: str | Path = ".spacev", auto_reload: bool = False):
         self.goal: str = goal
         self.plan: list[ScratchpadStep] = []
         self.notes: dict[str, Any] = {}
@@ -47,6 +55,121 @@ class SpaceVScratchpad:
         self.current_step_index: int = 0
         self.is_active: bool = bool(goal)
         self.max_steps: int = 10
+        self.state_dir: Path = Path(state_dir)
+        self.task_plan_file: Path = self.state_dir / "task_plan.md"
+        self.findings_file: Path = self.state_dir / "findings.md"
+        self.progress_file: Path = self.state_dir / "progress.md"
+        self.state_meta_file: Path = self.state_dir / "scratchpad_state.json"
+
+        if auto_reload and not goal and self.state_meta_file.exists():
+            self.reload_from_disk()
+
+    def sync_to_disk(self) -> bool:
+        """
+        Durable disk persistence adhering to the 'planning-with-files' architecture.
+        Persists active checklist to .spacev/task_plan.md, working memory notes to
+        .spacev/findings.md, and state metadata to .spacev/scratchpad_state.json.
+        Survives context compactions, process resets, and thread crashes.
+        """
+        try:
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            # 1. State Meta JSON (for exact typed recovery)
+            self.state_meta_file.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
+
+            # 2. task_plan.md (Markdown format for LLM context & human readability)
+            curr = self.get_current_step()
+            next_action = curr.description if curr else ("Task complete" if self.plan else "Awaiting task decomposition")
+            curr_phase = f"Step {curr.id}: {curr.description}" if curr else ("All steps completed" if self.plan else "Phase 1: Initial Discovery")
+
+            plan_md = [
+                f"# Task Plan: {self.goal or 'Autonomous Execution Plan'}",
+                "",
+                "## Goal",
+                self.goal or "No active goal specified.",
+                "",
+                "## Next Step",
+                next_action,
+                "",
+                "## Current Phase",
+                curr_phase,
+                "",
+                f"## Plan Progress ({self.get_progress_summary()})",
+            ]
+            if self.plan:
+                for s in self.plan:
+                    if s.status == StepStatus.COMPLETED:
+                        box = "[x]"
+                    elif s.status == StepStatus.IN_PROGRESS:
+                        box = "[>]"
+                    elif s.status == StepStatus.FAILED:
+                        box = "[!]"
+                    elif s.status == StepStatus.SKIPPED:
+                        box = "[-]"
+                    else:
+                        box = "[ ]"
+                    summary = f" -> {s.result_summary}" if s.result_summary else ""
+                    plan_md.append(f"- {box} Step {s.id}: {s.description} ({s.status}){summary}")
+            else:
+                plan_md.append("No active plan checklist on disk.")
+
+            plan_md.append("")
+            plan_md.append("## Recent Execution Log")
+            for log_entry in self.execution_log[-10:]:
+                plan_md.append(f"- {log_entry}")
+
+            self.task_plan_file.write_text("\n".join(plan_md) + "\n", encoding="utf-8")
+
+            # 3. findings.md (Technical blackboard)
+            findings_md = [
+                "# SpaceV Task Findings & Working Memory Blackboard",
+                "",
+                "## Active Variables & Knowledge Notes",
+            ]
+            if self.notes:
+                for k, v in self.notes.items():
+                    findings_md.append(f"- **{k}**: {v}")
+            else:
+                findings_md.append("No intermediate notes recorded yet.")
+
+            self.findings_file.write_text("\n".join(findings_md) + "\n", encoding="utf-8")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to persist scratchpad to disk: {e}")
+            return False
+
+    def reload_from_disk(self) -> bool:
+        """
+        Restores scratchpad working memory and task checklist from durable disk storage.
+        Invoked after context compaction or agent restart to prevent amnesia.
+        """
+        try:
+            if self.state_meta_file.exists():
+                data = json.loads(self.state_meta_file.read_text(encoding="utf-8"))
+                self.goal = data.get("goal", self.goal)
+                self.notes = data.get("notes", self.notes)
+                self.execution_log = data.get("execution_log", self.execution_log)
+                self.current_step_index = data.get("current_step_index", 0)
+                self.is_active = data.get("is_active", bool(self.goal))
+                self.max_steps = data.get("max_steps", 10)
+                plan_data = data.get("plan", [])
+                self.plan = [ScratchpadStep.from_dict(item) for item in plan_data if isinstance(item, dict)]
+                self._log("Restored active task state from durable disk storage (.spacev)")
+                return True
+            return False
+        except Exception as e:
+            logger.warning(f"Failed to reload scratchpad from disk: {e}")
+            return False
+
+    def clear_disk_state(self) -> bool:
+        """Removes persisted scratchpad state files upon complete task termination."""
+        try:
+            for p in (self.task_plan_file, self.findings_file, self.state_meta_file, self.progress_file):
+                if p.exists():
+                    p.unlink()
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to clear disk state: {e}")
+            return False
 
     def set_goal(self, goal: str):
         """Sets or updates the primary task goal. Resets checklist when goal changes."""
@@ -58,11 +181,13 @@ class SpaceVScratchpad:
             self.current_step_index = 0
         self.goal = goal
         self.is_active = bool(goal)
+        self.sync_to_disk()
 
     def clear_plan(self):
         """Clears the active plan checklist while preserving working memory notes."""
         self.plan = []
         self.current_step_index = 0
+        self.sync_to_disk()
 
     def create_plan(self, steps: list[str]):
         """
@@ -76,6 +201,7 @@ class SpaceVScratchpad:
         self.current_step_index = 0
         self.is_active = len(self.plan) > 0
         self._log(f"Plan created with {len(self.plan)} steps for goal: '{self.goal}'")
+        self.sync_to_disk()
 
     def get_current_step(self) -> ScratchpadStep | None:
         """Returns the step currently in progress."""
@@ -102,6 +228,14 @@ class SpaceVScratchpad:
             curr.status = StepStatus.FAILED
             self._log(f"Step {curr.id} FAILED: {curr.description} (Error: {curr.result_summary})")
 
+        # Append audit entry to progress.md
+        try:
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            with open(self.progress_file, "a", encoding="utf-8") as pf:
+                pf.write(f"- [{ts}] Step {curr.id} ({curr.status}): {curr.description} | Result: {curr.result_summary}\n")
+        except Exception:
+            pass
+
         # Move to next step if available
         self.current_step_index += 1
         next_step = self.get_current_step()
@@ -109,6 +243,63 @@ class SpaceVScratchpad:
             next_step.status = StepStatus.IN_PROGRESS
             next_step.updated_at = ts
             self._log(f"Step {next_step.id} ACTIVATED: {next_step.description}")
+
+        self.sync_to_disk()
+
+    def verify_and_complete_step(self, step_id: int, evidence: str, tool_name: str | None = None) -> bool:
+        """
+        Goal-backward empirical verification (Planning-with-Files pattern):
+        A step is strictly rejected from COMPLETED status unless explicit,
+        verifiable proof is provided.
+        """
+        step = next((s for s in self.plan if s.id == step_id), None)
+        if not step:
+            logger.warning(f"[SCRATCHPAD] Step {step_id} not found for verification.")
+            return False
+
+        clean_evidence = str(evidence).strip()
+        if not clean_evidence or len(clean_evidence) < 5:
+            logger.warning(f"[SCRATCHPAD] Goal-backward verification rejected: insufficient evidence for Step {step_id}.")
+            step.status = StepStatus.FAILED
+            step.result_summary = "Verification failed: no empirical evidence provided"
+            self.sync_to_disk()
+            return False
+
+        step.verification_evidence = clean_evidence[:300]
+        step.result_summary = clean_evidence[:200]
+        step.status = StepStatus.COMPLETED
+        if tool_name:
+            step.action_tool = tool_name
+        step.updated_at = datetime.datetime.now().strftime("%H:%M:%S")
+
+        # Auto-advance current_step_index to next pending step
+        for idx, s in enumerate(self.plan):
+            if s.status == StepStatus.PENDING:
+                self.current_step_index = idx
+                s.status = StepStatus.IN_PROGRESS
+                break
+        else:
+            self.current_step_index = len(self.plan)
+
+        self._log(f"Step {step_id} empirically verified: {clean_evidence[:80]}")
+        self.sync_to_disk()
+        return True
+
+    def goal_backward_audit(self) -> tuple[bool, list[str]]:
+        """
+        Traverses plan from goal backward to ensure all completed steps
+        have empirical verification evidence recorded.
+        Returns (is_valid, list_of_gaps).
+        """
+        gaps: list[str] = []
+        for s in reversed(self.plan):
+            if s.status == StepStatus.COMPLETED and not s.verification_evidence:
+                gaps.append(f"Step {s.id} ('{s.description}') marked completed without empirical evidence")
+            elif s.status in (StepStatus.FAILED, StepStatus.PENDING, StepStatus.IN_PROGRESS):
+                gaps.append(f"Step {s.id} ('{s.description}') is not completed (status={s.status})")
+
+        is_passed = len(gaps) == 0 and len(self.plan) > 0
+        return is_passed, gaps
 
     def record_tool_action(self, tool_name: str, args: dict[str, Any], result: str):
         """
@@ -131,9 +322,12 @@ class SpaceVScratchpad:
             if not curr.result_summary:
                 curr.result_summary = str(result)[:150]
 
+        self.sync_to_disk()
+
     def set_note(self, key: str, value: Any):
         """Saves a key-value pair to working memory blackboard."""
         self.notes[str(key)] = value
+        self.sync_to_disk()
 
     def get_note(self, key: str, default: Any = None) -> Any:
         """Retrieves a key-value pair from working memory."""
@@ -250,3 +444,47 @@ def scratchpad_note(key: str, value: str) -> str:
 def scratchpad_view() -> str:
     """Returns the current state of the agent scratchpad."""
     return active_scratchpad.format_prompt_context() or "Scratchpad is currently empty, Sir."
+
+
+def scratchpad_sync_to_disk() -> str:
+    """Forces immediate synchronization of scratchpad state to .spacev disk files."""
+    success = active_scratchpad.sync_to_disk()
+    if success:
+        return f"Scratchpad successfully persisted to .spacev/task_plan.md ({active_scratchpad.get_progress_summary()})."
+    return "Failed to synchronize scratchpad to disk."
+
+
+def scratchpad_reload_from_disk() -> str:
+    """Reloads scratchpad state and checklist from .spacev disk files."""
+    restored = active_scratchpad.reload_from_disk()
+    if restored:
+        return f"Scratchpad state restored from disk: {active_scratchpad.get_progress_summary()} for '{active_scratchpad.goal}'."
+    return "No persisted scratchpad state found on disk."
+
+
+def scratchpad_clear_disk() -> str:
+    """Cleans up persisted scratchpad files on disk."""
+    active_scratchpad.clear_disk_state()
+    return "Scratchpad disk state cleared."
+
+
+def scratchpad_verify_step(step_id: int, evidence: str) -> str:
+    """
+    Goal-backward empirical verification (Planning-with-Files pattern):
+    Verifies that a step has empirical proof before completing it.
+    """
+    success = active_scratchpad.verify_and_complete_step(step_id, evidence)
+    if success:
+        return f"Step {step_id} empirically verified and completed, Sir."
+    return f"Verification rejected for Step {step_id}: insufficient empirical evidence provided."
+
+
+def scratchpad_goal_audit() -> str:
+    """
+    Audits the scratchpad plan backward from the goal to verify that
+    every milestone has verifiable empirical proof.
+    """
+    passed, gaps = active_scratchpad.goal_backward_audit()
+    if passed:
+        return "Goal-backward audit PASSED: all steps verified with empirical evidence, Sir."
+    return "Goal-backward audit gaps:\n" + "\n".join(f"- {g}" for g in gaps)

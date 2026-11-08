@@ -3,6 +3,8 @@
 # Environments & Virtual Envs
 venv/
 .venv/
+venv/
+.playwright-browsers/
 env/
 __pycache__/
 *.py[cod]
@@ -17,6 +19,8 @@ cua/
 .env
 .env.*
 !.env.example
+config/providers.yaml
+!config/providers.yaml.example
 
 # Temporary Artifacts, OS and IDE files
 .DS_Store
@@ -29,7 +33,16 @@ spacev_task_ledger.db
 scratch/
 temp/
 
-zplan/
-Stirling-PDF/
 .gateway_cooldowns.json
 logs/spacev_flight_recorder.jsonl
+
+eto/
+.spacev/
+
+plan/
+
+venv311
+spacev-wsl/
+.pytest-tmp/
+spacev/spool/
+gen_py/

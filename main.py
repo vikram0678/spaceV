@@ -1,18 +1,38 @@
 import os
 import sys
 
+# Ensure UTF-8 console output for Windows to prevent charmap emoji encoding crashes
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+# Bypass optional mouseinfo tkinter dependency on Linux/WSL
+if "mouseinfo" not in sys.modules:
+    sys.modules["mouseinfo"] = None
 
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from config import APP_NAME, PRIMARY_MODEL
+from config import APP_NAME, LLM_MODEL, LLM_PROVIDER, PRIMARY_MODEL
+from core.brain_orchestrator import HybridBrainAgent, SpaceVAgent
+
+# Backward-compatibility alias
+OllamaAgent = HybridBrainAgent
 from core.hotkey_listener import GlobalHotkeyListener
-from core.ollama_client import OllamaAgent
 from ui.audio_effects import play_startup_sound
 from ui.chat_window import ChatWindow
 from ui.floating_icon import FloatingIcon
+from ui.holographic_visor import HolographicVisor
+from ui.top_screen_hud import TopScreenHUD
 
 
 def create_tray_pixmap():
@@ -33,40 +53,88 @@ def create_tray_pixmap():
     painter.end()
     return pixmap
 
+
 def main():
     try:
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
-    print(f"Starting {APP_NAME} powered by Ollama ({PRIMARY_MODEL})...")
+    if LLM_PROVIDER == "ollama":
+        print(f"Starting {APP_NAME} powered by local Ollama ({PRIMARY_MODEL})...")
+    else:
+        selected_model = LLM_MODEL or "endpoint-selected model"
+        print(f"Starting {APP_NAME} powered by {LLM_PROVIDER} ({selected_model})...")
     agent = OllamaAgent()
 
     # Initialize widgets
     floating_icon = FloatingIcon()
     chat_window = ChatWindow(agent)
+    top_screen_hud = TopScreenHUD()
+    holographic_visor = HolographicVisor.get_instance()
 
-    # Sync Arc Reactor visual state with chat window
+    # Sync Arc Reactor and Top-Screen HUD visual state with chat window
     chat_window.state_changed.connect(floating_icon.set_state)
+    chat_window.state_changed.connect(lambda s: top_screen_hud.update_phase(s, f"SpaceV is {s.lower()}..."))
+    def on_state_changed_visor(s: str):
+        if s in ("IDLE", "THINKING") and holographic_visor:
+            holographic_visor.clear_attention()
+    chat_window.state_changed.connect(on_state_changed_visor)
+    top_screen_hud.chat_requested.connect(lambda: toggle_chat())
+
+    def handle_tool_hud_event(tool_name: str, status: str, details: str):
+        if status == "running":
+            phase = (
+                "HARVESTING"
+                if "job" in tool_name or "harvest" in tool_name
+                else ("BROWSER" if "browser" in tool_name or "url" in tool_name else "EXECUTING")
+            )
+            top_screen_hud.update_phase(phase, f"Executing {tool_name}...")
+        else:
+            if "modal blocker:" in details.lower() or tool_name == "modal_disambiguation":
+                top_screen_hud.update_phase("ATTENTION", "Roadblock: Profile Choice Required")
+                if holographic_visor:
+                    holographic_visor.set_attention(details)
+            elif tool_name == "search_and_harvest_jobs":
+                import re
+
+                urls = re.findall(r"https?://[^\s\)]+", details)
+                top_screen_hud.show_action_card(
+                    title="Harvested Opportunities",
+                    summary=details[:200],
+                    urls=urls,
+                    action_label=f"🌐 Open {len(urls)} Links in Chrome" if urls else "🌐 Open Links",
+                )
+            elif tool_name in ("open_browser_urls", "open_url"):
+                top_screen_hud.update_phase("BROWSER", details[:60])
+            else:
+                top_screen_hud.update_phase("IDLE", f"Finished {tool_name}")
+
+    chat_window.tool_event_emitted.connect(handle_tool_hud_event)
+    top_screen_hud.open_urls_requested.connect(
+        lambda urls: __import__("tools.web_tools", fromlist=["open_browser_urls"]).open_browser_urls(urls)
+    )
 
     # Pre-warm local Whisper STT engine in background for instant speech turn-taking
     from voice.stt_engine import OfflineWhisperSingleton
+
     OfflineWhisperSingleton.warm_up_in_background()
 
     def toggle_chat():
         """Toggles chat window visibility on Arc Reactor click."""
         from voice.frame_pipeline import frame_pipeline
         from voice.tts_engine import tts
+
         if tts.is_speaking:
             frame_pipeline.interrupt(reason="reactor_tap_barge_in")
         if chat_window.isVisible():
             chat_window.hide()
         else:
-            chat_window.dock_near(floating_icon.pos())
             chat_window.show()
+            chat_window.dock_near(floating_icon.pos())
             chat_window.raise_()
             chat_window.activateWindow()
 
@@ -79,13 +147,14 @@ def main():
         """
         from voice.frame_pipeline import frame_pipeline
         from voice.tts_engine import tts
+
         if tts.is_speaking:
             frame_pipeline.interrupt(reason="hotkey_barge_in")
             tts.stop()
 
         if not chat_window.isVisible():
-            chat_window.dock_near(floating_icon.pos())
             chat_window.show()
+            chat_window.dock_near(floating_icon.pos())
             chat_window.raise_()
             chat_window.activateWindow()
 
@@ -102,11 +171,24 @@ def main():
 
         print("\n[SpaceV] Shutting down cleanly... (No background tasks lingering)")
         try:
+            career_reminder_timer.stop()
+        except Exception:
+            pass
+        try:
             hotkey_listener.stop()
         except Exception:
             pass
         try:
             chat_window.cleanup()
+        except Exception:
+            pass
+        try:
+            top_screen_hud.hide()
+        except Exception:
+            pass
+        try:
+            if holographic_visor:
+                holographic_visor.hide()
         except Exception:
             pass
         try:
@@ -116,6 +198,7 @@ def main():
         os._exit(0)
 
     import atexit
+
     atexit.register(clean_exit)
     app.aboutToQuit.connect(clean_exit)
 
@@ -140,20 +223,32 @@ def main():
     action_reset = tray_menu.addAction("📍 Reset Icon Position")
     action_reset.triggered.connect(floating_icon.init_position)
 
+    def toggle_visor():
+        chat_window.toggle_cursor_mode()
+
+    action_visor = tray_menu.addAction("🟠 Toggle Desktop Control + Visor")
+    action_visor.triggered.connect(toggle_visor)
+
     tray_menu.addSeparator()
 
     action_quit = tray_menu.addAction(f"❌ Exit {APP_NAME}")
     action_quit.triggered.connect(clean_exit)
 
     tray_icon.setContextMenu(tray_menu)
-    tray_icon.activated.connect(lambda reason: toggle_chat() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
+    tray_icon.activated.connect(
+        lambda reason: toggle_chat() if reason == QSystemTrayIcon.ActivationReason.Trigger else None
+    )
     tray_icon.show()
 
     # Show floating icon and chat window immediately
+    if holographic_visor:
+        holographic_visor.hide()
     floating_icon.show()
     floating_icon.init_position()
-    chat_window.dock_near(floating_icon.pos())
+    top_screen_hud.show()
+    top_screen_hud.init_position()
     chat_window.show()
+    chat_window.dock_near(floating_icon.pos())
     chat_window.raise_()
     chat_window.activateWindow()
 
@@ -172,6 +267,34 @@ def main():
     import signal
 
     from PyQt6.QtCore import QTimer
+
+    def deliver_persistent_career_reminders():
+        """Poll saved reminders on the Qt thread and notify the user safely."""
+        try:
+            from core.career_assistant import career_assistant_store
+            due_items = career_assistant_store.poll_due_reminders()
+            for item in due_items:
+                title = item["title"]
+                if item.get("purpose") == "daily_review":
+                    from core.career_assistant import format_daily_review
+                    alert = format_daily_review(career_assistant_store.daily_review())
+                else:
+                    alert = f"Career reminder: {title}"
+                if item.get("overdue"):
+                    alert += f"\nThis was due at {item.get('due_at', 'an earlier time')} while SpaceV was unavailable."
+                chat_window.add_agent_message(alert, tool_name="career_reminder")
+                if tray_icon.isVisible():
+                    tray_icon.showMessage("SpaceV Career Coach", alert, QSystemTrayIcon.MessageIcon.Information, 12000)
+        except Exception as exc:
+            print(f"[SpaceV] Career reminder check failed: {exc}")
+
+    # Reminders are persisted locally; this UI-thread poll ensures widget and tray
+    # notifications are delivered safely while SpaceV is running.
+    career_reminder_timer = QTimer()
+    career_reminder_timer.timeout.connect(deliver_persistent_career_reminders)
+    career_reminder_timer.start(30_000)
+    QTimer.singleShot(2_000, deliver_persistent_career_reminders)
+
     QTimer.singleShot(1200, _proactive_startup)
 
     signal.signal(signal.SIGINT, lambda *_: clean_exit())
@@ -183,9 +306,11 @@ def main():
     # Windows Console Close Event Handler (terminates immediately when terminal X is clicked)
     try:
         import win32api
+
         def _console_ctrl_handler(ctrl_type):
             clean_exit()
             return True
+
         win32api.SetConsoleCtrlHandler(_console_ctrl_handler, True)
     except Exception:
         pass
@@ -196,6 +321,7 @@ def main():
 
     print(f"{APP_NAME} Cybernetic Agent is online! Look for the glowing Arc Reactor on your screen.")
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
