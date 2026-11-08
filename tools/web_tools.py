@@ -254,18 +254,35 @@ def fetch_github_repo_summary(url: str) -> str | None:
 
 def _github_issue_api_url(url: str) -> str | None:
     """Map a GitHub issue URL to its REST API resource without losing path parts."""
-    parsed = urllib.parse.urlsplit(url)
+    try:
+        parsed = urllib.parse.urlsplit(str(url or "").strip())
+        port = parsed.port
+    except ValueError:
+        return None
     host = (parsed.hostname or "").lower()
     parts = [urllib.parse.unquote(part) for part in parsed.path.strip("/").split("/") if part]
 
+    if (
+        parsed.scheme.casefold() != "https"
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in (None, 443)
+        or parsed.fragment
+    ):
+        return None
+
     if host in {"github.com", "www.github.com"}:
-        if len(parts) >= 4 and parts[2] == "issues" and parts[3].isdigit():
-            suffix = "/comments" if len(parts) >= 5 and parts[4] == "comments" else ""
+        if len(parts) in (4, 5) and parts[2] == "issues" and parts[3].isdigit():
+            suffix = "/comments" if len(parts) == 5 and parts[4] == "comments" else ""
+            if len(parts) == 5 and not suffix:
+                return None
             return f"https://api.github.com/repos/{parts[0]}/{parts[1]}/issues/{parts[3]}{suffix}"
         return None
 
-    if host == "api.github.com" and len(parts) >= 5 and parts[:1] == ["repos"] and parts[3] == "issues" and parts[4].isdigit():
+    if host == "api.github.com" and len(parts) in (5, 6) and parts[:1] == ["repos"] and parts[3] == "issues" and parts[4].isdigit():
         # Preserve caller-supplied API query parameters and subresources.
+        if len(parts) == 6 and parts[5] != "comments":
+            return None
         return urllib.parse.urlunsplit(("https", "api.github.com", parsed.path, parsed.query, ""))
     return None
 
@@ -283,11 +300,16 @@ def _github_api_get_json(url: str) -> Any:
         return json.loads(response.read().decode("utf-8", errors="replace"))
 
 
-def fetch_github_issue_content(url: str) -> str:
-    """Read an issue and its discussion from GitHub's API, preserving issue identity."""
+def fetch_github_issue_content(url: str, *, include_comments: bool = False) -> str:
+    """Read an issue; fetch discussion only when the caller explicitly requests it."""
     api_url = _github_issue_api_url(url)
     if not api_url:
         return f"Failed: URL is not a supported GitHub issue URL: {url}"
+
+    api_parts = [urllib.parse.unquote(part) for part in urllib.parse.urlsplit(api_url).path.strip("/").split("/")]
+    if len(api_parts) < 5 or api_parts[0] != "repos" or api_parts[3] != "issues":
+        return f"Failed: URL is not a supported GitHub issue URL: {url}"
+    expected_issue_url = f"https://github.com/{api_parts[1]}/{api_parts[2]}/issues/{int(api_parts[4])}"
 
     try:
         payload = _github_api_get_json(api_url)
@@ -300,22 +322,32 @@ def fetch_github_issue_content(url: str) -> str:
                 lines.append(f"\n[Showing 30 of {len(payload)} comments]")
             return "\n".join(lines)
 
-        if not isinstance(payload, dict) or "title" not in payload:
+        if not isinstance(payload, dict):
             return f"Failed: GitHub API returned an unexpected issue response for {api_url}."
 
-        issue_url = str(payload.get("html_url") or url)
+        title = str(payload.get("title") or "").strip()
+        if not title:
+            return f"Failed: GitHub API returned an issue without a title for {expected_issue_url}."
+        issue_url = str(payload.get("html_url") or "").strip().rstrip("/")
+        if issue_url != expected_issue_url:
+            return (
+                f"Failed: GitHub issue identity mismatch. Requested {expected_issue_url}, "
+                f"but the API returned {issue_url or '(no html_url)'}."
+            )
+        issue_body = payload.get("body")
+        has_description = isinstance(issue_body, str) and bool(issue_body.strip())
         lines = [
-            f"# {payload.get('title', '(untitled issue)')}",
+            f"# {title}",
             f"Issue: {issue_url}",
             f"State: {payload.get('state', 'unknown')}",
             f"Author: @{(payload.get('user') or {}).get('login', 'unknown')}",
             f"Created: {payload.get('created_at', 'unknown')}",
             "\n## Issue description\n",
-            str(payload.get("body") or "(No issue description.)"),
+            str(issue_body).strip() if has_description else "(No issue description was provided; expected behavior is not established by the issue body.)",
         ]
 
         comments_count = int(payload.get("comments") or 0)
-        if comments_count:
+        if comments_count and include_comments:
             # Build the comments endpoint from the validated issue API URL.
             endpoint = api_url.split("?", 1)[0].rstrip("/") + "/comments?per_page=30"
             try:
@@ -394,10 +426,10 @@ def read_web_page(url: str = "", **kwargs) -> str:
     parsed_url = urllib.parse.urlsplit(url)
     if (parsed_url.hostname or "").lower() == "api.github.com":
         if _github_issue_api_url(url):
-            return fetch_github_issue_content(url)
+            return fetch_github_issue_content(url, include_comments=kwargs.get("include_comments") is True)
         return fetch_github_api_content(url)
     if _github_issue_api_url(url):
-        return fetch_github_issue_content(url)
+        return fetch_github_issue_content(url, include_comments=kwargs.get("include_comments") is True)
 
     # Tier 1: Specialized GitHub repository-root fast path only.
     if (parsed_url.hostname or "").lower() in {"github.com", "www.github.com"}:
