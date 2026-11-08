@@ -52,6 +52,21 @@ _FOLLOWUP = re.compile(
     re.IGNORECASE,
 )
 _TERMINAL_CONTROL = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_TRUNCATION_MARKER = re.compile(
+    r"(?:characters?\s*/\s*\d+\s+tokens?\s+truncated to protect rate limits|"
+    r"chars? truncated by SpaceV|remaining error output truncated|truncated to token budget|"
+    r"content truncated|output truncated|omitted from durable evidence|"
+    r"showing lines \d+-\d+ of \d+)",
+    re.IGNORECASE,
+)
+
+
+def _has_truncation_marker(text: str) -> bool:
+    return bool(_TRUNCATION_MARKER.search(str(text or "")))
+
+
+def _record_was_truncated(record: dict[str, Any], text: str) -> bool:
+    return bool(record.get("truncated", False) or _has_truncation_marker(text))
 
 
 def _redact(text: str) -> str:
@@ -331,7 +346,7 @@ class TaskEvidenceStore:
                     "evidence_text": exported_text,
                     "stored_sha256": hashlib.sha256(raw.encode("utf-8")).hexdigest(),
                     "exported_sha256": hashlib.sha256(exported_text.encode("utf-8")).hexdigest(),
-                    "record_was_truncated": False,
+                    "record_was_truncated": _record_was_truncated(item, raw),
                     "export_was_truncated": len(raw) > len(exported_text),
                 })
         else:
@@ -390,7 +405,7 @@ class TaskEvidenceStore:
         report = {
             "schema_version": "spacev-bugproof-evidence-v1",
             "created_at": created_at,
-            "task_context": _bounded(_redact(task_context), 2000)[0],
+            "task_context": self._bounded(task_context, 2000)[0],
             "record_count": len(evidence_items),
             "evidence": evidence_items,
             "limitations": [
