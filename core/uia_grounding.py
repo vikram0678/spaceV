@@ -16,7 +16,15 @@ try:
 except ImportError:
     HAS_COMTYPES = False
 
-import pyautogui
+import sys
+
+if "mouseinfo" not in sys.modules:
+    sys.modules["mouseinfo"] = None
+
+try:
+    import pyautogui
+except (Exception, SystemExit):
+    from tools.gui_tools import pyautogui
 
 from tools.gui_tools import human_move_to, safety
 
