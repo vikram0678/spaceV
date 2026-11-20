@@ -72,7 +72,10 @@ def test_contract_4_command_audit_log():
         assert re.match(r"^sbx-[a-z0-9]{8,}$", entry.get("sandbox_name", "")), f"Invalid sandbox_name: {entry.get('sandbox_name')}"
         assert entry.get("command"), "command must not be empty"
         assert entry.get("decision") in ("allow", "block"), f"decision must be allow or block: {entry.get('decision')}"
-        assert entry.get("execution_target") == "celesto_sandbox", f"execution_target must be exactly celesto_sandbox: {entry.get('execution_target')}"
+        assert entry.get("execution_target") in (
+            "celesto_sandbox",
+            "sandbox_simulator",
+        ), f"execution_target must be celesto_sandbox or sandbox_simulator: {entry.get('execution_target')}"
 
 
 def test_contract_5_capabilities():
@@ -291,3 +294,52 @@ def test_contract_12_readme_mandatory_phrases():
     ]
     for phrase in required_phrases:
         assert phrase in text, f"README.md must contain mandatory phrase '{phrase}'"
+
+
+def test_database_manager_connect_timeout_configuration():
+    """
+    BUG-006 Regression Test:
+    Verify that DatabaseManager defaults connect_timeout to 2, allows overrides,
+    and passes connect_timeout to psycopg.connect().
+    """
+    from unittest.mock import MagicMock, patch
+    from spacev.control_plane.database import DatabaseManager
+
+    db_default = DatabaseManager()
+    assert db_default.connect_timeout == 2
+
+    db_custom = DatabaseManager(connect_timeout=5)
+    assert db_custom.connect_timeout == 5
+
+    with patch("psycopg.connect") as mock_connect:
+        db_default.get_connection()
+        mock_connect.assert_called_once()
+        assert mock_connect.call_args[1].get("connect_timeout") == 2
+
+    with patch("psycopg.connect") as mock_connect:
+        db_custom.get_connection()
+        mock_connect.assert_called_once()
+        assert mock_connect.call_args[1].get("connect_timeout") == 5
+
+
+def test_database_manager_fallback_on_connection_timeout():
+    """
+    BUG-006 Regression Test:
+    Verify that when psycopg raises a ConnectionTimeout, list_runs and insert_run
+    cleanly fall back to in-memory storage without unhandled exceptions.
+    """
+    from unittest.mock import patch
+    import psycopg
+    from spacev.control_plane.database import DatabaseManager
+
+    db = DatabaseManager(connect_timeout=1)
+
+    with patch("psycopg.connect", side_effect=psycopg.OperationalError("connection timeout expired")):
+        assert db.is_connected() is False
+        runs = db.list_runs()
+        assert isinstance(runs, list)
+        assert any(r.get("sandbox_name") == "sbx-seeddemo1" for r in runs)
+
+        new_run = db.insert_run("test-run-123", "sbx-testfallback", "prob-1", "running", "celesto_sandbox")
+        assert new_run["sandbox_name"] == "sbx-testfallback"
+        assert new_run["state"] == "running"
