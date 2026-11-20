@@ -214,8 +214,9 @@ TOOL_FUNCTIONS: dict[str, Callable] = {
     "execute_in_vscode_terminal": execute_in_vscode_terminal,
     "clone_public_repository": lambda repository_url, destination, approval_id="", approval_text="": __import__("tools.repo_tools", fromlist=["clone_public_repository"]).clone_public_repository(repository_url, destination, approval_id, approval_text),
     "detonate_in_sandbox": lambda command: __import__("tools.sandbox_tools", fromlist=["detonate_in_sandbox"]).detonate_in_sandbox(command),
-    "create_sandbox_session": lambda task_description="", approval_id="", approval_text="": __import__("tools.sandbox_tools", fromlist=["create_sandbox_session"]).create_sandbox_session(task_description, approval_id, approval_text),
+    "create_sandbox_session": lambda task_description="", approval_id="", approval_text="", allow_test_execution=None: __import__("tools.sandbox_tools", fromlist=["create_sandbox_session"]).create_sandbox_session(task_description, approval_id, approval_text, allow_test_execution=allow_test_execution),
     "run_sandbox_session_command": lambda session_id, command: __import__("tools.sandbox_tools", fromlist=["run_sandbox_session_command"]).run_sandbox_session_command(session_id, command),
+    "run_sandbox_session_reproduction": lambda session_id, checkout_path="", issue_url="", issue_title="", issue_body="": __import__("tools.sandbox_tools", fromlist=["run_sandbox_session_reproduction"]).run_sandbox_session_reproduction(session_id, checkout_path, issue_url=issue_url, issue_title=issue_title, issue_body=issue_body),
     "close_sandbox_session": lambda session_id: __import__("tools.sandbox_tools", fromlist=["close_sandbox_session"]).close_sandbox_session(session_id),
     "get_sandbox_status": lambda: __import__("tools.sandbox_tools", fromlist=["get_sandbox_status"]).get_sandbox_status(),
     "inspect_file_security": lambda file_path: __import__("tools.sandbox_tools", fromlist=["inspect_file_security"]).inspect_file_security(file_path),
@@ -231,6 +232,8 @@ TOOL_FUNCTIONS: dict[str, Callable] = {
     "get_code_neighbors": lambda label, direction="both", **kwargs: json.dumps(__import__("core.code_graph_engine", fromlist=["code_graph_engine"]).code_graph_engine.get_neighbors(label, direction=direction)),
     "get_code_blast_radius": lambda symbol_or_path, depth=2, **kwargs: json.dumps(__import__("core.code_graph_engine", fromlist=["code_graph_engine"]).code_graph_engine.compute_blast_radius(symbol_or_path, depth=depth)),
 }
+
+TOOL_REGISTRY = TOOL_FUNCTIONS
 
 # Resilient Canonical Tool Aliases (prevents model hallucination failures across providers)
 TOOL_ALIASES: dict[str, str] = {
@@ -1292,7 +1295,8 @@ OLLAMA_TOOLS_SCHEMA = [
                 "properties": {
                     "task_description": {"type": "string", "description": "Required for the proposal call (8-800 characters). On approval, the task stored for approval_id is authoritative; this field may be omitted."},
                     "approval_id": {"type": "string", "description": "Empty to propose the task; use the returned ID only after approval."},
-                    "approval_text": {"type": "string", "description": "After user approval, exact phrase: approve sandbox task <approval_id>."}
+                    "approval_text": {"type": "string", "description": "After user approval, exact phrase: approve sandbox task <approval_id>."},
+                    "allow_test_execution": {"type": "boolean", "description": "Request test execution capability for the proposed disposable VM."}
                 },
                 "required": []
             }
@@ -1310,6 +1314,24 @@ OLLAMA_TOOLS_SCHEMA = [
                     "command": {"type": "string", "description": "One command for the approved task; max 10000 characters."}
                 },
                 "required": ["session_id", "command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_sandbox_session_reproduction",
+            "description": "Executes dynamic test discovery and approved reproduction test execution inside the active Celesto sandbox session. Requires authoritative approval with allow_test_execution=True.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "Active session ID returned by create_sandbox_session."},
+                    "checkout_path": {"type": "string", "description": "Approved repository checkout path inside the VM (e.g. /tmp/repo-123)."},
+                    "issue_url": {"type": "string", "description": "Optional verified GitHub issue URL."},
+                    "issue_title": {"type": "string", "description": "Optional verified GitHub issue title."},
+                    "issue_body": {"type": "string", "description": "Optional verified GitHub issue description or error body."}
+                },
+                "required": ["session_id"]
             }
         }
     },
@@ -1832,7 +1854,8 @@ WEB_TOOL_NAMES = {
 }
 
 SANDBOX_TOOL_NAMES = {
-    "detonate_in_sandbox", "create_sandbox_session", "run_sandbox_session_command", "close_sandbox_session",
+    "detonate_in_sandbox", "create_sandbox_session", "run_sandbox_session_command",
+    "run_sandbox_session_reproduction", "close_sandbox_session",
     "run_sandboxed_workflow", "audit_sandbox_containment",
     "get_run_ledger_summary", "get_sandbox_status"
 }

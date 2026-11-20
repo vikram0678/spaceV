@@ -2,10 +2,38 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import os
 import re
 from enum import Enum
 from typing import Any
 from urllib.parse import unquote, urlsplit, urlunsplit
+
+from core.issue_discovery import (
+    CandidateFile,
+    DiscoveryResult,
+    IssueSignals,
+    discover_issue_targets_from_sandbox,
+    discover_repository_targets,
+    extract_issue_signals,
+    is_source_file_path,
+    is_test_file_path,
+)
+from core.issue_symptom_extractor import (
+    ExtractedSymptom,
+    ReproductionVerdict,
+    SelectedTest,
+    SymptomReport,
+    build_safe_test_command,
+    classify_reproduction_verdict,
+    execute_and_extract_symptoms,
+    extract_test_symptoms,
+    format_extracted_symptom_note,
+    select_reproduction_tests,
+    validate_checkout_path,
+    validate_target_test_path,
+)
 
 _TEST_COMMAND = re.compile(
     r"\bpytest\b|\bpython\s+-m\s+(?:pytest|unittest)\b|\b(?:unittest|tox|nox)\b|"
@@ -133,6 +161,47 @@ def parse_github_issue_url(url: str) -> dict[str, Any]:
     }
 
 
+def parse_github_repo_identity(repo_or_url: str) -> tuple[str, str] | None:
+    """Parse a GitHub repository URL or git specifier into canonical (owner, repo) lowercased.
+
+    Rejects substring ambiguity, trailing extensions, and malformed characters.
+    """
+    raw = str(repo_or_url or "").strip()
+    if not raw:
+        return None
+    clean = raw.removesuffix(".git").rstrip("/")
+    m = re.search(r"github\.com[/:]([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9_.-]{1,100})$", clean, re.IGNORECASE)
+    if m:
+        return m.group(1).casefold(), m.group(2).casefold()
+    return None
+
+
+def create_validated_issue_context(
+    issue_url: str,
+    title: str,
+    body: str = "",
+    repository_url: str | None = None,
+    issue_number: int | None = None,
+) -> dict[str, Any]:
+    """Structure external GitHub issue information as untrusted input data."""
+    parsed = parse_github_issue_url(issue_url)
+    clean_title = str(title or "").strip()
+    if not clean_title:
+        raise ValueError("Issue title must be non-empty.")
+    clean_repo = str(repository_url or parsed["repository_url"]).strip()
+    clean_num = int(issue_number if issue_number is not None else parsed["issue_number"])
+    return {
+        "ok": True,
+        "issue_url": parsed["issue_url"],
+        "repository_url": clean_repo,
+        "issue_number": clean_num,
+        "title": clean_title,
+        "content": str(body or "").strip(),
+        "description_present": bool(body),
+        "is_untrusted_external_data": True,
+    }
+
+
 def extract_github_issue_url_candidate(text: str) -> str | None:
     """Find a GitHub issue/PR-shaped URL in typed or transcribed user text."""
     candidates = re.findall(
@@ -204,15 +273,17 @@ def validate_github_issue_content(content: str, issue_identity: dict[str, Any]) 
         return {"ok": False, "error": "GitHub returned no issue description section; no summary was generated."}
     description = description_match.group(1).strip()
     missing_description = not description or "no issue description was provided" in description.casefold()
+    clean_title = title_match.group(1).strip()
     return {
         "ok": True,
         "issue_url": expected_url,
         "repository_url": expected_repo,
         "issue_number": int(expected_number),
-        "title": title_match.group(1).strip(),
+        "title": clean_title,
         "description_present": not missing_description,
         "truncated": "[issue content truncated" in text.casefold(),
         "content": text,
+        "is_untrusted_external_data": True,
     }
 
 
@@ -336,11 +407,46 @@ def sandbox_proposal_requested(prompt: str) -> bool:
     )
     sandbox_task = bool(re.search(r"\b(?:celesto|sandbox|microvm|vm)\b", text))
     issue_test_task = bool(
-        re.search(r"\b(?:clone|repository|repo|failing test|test-only diff|timeout test)\b", text)
+        re.search(
+            r"\b(?:clone|repository|repo|failing test|test-only diff|timeout test|"
+            r"reproduce|reproduction|diagnos(?:e|is)|investigat(?:e|ion))\b",
+            text,
+        )
     )
     return asks_for_proposal and sandbox_task and issue_test_task
 
-def build_issue_test_sandbox_description(prompt: str, context: str = "") -> str | None:
+def build_issue_inspection_sandbox_description(
+    issue: dict[str, Any], allow_test_execution: bool = False
+) -> str:
+    """Build a concise, read-only repository inspection scope from validated issue metadata."""
+    owner = issue.get("owner", "")
+    repo = issue.get("repository", "")
+    number = issue.get("issue_number", "")
+    clone_url = issue.get("clone_url", "")
+    destination = f"/tmp/{re.sub(r'[^A-Za-z0-9_.-]+', '-', str(repo))}-{number}"
+    if allow_test_execution:
+        action_clause = (
+            "inspect the related test and source files for root-cause analysis; "
+            "execute relevant existing tests to diagnose the issue. "
+            "Do not create or edit files, and do not produce diffs. "
+        )
+    else:
+        action_clause = (
+            "inspect the related test and source files for root-cause analysis only. "
+            "Do not create or edit files, do not produce diffs, and do not run tests. "
+        )
+    return (
+        f"Inspect {owner}/{repo} issue #{number} in one disposable Celesto VM. "
+        "Check Git; if missing, stop and ask before installing. "
+        f"Shallow-clone {clone_url} to {destination}; record the commit and initial git status --short; "
+        f"{action_clause}"
+        "Do not access the host or SpaceV checkout. Stop on failure."
+    )
+
+
+def build_issue_test_sandbox_description(
+    prompt: str, context: str = "", allow_test_execution: bool = False
+) -> str | None:
     """Build a concise, safety-preserving proposal for a recognized issue-test task.
 
     The full prompt remains available to SpaceV. This description binds only the
@@ -377,17 +483,20 @@ def build_issue_test_sandbox_description(prompt: str, context: str = "") -> str 
         )
     )
     is_inspection_only = bool(
-        re.search(r"\b(?:inspection[- ]only|inspect only|read[- ]only|no diff|do not (?:modify|edit|create|test))\b", source_text, re.IGNORECASE)
+        re.search(
+            r"\b(?:inspection[- ]only|inspect only|read[- ]only|no diff|do not (?:modify|edit|create|test))\b",
+            source_text,
+            re.IGNORECASE,
+        )
     )
     if is_inspection_only:
-        task = (
-            f"Inspect {issue['owner']}/{repo} issue #{number} in one disposable Celesto VM. "
-            "Check Git; if missing, stop and ask before installing. "
-            f"Shallow-clone {issue['clone_url']} to {destination}; record the commit and initial git status --short; "
-            "inspect the related test and source files for root-cause analysis only. "
-            "Do not create or edit files, do not produce diffs, and do not run tests. "
-            "Do not access the host or SpaceV checkout. Stop on failure."
-        )
+        task = build_issue_inspection_sandbox_description(issue, allow_test_execution=False)
+        if no_fetch:
+            task = f"{task} Do not fetch the issue."
+    elif allow_test_execution:
+        task = build_issue_inspection_sandbox_description(issue, allow_test_execution=True)
+        if no_fetch:
+            task = f"{task} Do not fetch the issue."
     else:
         task = (
             f"Inspect {issue['owner']}/{repo} issue #{number} in one disposable Celesto VM. "
@@ -397,12 +506,8 @@ def build_issue_test_sandbox_description(prompt: str, context: str = "") -> str 
             "Do not access the host or SpaceV checkout. Do not install dependencies, edit files, or run tests. "
             "Stop on failure. Require separate approval before any edit or test."
         )
-    if no_fetch:
-        task += "Do not fetch the issue. "
-    task += (
-        "Do not access the host or SpaceV checkout. Do not install dependencies, edit files, or run tests. "
-        "Stop on failure. Require separate approval before any edit or test."
-    )
+        if no_fetch:
+            task = f"{task} Do not fetch the issue."
     if sandbox_task_description_error(task):
         return None
     return task
@@ -460,14 +565,7 @@ def format_guest_environment(profile: dict[str, Any]) -> str:
 
 
 def _is_test_path(path: str) -> bool:
-    normalized = path.strip().strip('"').replace("\\", "/").casefold()
-    name = normalized.rsplit("/", 1)[-1]
-    return (
-        re.search(r"(?:^|/)(?:tests?|testing)/", normalized) is not None
-        or re.match(r"test_[^/]+\.(?:py|js|jsx|ts|tsx|go|rs|java)$", name) is not None
-        or re.search(r"_[Tt]est\.(?:py|js|jsx|ts|tsx|go|rs|java)$", name) is not None
-        or ".spec." in name
-    )
+    return is_test_file_path(path)
 
 
 def _target_test_from_command(command: str) -> str | None:
@@ -591,7 +689,7 @@ def classify_test_execution(command: str, tool_output: str, expected_signal: str
 
 def classify_git_status(command: str, tool_output: str) -> dict[str, Any] | None:
     """Classify a captured `git status --short` snapshot without overclaiming baseline cleanliness."""
-    if not re.search(r"git\s+status\s+--short\b", str(command or ""), re.IGNORECASE):
+    if not re.search(r"\bgit\b[^\n]*\bstatus\s+--short\b", str(command or ""), re.IGNORECASE):
         return None
     output = str(tool_output or "")
     exit_match = _EXIT_CODE.search(output)
@@ -646,8 +744,8 @@ def classify_test_patch_paths(command: str, tool_output: str) -> dict[str, Any] 
     truncated or the command failed.
     """
     command_text = str(command or "")
-    is_name_only = bool(re.search(r"git\s+diff\b[^\n]*--name-only\b", command_text, re.IGNORECASE))
-    is_porcelain = bool(re.search(r"git\s+status\s+--short\b", command_text, re.IGNORECASE))
+    is_name_only = bool(re.search(r"\bgit\b[^\n]*\bdiff\b[^\n]*--name-only\b", command_text, re.IGNORECASE))
+    is_porcelain = bool(re.search(r"\bgit\b[^\n]*\bstatus\s+--short\b", command_text, re.IGNORECASE))
     if not (is_name_only or is_porcelain):
         return None
 

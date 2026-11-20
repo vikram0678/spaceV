@@ -1,0 +1,26 @@
+{
+  "patch_id": "patch-77ca97735008",
+  "repository_url": "https://github.com/psf/requests.git",
+  "base_commit": "3c7baaa05ab4aa49cc819ce3a819d260de19c157",
+  "checkout_path": "/tmp/requests-7645",
+  "target_files": [
+    "src/requests/models.py"
+  ],
+  "diff_content": "--- a/src/requests/models.py\n+++ b/src/requests/models.py\n@@ -1017,7 +1017,12 @@\n                 chunk = cast(\"str | bytes\", pending + chunk)\n \n             if delimiter:\n-                lines = chunk.split(delimiter)  # type: ignore[arg-type]\n+                delim = delimiter\n+                if isinstance(chunk, bytes) and isinstance(delim, str):\n+                    delim = delim.encode(self.encoding or \"utf-8\")\n+                elif isinstance(chunk, str) and isinstance(delim, bytes):\n+                    delim = delim.decode(self.encoding or \"utf-8\")\n+                lines = chunk.split(delim)\n             else:\n                 lines = chunk.splitlines()\n \n",
+  "patch_hash": "f474841ac23aea1ae664b801ae1aa40fc6b5a868880eb887f944f5a5e63770cc",
+  "explanation": "In Response.iter_lines(), coerce delimiter between str and bytes to match the chunk type returned by iter_content(). When decode_unicode=True but Response.encoding is None, iter_content() returns raw bytes while delimiter may be a str. Encoding delimiter to bytes prevents the bytes.split(str) TypeError and enables seamless line iteration.",
+  "behavior_before": "Calling Response.iter_lines(decode_unicode=True, delimiter='\\n') when Response.encoding is None crashes with `TypeError: a bytes-like object is required, not 'str'` at src/requests/models.py:1020.",
+  "behavior_after": "Response.iter_lines(decode_unicode=True, delimiter='\\n') coerces the string delimiter to match the byte chunk, returning lines cleanly as [b'line one', b'line two', b'line three'] without crashing.",
+  "compatibility_notes": "100% backwards-compatible. Preserves standard str.split(str) when encoding is resolved; preserves bytes.split(bytes) when binary delimiter is passed; transparently handles mixed str/bytes delimiter inputs. Preserves existing chunked multi-part line buffering via `pending`.",
+  "regression_tests_plan": [
+    "test_iter_lines_str_delimiter_none_encoding_reproduce_7645",
+    "test_iter_lines_bytes_delimiter_none_encoding",
+    "test_iter_lines_str_delimiter_unicode_encoding",
+    "test_iter_lines_chunked_reconstruction",
+    "pytest tests/test_requests.py -k test_response"
+  ],
+  "status": "PENDING_APPROVAL",
+  "approval_token": "approve patch patch-77ca97735008",
+  "approved_at": null,
+  "applied_at": null
+}

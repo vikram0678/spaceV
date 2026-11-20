@@ -401,7 +401,7 @@ def execute_code_block(
         if "py" in lang:
             cmd = [sys.executable, str(target_path)]
         else:
-            cmd = ["bash", str(target_path)]
+            cmd = ["bash", target_path.name]
 
         proc = subprocess.run(
             cmd,

@@ -19,10 +19,14 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     except Exception:
         pass
 
+# 1. Bypass optional mouseinfo tkinter dependency on Linux/WSL
+if "mouseinfo" not in sys.modules:
+    sys.modules["mouseinfo"] = None
+
 try:
     import pyautogui
     HAS_PYAUTOGUI = True
-except Exception:
+except (Exception, SystemExit):
     HAS_PYAUTOGUI = False
     class MockPyAutoGUI:
         FAILSAFE = True

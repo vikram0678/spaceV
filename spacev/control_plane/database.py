@@ -29,11 +29,12 @@ _MEMORY_RUNS: list[dict[str, Any]] = [
 
 
 class DatabaseManager:
-    def __init__(self, db_url: str | None = None):
+    def __init__(self, db_url: str | None = None, connect_timeout: int = 2):
         self.db_url = db_url or settings.database_url
+        self.connect_timeout = connect_timeout
 
     def get_connection(self):
-        return psycopg.connect(self.db_url, row_factory=dict_row)
+        return psycopg.connect(self.db_url, connect_timeout=self.connect_timeout, row_factory=dict_row)
 
     def is_connected(self) -> bool:
         try:

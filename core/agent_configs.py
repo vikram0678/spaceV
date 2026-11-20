@@ -160,6 +160,7 @@ OUTPUT: concise issue summary; expected/actual behavior; target commit; relevant
         "get_sandbox_status",
         "create_sandbox_session",
         "run_sandbox_session_command",
+        "run_sandbox_session_reproduction",
         "close_sandbox_session",
     ],
 )

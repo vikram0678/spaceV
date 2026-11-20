@@ -48,7 +48,7 @@ def test_execute_code_block_with_stdin():
 def test_execute_code_block_bash():
     """Verify execute_code_block executes bash commands."""
     try:
-        bash_version = subprocess.run(["bash", "--version"], capture_output=True, text=True, timeout=3)
+        bash_version = subprocess.run(["bash", "--version"], capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         pytest.skip("A usable Bash runtime is not available in this environment.")
     if bash_version.returncode != 0:
@@ -57,6 +57,87 @@ def test_execute_code_block_bash():
     res = execute_code_block(language="bash", code=code)
     assert "Exit Code: 0" in res
     assert "TEST_BASH_EXEC_SUCCESS" in res
+
+
+def test_execute_code_block_bash_invokes_filename_with_cwd():
+    """
+    BUG-005 Regression Test:
+    Verify that bash invocation uses target_path.name (not str(target_path))
+    and sets cwd to target_path.parent to prevent Windows backslash mangling.
+    """
+    from unittest.mock import MagicMock, patch
+
+    fake_proc = MagicMock()
+    fake_proc.returncode = 0
+    fake_proc.stdout = "BASH_INVOCATION_OK"
+    fake_proc.stderr = ""
+
+    with patch("subprocess.run", return_value=fake_proc) as mock_subproc:
+        res = execute_code_block(language="bash", code="echo 'test'")
+        assert "Exit Code: 0" in res
+        assert mock_subproc.called
+
+        cmd_passed = mock_subproc.call_args[0][0]
+        cwd_passed = mock_subproc.call_args[1].get("cwd")
+
+        # Command must be ["bash", "<filename>.sh"] - NOT full absolute path with backslashes
+        assert cmd_passed[0] == "bash"
+        assert "\\" not in cmd_passed[1]
+        assert "/" not in cmd_passed[1]
+        assert cmd_passed[1].endswith(".sh")
+        assert cmd_passed[1].startswith("script_")
+
+        # CWD must be the parent directory of the script
+        assert cwd_passed is not None
+        assert "spacev" in cwd_passed.lower() or "temp" in cwd_passed.lower()
+
+
+def test_execute_code_block_python_invokes_full_path():
+    """Verify Python execution continues to pass str(target_path) to sys.executable."""
+    import sys
+    from unittest.mock import MagicMock, patch
+
+    fake_proc = MagicMock()
+    fake_proc.returncode = 0
+    fake_proc.stdout = "PYTHON_INVOCATION_OK"
+    fake_proc.stderr = ""
+
+    with patch("subprocess.run", return_value=fake_proc) as mock_subproc:
+        res = execute_code_block(language="python", code="print('test')")
+        assert "Exit Code: 0" in res
+        assert mock_subproc.called
+
+        cmd_passed = mock_subproc.call_args[0][0]
+        assert cmd_passed[0] == sys.executable
+        assert cmd_passed[1].endswith(".py")
+
+
+def test_execute_code_block_bash_retry_uses_filename_and_cwd():
+    """Verify stdin auto-retry heuristic preserves target_path.name and cwd."""
+    from unittest.mock import MagicMock, patch
+
+    initial_proc = MagicMock()
+    initial_proc.returncode = 1
+    initial_proc.stdout = ""
+    initial_proc.stderr = "EOFError: EOF when reading a line"
+
+    retry_proc = MagicMock()
+    retry_proc.returncode = 0
+    retry_proc.stdout = "RETRY_SUCCESS"
+    retry_proc.stderr = ""
+
+    with patch("subprocess.run", side_effect=[initial_proc, retry_proc]) as mock_subproc:
+        res = execute_code_block(language="bash", code="read val; echo $val")
+        assert "Exit Code: 0" in res
+        assert mock_subproc.call_count == 2
+
+        # Both initial call and retry call must use target_path.name
+        first_cmd = mock_subproc.call_args_list[0][0][0]
+        retry_cmd = mock_subproc.call_args_list[1][0][0]
+        assert first_cmd == retry_cmd
+        assert first_cmd[0] == "bash"
+        assert "\\" not in first_cmd[1]
+
 
 
 def test_execute_code_block_containment_audit():
