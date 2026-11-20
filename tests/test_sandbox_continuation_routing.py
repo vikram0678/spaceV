@@ -578,11 +578,64 @@ def test_summary_approval_survives_worker_recreation_and_is_consumed_without_too
 
     result = next_worker_engine._goal_interpreter_node({"user_prompt": "yes"})
 
-    assert result["goal_interpretation"] == "github_issue_inspection_approved_not_implemented"
-    assert result["tool_calls"] == []
-    assert result["is_complete"] is True
-    assert "did not fetch the issue again" in result["final_response"]
+    assert result["goal_interpretation"] == "explicit_sandbox_proposal"
+    assert result["sandbox_control_call"] is True
+    assert result["issue_workflow_phase"] == "SANDBOX_APPROVAL"
+    assert result["issue_workflow_issue"] == identity
+    assert len(result["tool_calls"]) == 1
+    call = result["tool_calls"][0]
+    assert call["function"]["name"] == "create_sandbox_session"
+    assert "psf/requests issue #7634" in call["function"]["arguments"]["task_description"]
+    assert "Shallow-clone https://github.com/psf/requests.git to /tmp/requests-7634" in call["function"]["arguments"]["task_description"]
+    assert result.get("is_complete") is not True
     assert next_worker_engine._pending_github_issue_approval is None
+
+
+def test_issue_approval_end_to_end_dispatches_proposal_without_vm_startup(monkeypatch):
+    import tools.sandbox_tools as sandbox_tools
+    from core.issue_test_workflow import parse_github_issue_url
+
+    monkeypatch.setattr(
+        sandbox_tools,
+        "_celesto_readiness",
+        lambda: {"mode": "celesto", "configured_for_real_execution": True, "blockers": []},
+    )
+
+    source_prompt = "Summarize this issue https://github.com/psf/requests/issues/7634"
+    summary_response = "Summary of timeout issue. Would you like me to inspect the repository next?"
+    identity = parse_github_issue_url("https://github.com/psf/requests/issues/7634")
+    shared_agent = SimpleNamespace(messages=[
+        {"role": "user", "content": source_prompt},
+        {"role": "assistant", "content": summary_response},
+    ])
+    engine = SpaceVGraphEngine(agent=shared_agent)
+    engine._cached_github_issue = {
+        "identity": identity,
+        "content": {"content": "# Timeout\nIssue: " + identity["issue_url"]},
+    }
+    engine._pending_github_issue_approval = {
+        "identity": identity,
+        "source_prompt": source_prompt,
+        "summary_response": summary_response,
+    }
+
+    # Route through goal interpreter
+    step = engine._goal_interpreter_node({"user_prompt": "yes"})
+    assert step["goal_interpretation"] == "explicit_sandbox_proposal"
+    assert step["sandbox_control_call"] is True
+    assert engine._route_after_goal(step) == "sandbox_control"
+
+    # Execute the proposal tool call via sandbox_session_manager
+    manager = sandbox_tools.SandboxSessionManager()
+    manager._reaper_stop.set()
+    tool_call = step["tool_calls"][0]
+    res = manager.create(tool_call["function"]["arguments"]["task_description"])
+
+    assert "SPACEV_NEEDS_USER_INPUT: I propose one Celesto VM for this task:" in res
+    assert "approve sandbox task" in res
+    assert "Inspect psf/requests issue #7634 in one disposable Celesto VM" in res
+    # Ensure NO VM has been started
+    assert manager.active_count() == 0
 
 
 def test_issue_approval_with_changed_summary_context_fails_closed():

@@ -11,6 +11,7 @@ from spacev.fleet.celesto_engine import CelestoSandboxInstance, SandboxExecution
 from tools.sandbox_tools import (
     DEFAULT_GUEST_COMMAND_TIMEOUT_SECONDS,
     SandboxSessionManager,
+    _ApprovedTaskScope,
     _SandboxSession,
     guest_command_timeout_seconds,
 )
@@ -101,14 +102,16 @@ def test_session_runner_records_timeout_and_uses_clone_profile():
     manager._sessions = {
         "session-test123456": _SandboxSession(
             session_id="session-test123456",
-            task_description="Clone repo and inspect tests",
+            approved_task_scope=_ApprovedTaskScope(
+                "Clone repo and inspect tests. Shallow-clone https://github.com/psf/requests.git to /tmp/requests."
+            ),
             instance=instance,
             started_at=now,
             last_activity=now,
         )
     }
 
-    result = manager.run("session-test123456", "git clone https://github.com/psf/requests.git /tmp/requests")
+    result = manager.run("session-test123456", "git clone --depth=1 https://github.com/psf/requests.git /tmp/requests")
 
     assert instance.timeout == 180
     assert "command_timeout_seconds\": 180" in result
@@ -146,7 +149,9 @@ def _manager_with_session(instance, *, started_at=None):
     manager._sessions = {
         "session-cleanup123": _SandboxSession(
             session_id="session-cleanup123",
-            task_description="Requests issue inspection",
+            approved_task_scope=_ApprovedTaskScope(
+                "Requests issue inspection. Shallow-clone https://github.com/psf/requests.git to /tmp/requests-cleanup."
+            ),
             instance=instance,
             started_at=started_at if started_at is not None else now,
             last_activity=now,
