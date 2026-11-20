@@ -138,7 +138,7 @@ class SpaceVState(TypedDict):
     github_issue_summary_succeeded: bool
 
 
-def determine_tool_status(t_name: str, res: Any) -> str:
+def determine_tool_status(t_name: str, res: Any, args: dict[str, Any] | None = None) -> str:
     """
     Deterministically evaluates whether a tool execution succeeded, failed, or was blocked.
     Prevents the 'Substring Trap' where reading code containing 'error' or 'except' was falsely marked failed.
@@ -186,7 +186,25 @@ def determine_tool_status(t_name: str, res: Any) -> str:
         return "success"
 
     if res_str.startswith(("Failed:", "Error:", "BLOCKED:", "Failed to ", "Folder does not exist:")):
-        return "failed"
+        return "blocked" if res_str.startswith("BLOCKED:") else "failed"
+
+    # Celesto Sandbox Session Commands: distinguish test failures from infrastructure failures
+    if t_name == "run_sandbox_session_command":
+        if res_str.startswith("[CELESTO SESSION EXECUTION]"):
+            # Check for infrastructure failure
+            if "Celesto command failed:" in res_str or "Real Celesto sandbox unavailable" in res_str:
+                return "failed"
+            header_line = res_str.split("\n", 1)[0]
+            if "type: test_execution;" in header_line or "type: test_execution " in header_line:
+                # Validated guest test execution. Non-zero exit code represents normal
+                # test suite failures (failing tests), not tool/infrastructure failure.
+                # Keep the sandbox alive for inspection and repair.
+                return "success"
+            # For non-test commands, evaluate exit code strictly from the trusted header_line,
+            # never from guest stdout/stderr which could contain spoofed "exit code: 0" text.
+            code_match = re.search(r"\bexit code:\s*(\d+)", header_line)
+            if code_match:
+                return "success" if int(code_match.group(1)) == 0 else "failed"
 
     first_line = res_str.split("\n", 1)[0].lower() if res_str else ""
     if "permission denied" in first_line or "access is denied" in first_line or "file locked" in first_line:
@@ -226,12 +244,12 @@ def sandbox_continuation_requested(prompt: str) -> bool:
     text = str(prompt or "").casefold()
     action = re.search(
         r"^\s*(?:(?:please|now|hey)\s+)*(?:(?:can|could|would)\s+you\s+|i\s+(?:want|need)\s+you\s+to\s+)?"
-        r"(?:continue|resume|proceed|use|run|execute)\b",
+        r"(?:continue|resume|proceed|use|run|execute|reproduce)\b",
         text,
     )
     if not action:
         return False
-    if re.search(r"\b(?:do not|don't|dont|never|avoid)\b.{0,50}\b(?:continue|resume|proceed|run|execute)\b", text):
+    if re.search(r"\b(?:do not|don't|dont|never|avoid)\b.{0,50}\b(?:continue|resume|proceed|run|execute|reproduce)\b", text):
         return False
     # Treat any session-like token as an explicit selector. The manager then
     # validates the complete identifier; malformed IDs must not fall through
@@ -772,13 +790,72 @@ class SpaceVGraphEngine:
                 session_payload, ensure_ascii=False
             )
             approved_task = str(session_payload.get("approved_task", ""))
+            session_id = str(session_payload.get("session_id", ""))
+            active_session = sandbox_session_manager._sessions.get(session_id)
+            approved_scope = getattr(active_session, "approved_task_scope", None)
+            is_repro_requested = bool(
+                re.search(
+                    r"\b(?:reproduc(?:e|tion)|run reproduction|diagnos(?:e|is)|execute tests?|run tests?)\b",
+                    assessment.sanitized_text,
+                    re.IGNORECASE,
+                )
+            )
+            if is_repro_requested and approved_scope and getattr(approved_scope, "allow_test_execution", False):
+                dest = getattr(approved_scope, "destination_path", "")
+                call_args: dict[str, Any] = {"session_id": session_id}
+                if dest:
+                    call_args["checkout_path"] = dest
+                cached_issue = self._cached_github_issue or {}
+                cached_identity = cached_issue.get("identity") or state.get("github_issue_identity") or {}
+                cached_content = cached_issue.get("content") or state.get("github_issue_content") or {}
+                issue_url = str(cached_identity.get("issue_url") or cached_content.get("issue_url") or "").strip()
+                issue_title = str(cached_content.get("title") or "").strip()
+                issue_body = str(cached_content.get("content") or "").strip()
+                if issue_url:
+                    call_args["issue_url"] = issue_url
+                if issue_title:
+                    call_args["issue_title"] = issue_title
+                if issue_body:
+                    call_args["issue_body"] = issue_body
+                call_id = f"call_sandbox_repro_{session_id[:8]}"
+                return {
+                    "user_prompt": assessment.sanitized_text,
+                    "goal_contract": {
+                        "objective": f"Execute approved reproduction tests in active Celesto session {session_id}.",
+                        "steps": [],
+                        "success_criteria": ["Reproduction tests are selected, executed, and structured symptoms extracted."],
+                        "entities": {"session_id": session_id},
+                        "constraints": [
+                            "Run tests only within the approved checkout.",
+                            "Do not modify repository files.",
+                            "Capture structured failure symptoms.",
+                        ],
+                        "tool_domains": ["sandbox"],
+                        "requires_action": True,
+                        "confidence": 1.0,
+                    },
+                    "goal_interpretation": "approved_reproduction_execution",
+                    "sandbox_context": sandbox_context,
+                    "tool_calls": [
+                        {
+                            "id": call_id,
+                            "function": {
+                                "name": "run_sandbox_session_reproduction",
+                                "arguments": call_args,
+                            },
+                        }
+                    ],
+                    "sandbox_continuation": True,
+                    "sandbox_control_call": True,
+                }
+
             return {
                 "user_prompt": assessment.sanitized_text,
                 "goal_contract": {
                     "objective": f"Continue the already-approved sandbox task: {approved_task}",
                     "steps": [],
                     "success_criteria": ["Perform the requested next step only inside the active approved Celesto session."],
-                    "entities": {"session_id": str(session_payload.get("session_id", ""))},
+                    "entities": {"session_id": session_id},
                     "constraints": [
                         "Reuse the session ID from trusted session-manager state.",
                         "Do not create or close a VM during continuation.",
@@ -795,8 +872,10 @@ class SpaceVGraphEngine:
             }
 
         from core.issue_test_workflow import (
+            build_issue_inspection_sandbox_description,
             github_issue_inspection_approval_requested,
             github_issue_summary_retry_requested,
+            sandbox_task_description_error,
         )
 
         affirmative = github_issue_inspection_approval_requested(assessment.sanitized_text)
@@ -831,17 +910,69 @@ class SpaceVGraphEngine:
                         "is_complete": True,
                     }
                 identity = pending_issue_approval["identity"]
-                repository = f"{identity.get('owner', '')}/{identity.get('repository', '')}"
+                owner = identity.get("owner", "")
+                repo = identity.get("repository", "")
+                number = identity.get("issue_number", "")
+                wants_test_execution = bool(
+                    re.search(
+                        r"\b(?:reproduc(?:e|tion)|diagnos(?:e|is)|test(?:s|ing)?|investigat(?:e|ion)|solve|issue[- ]test)\b",
+                        assessment.sanitized_text + " " + str(getattr(self, "_last_github_issue_summary_prompt", "")),
+                        re.IGNORECASE,
+                    )
+                ) and not bool(
+                    re.search(
+                        r"\b(?:no test|don't test|do not test|inspect only|inspection[- ]only)\b",
+                        assessment.sanitized_text,
+                        re.IGNORECASE,
+                    )
+                )
+                task_description = build_issue_inspection_sandbox_description(
+                    identity, allow_test_execution=wants_test_execution
+                )
+                task_description_error = sandbox_task_description_error(task_description)
+                if task_description_error:
+                    return {
+                        "user_prompt": assessment.sanitized_text,
+                        "goal_interpretation": "sandbox_proposal_preflight_blocked",
+                        "final_response": f"I did not submit a sandbox proposal: {task_description_error}",
+                        "tool_calls": [],
+                        "sandbox_control_call": True,
+                        "is_complete": True,
+                    }
+
+                from tools.sandbox_tools import sandbox_session_manager
+
+                sandbox_context = sandbox_session_manager.continuation_context(task_description)
+                call_id = f"call_sandbox_proposal_{re.sub(r'[^A-Za-z0-9_]+', '_', f'{owner}_{repo}_{number}')}"
+                call_args: dict[str, Any] = {"task_description": task_description}
+                if wants_test_execution:
+                    call_args["allow_test_execution"] = True
                 return {
                     "user_prompt": assessment.sanitized_text,
-                    "goal_interpretation": "github_issue_inspection_approved_not_implemented",
-                    "goal_contract": {"objective": "Acknowledge approval for repository inspection", "requires_action": False},
-                    "tool_calls": [],
-                    "final_response": (
-                        f"Approval recorded for inspecting {repository}. Repository inspection is not part of this "
-                        "issue-intake increment, so I did not fetch the issue again or access the repository."
-                    ),
-                    "is_complete": True,
+                    "goal_contract": {
+                        "objective": f"Prepare an approval-gated disposable Celesto VM proposal for inspecting {owner}/{repo}#{number}.",
+                        "steps": [],
+                        "success_criteria": ["A proposal is shown and the system waits for explicit user approval."],
+                        "entities": {"repository": f"{owner}/{repo}", "issue_number": number},
+                        "constraints": ["Do not start the VM before approval.", "Read-only repository inspection only."],
+                        "tool_domains": ["sandbox"],
+                        "requires_action": True,
+                        "confidence": 1.0,
+                    },
+                    "goal_interpretation": "explicit_sandbox_proposal",
+                    "issue_workflow_phase": "SANDBOX_APPROVAL",
+                    "issue_workflow_issue": dict(identity),
+                    "sandbox_context": sandbox_context,
+                    "tool_calls": [
+                        {
+                            "id": call_id,
+                            "function": {
+                                "name": "create_sandbox_session",
+                                "arguments": call_args,
+                            },
+                        }
+                    ],
+                    "sandbox_control_call": True,
                 }
         elif affirmative and self._last_github_issue_summary_failed:
             retained_message = (
@@ -1012,8 +1143,27 @@ class SpaceVGraphEngine:
         )
         is_explicit_vm_proposal = sandbox_proposal_requested(proposal_text)
         task_description = ""
+        wants_test_execution = False
         if is_explicit_vm_proposal:
-            task_description = build_issue_test_sandbox_description(proposal_text, conversation_context) or proposal_text
+            wants_test_execution = bool(
+                re.search(
+                    r"\b(?:reproduc(?:e|tion)|diagnos(?:e|is)|test(?:s|ing)?|investigat(?:e|ion)|solve|issue[- ]test)\b",
+                    proposal_text + "\n" + conversation_context,
+                    re.IGNORECASE,
+                )
+            ) and not bool(
+                re.search(
+                    r"\b(?:no test|don't test|do not test|inspect only|inspection[- ]only)\b",
+                    proposal_text,
+                    re.IGNORECASE,
+                )
+            )
+            task_description = (
+                build_issue_test_sandbox_description(
+                    proposal_text, conversation_context, allow_test_execution=wants_test_execution
+                )
+                or proposal_text
+            )
             task_description_error = sandbox_task_description_error(task_description)
             if task_description_error:
                 return {
@@ -1043,6 +1193,9 @@ class SpaceVGraphEngine:
             from tools.sandbox_tools import sandbox_session_manager
 
             sandbox_context = sandbox_session_manager.continuation_context(task_description)
+            call_args: dict[str, Any] = {"task_description": task_description}
+            if wants_test_execution:
+                call_args["allow_test_execution"] = True
             return {
                 "user_prompt": proposal_text,
                 "goal_contract": {
@@ -1063,7 +1216,7 @@ class SpaceVGraphEngine:
                     {
                         "function": {
                             "name": "create_sandbox_session",
-                            "arguments": {"task_description": task_description},
+                            "arguments": call_args,
                         }
                     }
                 ],
@@ -1908,7 +2061,7 @@ class SpaceVGraphEngine:
                         t_args = {"command": cmd_to_check}
 
                 res = execute_tool(t_name, t_args)
-                status = determine_tool_status(t_name, res)
+                status = determine_tool_status(t_name, res, t_args)
 
                 # Truth Gatekeeper Empirical Postcondition Verification (Phase 3 & 5)
                 from core.truth_gatekeeper import truth_gatekeeper
@@ -1984,6 +2137,13 @@ class SpaceVGraphEngine:
             test_result = classify_test_execution(command, str(raw_result), expected_signal)
             if test_result:
                 notes.append(format_test_classification(test_result))
+                try:
+                    from core.issue_symptom_extractor import extract_test_symptoms, format_extracted_symptom_note
+                    symptom = extract_test_symptoms(str(raw_result), target_path=command)
+                    if symptom and symptom.execution_status in ("FAILED", "PASSED", "TIMEOUT") and (symptom.exception_type or symptom.test_name):
+                        notes.append(format_extracted_symptom_note(symptom))
+                except Exception as exc:
+                    logger.debug("Symptom extraction in graph note skipped: %s", exc)
             status_result = classify_git_status(command, str(raw_result))
             if status_result:
                 notes.append(format_git_status_classification(status_result))
@@ -2014,14 +2174,11 @@ class SpaceVGraphEngine:
                 return None
             from core.task_evidence import task_evidence_store
 
-            prior_records = task_evidence_store.session_tool_results(session_id) if session_id else []
-            # Include current-turn receipts as a fallback for harnesses that do
-            # not persist tool evidence, while keeping the session ID scoped.
-            if not prior_records:
-                prior_records = [
-                    item for item in tool_results
-                    if not session_id or str((item.get("args") or {}).get("session_id", "")) == session_id
-                ]
+            prior_records = list(task_evidence_store.session_tool_results(session_id)) if session_id else []
+            for item in tool_results:
+                if not session_id or str((item.get("args") or {}).get("session_id", "")) == session_id:
+                    if item not in prior_records:
+                        prior_records.append(item)
             pinned_commit = None
             commit_unchanged = True
             post_patch_commit_verified = False
@@ -2037,7 +2194,7 @@ class SpaceVGraphEngine:
                 prior_result = str(prior.get("result", ""))
                 exit_match = re.search(r"\bexit code:\s*(-?\d+)", prior_result, re.IGNORECASE)
                 command_exit = int(exit_match.group(1)) if exit_match else None
-                if re.search(r"\bgit\s+rev-parse\s+HEAD\b", prior_command, re.IGNORECASE):
+                if re.search(r"\bgit\b[^\n]*\brev-parse\s+HEAD\b", prior_command, re.IGNORECASE):
                     stdout_match = re.search(
                         r"STDOUT:\s*\n(.*?)(?:\nSTDERR:|\Z)", prior_result, re.IGNORECASE | re.DOTALL
                     )
@@ -2077,6 +2234,41 @@ class SpaceVGraphEngine:
                     and not patch_seen
                 ):
                     baseline_passed = True
+
+            from tools.sandbox_tools import sandbox_session_manager
+
+            active_session = sandbox_session_manager._sessions.get(session_id) if session_id else None
+            if not active_session and len(sandbox_session_manager._sessions) == 1:
+                active_session = next(iter(sandbox_session_manager._sessions.values()))
+            approved_scope = getattr(active_session, "approved_task_scope", None)
+            is_reproduction_only_scope = bool(
+                approved_scope
+                and getattr(approved_scope, "allow_test_execution", False)
+                and not getattr(approved_scope, "allow_file_changes", False)
+            )
+
+            if is_reproduction_only_scope:
+                if latest_audit and latest_audit["classification"] in ("TEST_FILES_ONLY", "NON_TEST_FILES_CHANGED"):
+                    return (
+                        f"SPACEV_NEEDS_USER_INPUT: Test execution is blocked in reproduction-only mode. "
+                        f"Tracked repository files were modified on disk ({latest_audit['classification']}). "
+                        "Reproduction and diagnosis requires an unmodified checkout with NO_CHANGED_PATHS."
+                    )
+                if (
+                    latest_audit
+                    and latest_audit["classification"] == "NO_CHANGED_PATHS"
+                    and latest_audit.get("exit_code") == 0
+                    and pinned_commit is not None
+                    and commit_unchanged
+                ):
+                    return None
+                latest = latest_audit["classification"] if latest_audit else "MISSING_AUDIT"
+                return (
+                    "SPACEV_NEEDS_USER_INPUT: Test execution is paused. Before running reproduction tests on an unmodified checkout, "
+                    "evidence must come from this same Celesto session: a successful `git rev-parse HEAD` and a clean `git status --short` "
+                    f"(NO_CHANGED_PATHS). Current path audit={latest}; commit_pinned={pinned_commit is not None}; "
+                    f"commit_unchanged={commit_unchanged}. No test was run."
+                )
 
             if (
                 latest_audit
@@ -2217,6 +2409,25 @@ class SpaceVGraphEngine:
                             state.get("github_issue_identity") or {}, validation
                         ),
                     })
+
+        ready_sandbox = next(
+            (
+                item for item in reversed(tool_results)
+                if item.get("name") == "create_sandbox_session"
+                and item.get("status") == "success"
+            ),
+            None,
+        )
+        if ready_sandbox and getattr(self, "_cached_github_issue", None):
+            m = re.search(r"\[CELESTO SESSION READY\] Session ID:\s*([^\s;]+)", str(ready_sandbox.get("result", "")))
+            if m:
+                new_session_id = m.group(1).strip()
+                try:
+                    from tools.sandbox_tools import sandbox_session_manager
+
+                    sandbox_session_manager.attach_issue_context(new_session_id, self._cached_github_issue)
+                except Exception as exc:
+                    logger.warning("Failed to auto-attach issue context to session %s: %s", new_session_id, exc)
 
         failed_guest_execution = next(
             (
@@ -2748,7 +2959,7 @@ class SpaceVGraphEngine:
                             t0 = time.perf_counter()
                             tool_out = execute_tool(t_name, t_args)
                             dur_ms = (time.perf_counter() - t0) * 1000.0
-                            tool_status = determine_tool_status(t_name, tool_out)
+                            tool_status = determine_tool_status(t_name, tool_out, t_args)
                             telemetry.record_tool_execution(
                                 name=t_name,
                                 args=t_args,
@@ -2916,6 +3127,28 @@ class SpaceVGraphEngine:
                         )
                 except Exception as exc:
                     logger.warning("Could not export issue-test evidence bundle: %s", exc)
+
+            repro_result = next(
+                (item for item in tool_results if item.get("name") == "run_sandbox_session_reproduction"),
+                None,
+            )
+            if repro_result and repro_result.get("status") == "success":
+                try:
+                    repro_data = json.loads(str(repro_result.get("result", "")))
+                    verdict = repro_data.get("overall_verdict", "UNKNOWN")
+                    conf = repro_data.get("confidence", "UNKNOWN")
+                    repro_summary = f"\n\n[SpaceV Reproduction Result] Verdict: {verdict} (Confidence: {conf})"
+                    symptoms_list = repro_data.get("extracted_symptoms", [])
+                    if symptoms_list:
+                        s0 = symptoms_list[0]
+                        repro_summary += f"\n- Test: {s0.get('test_file')}"
+                        if s0.get("exception_type"):
+                            repro_summary += f"\n- Failure: {s0.get('exception_type')}: {s0.get('exception_message')}"
+                        if s0.get("failing_file"):
+                            repro_summary += f"\n- Location: {s0.get('failing_file')}:{s0.get('failing_line')}"
+                    response += repro_summary
+                except Exception as exc:
+                    logger.debug("Reproduction report synthesis skipped: %s", exc)
 
             print(f"[{timestamp}] [SPACEV]: {response}\n{'=' * 65}\n")
             outcome = "stuck" if final_state.get("stuck_detected") else "success"
