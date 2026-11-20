@@ -164,10 +164,136 @@ def test_cloud_client_colibri_failover():
     messages = [{"role": "user", "content": "Perform offline analysis"}]
 
     with patch.object(client, "_build_provider_pipeline", return_value=[]), \
+         patch.object(client, "_fallback_to_ollama") as mock_ollama, \
          patch("core.colibri_client.colibri_client.is_server_running", return_value=True), \
          patch("core.colibri_client.colibri_client.chat_completion", return_value={
              "choices": [{"message": {"role": "assistant", "content": "Colibri MoE offline response", "tool_calls": []}}]
          }):
         res = client.chat(messages=messages)
         assert res["content"] == "Colibri MoE offline response"
+        assert client.last_used_provider == "colibri_local"
+        mock_ollama.assert_not_called()
+
+
+def test_cloud_success_does_not_invoke_colibri():
+    """Verify that successful cloud response returns immediately without probing Colibrì."""
+    from core.cloud_client import UniversalBrainClient
+
+    client = UniversalBrainClient()
+    messages = [{"role": "user", "content": "Hello"}]
+    fake_pipeline = [{
+        "name": "MockProvider",
+        "base_url": "https://api.example.com/v1",
+        "api_key": "test-key",
+        "model": "test-model",
+    }]
+    fake_response = MagicMock()
+    fake_response.status_code = 200
+    fake_response.json.return_value = {
+        "choices": [{"message": {"role": "assistant", "content": "Cloud response", "tool_calls": []}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
+
+    with patch.object(client, "_build_provider_pipeline", return_value=fake_pipeline), \
+         patch("requests.post", return_value=fake_response), \
+         patch("core.colibri_client.colibri_client.is_server_running") as mock_is_running, \
+         patch("core.colibri_client.colibri_client.chat_completion") as mock_colibri_chat:
+        res = client.chat(messages=messages)
+        assert res["content"] == "Cloud response"
+        mock_is_running.assert_not_called()
+        mock_colibri_chat.assert_not_called()
+
+
+def test_colibri_unavailable_in_direct_mode_returns_endpoint_error():
+    """Verify that when Colibrì is unavailable in direct mode, Ollama is not silently invoked."""
+    from core.cloud_client import UniversalBrainClient
+
+    client = UniversalBrainClient(api_key="sk-real-paid-key", routing_mode="direct")
+    messages = [{"role": "user", "content": "Perform offline analysis"}]
+
+    with patch.object(client, "_build_provider_pipeline", return_value=[]), \
+         patch.object(client, "_fallback_to_ollama") as mock_ollama, \
+         patch("core.colibri_client.colibri_client.is_server_running", return_value=False):
+        res = client.chat(messages=messages)
+        assert "The configured LLM endpoint did not return a usable response" in res["content"]
+        assert client.last_used_provider == "configured_endpoint_error"
+        mock_ollama.assert_not_called()
+
+
+def test_colibri_exception_in_direct_mode_does_not_bypass_endpoint_guard():
+    """Verify that an exception in Colibrì in direct mode falls through safely to endpoint error."""
+    from core.cloud_client import UniversalBrainClient
+
+    client = UniversalBrainClient(api_key="sk-real-paid-key", routing_mode="direct")
+    messages = [{"role": "user", "content": "Perform offline analysis"}]
+
+    with patch.object(client, "_build_provider_pipeline", return_value=[]), \
+         patch.object(client, "_fallback_to_ollama") as mock_ollama, \
+         patch("core.colibri_client.colibri_client.is_server_running", return_value=True), \
+         patch("core.colibri_client.colibri_client.chat_completion", side_effect=RuntimeError("Engine crashed")):
+        res = client.chat(messages=messages)
+        assert "The configured LLM endpoint did not return a usable response" in res["content"]
+        assert client.last_used_provider == "configured_endpoint_error"
+        mock_ollama.assert_not_called()
+
+
+@pytest.mark.parametrize("bad_response", [
+    None,
+    {},
+    {"choices": []},
+    {"choices": [{}]},
+    {"choices": [{"message": {}}]},
+    {"choices": [{"message": {"role": "assistant", "content": "", "tool_calls": []}}]},
+])
+def test_colibri_empty_or_malformed_response_in_direct_mode(bad_response):
+    """Verify that empty or malformed Colibrì responses are safely handled and don't bypass direct guard."""
+    from core.cloud_client import UniversalBrainClient
+
+    client = UniversalBrainClient(api_key="sk-real-paid-key", routing_mode="direct")
+    messages = [{"role": "user", "content": "Perform offline analysis"}]
+
+    with patch.object(client, "_build_provider_pipeline", return_value=[]), \
+         patch.object(client, "_fallback_to_ollama") as mock_ollama, \
+         patch("core.colibri_client.colibri_client.is_server_running", return_value=True), \
+         patch("core.colibri_client.colibri_client.chat_completion", return_value=bad_response):
+        res = client.chat(messages=messages)
+        assert "The configured LLM endpoint did not return a usable response" in res["content"]
+        assert client.last_used_provider == "configured_endpoint_error"
+        mock_ollama.assert_not_called()
+
+
+def test_non_direct_mode_preserves_ollama_fallback_when_colibri_unavailable():
+    """Verify that non-direct mode preserves existing Ollama fallback when Colibrì is unavailable."""
+    from core.cloud_client import UniversalBrainClient
+
+    client = UniversalBrainClient(api_key="sk-mesh-key", routing_mode="free_mesh")
+    messages = [{"role": "user", "content": "Perform offline analysis"}]
+
+    with patch.object(client, "_build_provider_pipeline", return_value=[]), \
+         patch("core.colibri_client.colibri_client.is_server_running", return_value=False), \
+         patch.object(client, "_fallback_to_ollama", return_value={
+             "role": "assistant",
+             "content": "Ollama local fallback response",
+             "tool_calls": [],
+         }) as mock_ollama:
+        res = client.chat(messages=messages)
+        assert res["content"] == "Ollama local fallback response"
+        mock_ollama.assert_called_once()
+
+
+def test_colibri_tool_call_response_handling():
+    """Verify that Colibrì tool calls are returned properly without requiring content."""
+    from core.cloud_client import UniversalBrainClient
+
+    client = UniversalBrainClient()
+    messages = [{"role": "user", "content": "Run calculator"}]
+    expected_tools = [{"id": "call_1", "type": "function", "function": {"name": "calc", "arguments": "{}"}}]
+
+    with patch.object(client, "_build_provider_pipeline", return_value=[]), \
+         patch("core.colibri_client.colibri_client.is_server_running", return_value=True), \
+         patch("core.colibri_client.colibri_client.chat_completion", return_value={
+             "choices": [{"message": {"role": "assistant", "content": "", "tool_calls": expected_tools}}]
+         }):
+        res = client.chat(messages=messages)
+        assert res["tool_calls"] == expected_tools
         assert client.last_used_provider == "colibri_local"
