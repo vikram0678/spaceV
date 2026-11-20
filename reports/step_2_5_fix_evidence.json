@@ -1,0 +1,19 @@
+{
+  "patch_id": "patch-77ca97735008",
+  "approved_hash": "f474841ac23aea1ae664b801ae1aa40fc6b5a868880eb887f944f5a5e63770cc",
+  "applied_bytes_sha256": "f474841ac23aea1ae664b801ae1aa40fc6b5a868880eb887f944f5a5e63770cc",
+  "approval_evidence": {
+    "token": "approve patch patch-77ca97735008",
+    "validation_message": "Patch patch-77ca97735008 approved successfully. Bound to commit 3c7baaa05ab4aa49cc819ce3a819d260de19c157 (SHA-256: f474841ac23aea1ae664b801ae1aa40fc6b5a868880eb887f944f5a5e63770cc).",
+    "timestamp": 1794391431.8465889
+  },
+  "repository_url": "https://github.com/psf/requests.git",
+  "base_commit": "3c7baaa05ab4aa49cc819ce3a819d260de19c157",
+  "guest_commit": "3c7baaa05ab4aa49cc819ce3a819d260de19c157",
+  "target_file": "src/requests/models.py",
+  "final_diff": "diff --git a/src/requests/models.py b/src/requests/models.py\nindex 17b39cd..4fbd282 100644\n--- a/src/requests/models.py\n+++ b/src/requests/models.py\n@@ -1017,7 +1017,12 @@ class Response:\n                 chunk = cast(\"str | bytes\", pending + chunk)\n \n             if delimiter:\n-                lines = chunk.split(delimiter)  # type: ignore[arg-type]\n+                delim = delimiter\n+                if isinstance(chunk, bytes) and isinstance(delim, str):\n+                    delim = delim.encode(self.encoding or \"utf-8\")\n+                elif isinstance(chunk, str) and isinstance(delim, bytes):\n+                    delim = delim.decode(self.encoding or \"utf-8\")\n+                lines = chunk.split(delim)\n             else:\n                 lines = chunk.splitlines()\n \n",
+  "git_status": " M src/requests/models.py\n",
+  "test_exit_code": 0,
+  "test_stdout": "============================= test session starts ==============================\nplatform linux -- Python 3.11.14, pytest-7.4.3, pluggy-1.3.0 -- /usr/bin/python3\nrootdir: /tmp/requests-7645\nconfigfile: pyproject.toml\ncollecting ... collected 3 items\n\ntests/test_issue_7645_fix_verification.py::test_iter_lines_str_delimiter_none_encoding_reproduce_7645 PASSED [ 33%]\ntests/test_issue_7645_fix_verification.py::test_combination_matrix PASSED [ 66%]\ntests/test_issue_7645_fix_verification.py::test_chunk_boundaries_multichar PASSED [100%]\n\n============================== 3 passed in 0.01s ===============================\n",
+  "test_stderr": ""
+}
