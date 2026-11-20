@@ -28,7 +28,8 @@ def test_credential_theft_containment():
     assert res["attack"] == "prompt_injection_exfil"
     assert res["blocked"] is True
     assert res["host_untouched"] is True
-    assert res["guest_contained"] is True
+    assert res["guest_contained"] is False
+    assert res["real_vm_containment_proven"] is False
 
 
 def test_destructive_command_containment():
@@ -86,6 +87,7 @@ def test_contract_8_report_generation():
 def test_spacev_audit_tool():
     """Verify SpaceV audit_sandbox_containment tool returns human-readable audit status."""
     msg = audit_sandbox_containment("prompt_injection_exfil")
-    assert "Celesto Containment Audit Passed" in msg
-    assert "Attack Blocked in Guest: `True`" in msg
-    assert "Host OS Untouched: `True`" in msg
+    assert "Sandbox simulation only — no Celesto containment was tested" in msg
+    assert "Attack Vector Tested: `prompt_injection_exfil`" in msg
+    assert "Simulated policy blocked input: `True`" in msg
+    assert "Real VM isolation proven: `False`" in msg
