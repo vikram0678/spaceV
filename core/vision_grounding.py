@@ -3,6 +3,8 @@ Visual Grounding & Text-Anchored Navigation Engine for SpaceV.
 Powered by Windows Native OCR (Windows.Media.Ocr / winocr) with high-res bounding-box discovery
 and sub-pixel human-like cursor gliding to any on-screen text, button, or link.
 """
+import sys
+import os
 import difflib
 import queue
 import threading
@@ -23,9 +25,12 @@ def _get_winocr():
     except Exception:
         return None
 
+if "mouseinfo" not in sys.modules:
+    sys.modules["mouseinfo"] = None
+
 try:
     import pyautogui
-except Exception:
+except (Exception, SystemExit):
     from tools.gui_tools import pyautogui
 from tools.gui_tools import human_move_to, safety
 

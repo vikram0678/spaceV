@@ -7,7 +7,7 @@ from config import USER_DESKTOP_DIR
 try:
     import pyautogui
     HAS_PYAUTOGUI = True
-except Exception:
+except (Exception, SystemExit):
     HAS_PYAUTOGUI = False
 
 try:
