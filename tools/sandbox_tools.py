@@ -5,6 +5,8 @@ simulator is used only when the provider is explicitly set to simulation.
 Workflow and containment demonstrations in this module remain simulations.
 """
 
+from __future__ import annotations
+
 import hashlib
 import atexit
 import importlib.util
@@ -31,10 +33,29 @@ DEFAULT_GUEST_COMMAND_TIMEOUT_SECONDS = 30
 MAX_GUEST_COMMAND_TIMEOUT_SECONDS = 900
 
 
-def validate_approved_guest_command(task_description: str, command: str) -> str | None:
-    """Fail closed unless a guest command is read-only and confined to the approved checkout."""
-    task = str(task_description or "")
+def classify_approved_guest_command(
+    task_description: str | "_ApprovedTaskScope", command: str
+) -> tuple[str | None, str]:
+    """Validate a guest command against its immutable repository or standalone scope.
+
+    Returns (error_or_none, command_type) where command_type is one of:
+      - 'test_execution'
+      - 'repository_inspection'
+      - 'repository_clone'
+      - 'standalone_command'
+      - 'unknown'
+    """
+    approved_scope = task_description if isinstance(task_description, _ApprovedTaskScope) else None
+    task = approved_scope.description if approved_scope else str(task_description or "")
     text = str(command or "").strip()
+
+    if approved_scope and approved_scope.task_type == "standalone":
+        err = _validate_standalone_guest_command(approved_scope, text)
+        if err:
+            return err, "unknown"
+        cmd_type = "test_execution" if text.startswith(("python", "pytest")) else "standalone_command"
+        return None, cmd_type
+
     scope = re.search(
         r"(?:shallow[- ]clone|clone)\s+(https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\.git)\s+"
         r"(?:(?:to|into)\s+)?(/tmp/[A-Za-z0-9_.-]+)",
@@ -42,26 +63,83 @@ def validate_approved_guest_command(task_description: str, command: str) -> str 
         re.IGNORECASE,
     )
     if not scope:
-        return "the approved task does not define a repository and checkout path that can be safely enforced"
+        return "the approved task does not define a repository and checkout path that can be safely enforced", "unknown"
     repo_url = scope.group(1).rstrip("/")
     raw_root = scope.group(2).rstrip(".,;:")
     root = posixpath.normpath(raw_root)
     if root != raw_root or root == "/tmp" or "/../" in f"{root}/":
-        return "the approved checkout path is not a safe fixed /tmp directory"
+        return "the approved checkout path is not a safe fixed /tmp directory", "unknown"
     if not text or "\n" in text or "\r" in text:
-        return "only one bounded guest command can be classified at a time"
+        return "only one bounded guest command can be classified at a time", "unknown"
     try:
         lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|<>`$")
         lexer.whitespace_split = True
         lexer.commenters = ""
         tokens = list(lexer)
     except ValueError:
-        return "the command has invalid quoting and cannot be safely classified"
-    if not tokens or any(token and all(char in ";&|<>`$" for char in token) for token in tokens):
-        return "shell chaining, redirection, substitution, and pipelines are not allowed"
+        return "the command has invalid quoting and cannot be safely classified", "unknown"
+
+    if not tokens:
+        return "empty command cannot be executed", "unknown"
 
     if tokens in (["git", "--version"], ["command", "-v", "git"], ["which", "git"]):
-        return None
+        return None, "repository_inspection"
+
+    # Test runner dispatch: pytest or python3? -m pytest/unittest
+    # Optionally prefixed by 'cd <root> &&'
+    test_tokens = None
+    if len(tokens) >= 4 and tokens[0] == "cd" and tokens[2] == "&&":
+        cd_target = posixpath.normpath(tokens[1].rstrip("/"))
+        if cd_target != root:
+            return f"cd target {tokens[1]!r} must match the approved checkout {root!r}", "unknown"
+        test_tokens = tokens[3:]
+    elif tokens[0] in ("pytest", "python", "python3", "pip", "pip3"):
+        test_tokens = tokens
+
+    if test_tokens is not None:
+        is_pytest = test_tokens[0] == "pytest" or (
+            len(test_tokens) >= 3 and test_tokens[:2] in (["python", "-m"], ["python3", "-m"]) and test_tokens[2] == "pytest"
+        ) or (
+            len(test_tokens) >= 4 and test_tokens[:3] in (["python", "-B", "-m"], ["python3", "-B", "-m"]) and test_tokens[3] == "pytest"
+        )
+        is_unittest = (
+            len(test_tokens) >= 3 and test_tokens[:2] in (["python", "-m"], ["python3", "-m"]) and test_tokens[2] == "unittest"
+        ) or (
+            len(test_tokens) >= 4 and test_tokens[:3] in (["python", "-B", "-m"], ["python3", "-B", "-m"]) and test_tokens[3] == "unittest"
+        )
+        is_pip = (
+            test_tokens[0] in ("pip", "pip3")
+            or (
+                len(test_tokens) >= 3
+                and test_tokens[:2] in (["python", "-m"], ["python3", "-m"])
+                and test_tokens[2] in ("pip", "pip3")
+            )
+            or (
+                len(test_tokens) >= 4
+                and test_tokens[:3] in (["python", "-B", "-m"], ["python3", "-B", "-m"])
+                and test_tokens[3] in ("pip", "pip3")
+            )
+        )
+        if is_pytest or is_unittest:
+            if any(token and all(char in ";&|<>`$" for char in token) for token in test_tokens):
+                return "shell chaining, redirection, substitution, and pipelines are not allowed", "unknown"
+            if approved_scope and not approved_scope.allow_test_execution:
+                return "test execution was not included in the approved sandbox task", "test_execution"
+            err = _validate_repository_test_command(root, test_tokens, is_pytest=is_pytest)
+            if err:
+                return err, "test_execution"
+            return None, "test_execution"
+        elif is_pip:
+            if any(token and all(char in ";&|<>`$" for char in token) for token in test_tokens):
+                return "shell chaining, redirection, substitution, and pipelines are not allowed", "unknown"
+            err = _validate_repository_package_install_command(root, test_tokens)
+            if err:
+                return err, "package_installation"
+            return None, "package_installation"
+
+    if any(token and all(char in ";&|<>`$" for char in token) for token in tokens):
+        return "shell chaining, redirection, substitution, and pipelines are not allowed", "unknown"
+
     clone_prefix = (
         2 if tokens[:2] == ["git", "clone"]
         else 4 if tokens[:3] == ["git", "-c", "core.hooksPath=/dev/null"] and tokens[3:4] == ["clone"]
@@ -78,7 +156,7 @@ def validate_approved_guest_command(task_description: str, command: str) -> str 
                 break
             elif token == "--depth":
                 if i + 1 >= len(args) or args[i + 1] != "1" or saw_depth_one:
-                    return "clone must be a shallow depth-1 checkout"
+                    return "clone must be a shallow depth-1 checkout", "repository_clone"
                 saw_depth_one = True
                 i += 2
             elif token == "--depth=1" and not saw_depth_one:
@@ -88,52 +166,50 @@ def validate_approved_guest_command(task_description: str, command: str) -> str 
                 i += 1
             else:
                 if token.startswith("-"):
-                    return "clone contains an unapproved option"
+                    return "clone contains an unapproved option", "repository_clone"
                 break
         remaining = args[i:]
         if saw_depth_one and len(remaining) == 2 and remaining[0].rstrip("/") == repo_url and remaining[1] == root:
-            return None
-        return "clone is limited to the approved GitHub repository and exact /tmp checkout path"
+            return None, "repository_clone"
+        return "clone is limited to the approved GitHub repository and exact /tmp checkout path", "repository_clone"
 
     if tokens[0] == "git":
         if len(tokens) < 4 or tokens[1:3] != ["-C", root]:
-            return "Git inspection must explicitly target the approved checkout with git -C"
+            return "Git inspection must explicitly target the approved checkout with git -C", "repository_inspection"
         subcommand = tokens[3]
         if subcommand not in {"status", "rev-parse", "log", "show", "diff", "ls-files", "grep"}:
-            return f"Git subcommand {subcommand!r} is not approved for read-only inspection"
+            return f"Git subcommand {subcommand!r} is not approved for read-only inspection", "repository_inspection"
         if any(token in {"--output", "--exec", "--ext-diff", "--textconv"} for token in tokens[4:]):
-            return "the Git inspection contains an option that can write files or execute external programs"
+            return "the Git inspection contains an option that can write files or execute external programs", "repository_inspection"
         args = tokens[4:]
         if subcommand == "status" and args not in ([], ["--short"], ["--porcelain"]):
-            return "status inspection is limited to the working-tree summary"
+            return "status inspection is limited to the working-tree summary", "repository_inspection"
         if subcommand == "rev-parse" and args != ["HEAD"]:
-            return "revision inspection is limited to the checked-out commit"
+            return "revision inspection is limited to the checked-out commit", "repository_inspection"
         if subcommand == "log" and args not in (["-1"], ["-1", "--format=%H"], ["-1", "--oneline"]):
-            return "log inspection is limited to the current commit"
+            return "log inspection is limited to the current commit", "repository_inspection"
         if subcommand == "show":
             if len(args) != 1 or not args[0].startswith("HEAD:"):
-                return "show may read only a single file blob from the checked-out HEAD commit"
+                return "show may read only a single file blob from the checked-out HEAD commit", "repository_inspection"
             pathspec = args[0][5:]
             if not pathspec or pathspec.startswith("/") or ".." in pathspec.split("/"):
-                return "show path must remain inside the approved repository tree"
+                return "show path must remain inside the approved repository tree", "repository_inspection"
         if subcommand == "ls-files":
             if any(arg.startswith("/") or ".." in arg.split("/") for arg in args):
-                return "file listing must remain inside the approved repository tree"
+                return "file listing must remain inside the approved repository tree", "repository_inspection"
         if subcommand == "diff":
             if args not in ([], ["--check"], ["--stat"]):
-                return "diff is limited to the approved checkout summary or whitespace check"
+                return "diff is limited to the approved checkout summary or whitespace check", "repository_inspection"
         if subcommand == "grep":
-            # Read from the immutable Git object tree, not the checkout: a
-            # repository can contain symlinks that point outside its directory.
             if "HEAD" not in args or "--" not in args:
-                return "grep must search the immutable HEAD tree with an explicit in-repository pathspec"
+                return "grep must search the immutable HEAD tree with an explicit in-repository pathspec", "repository_inspection"
             separator = args.index("--")
             before_paths = args[:separator]
             paths = args[separator + 1:]
             if not paths or any(path.startswith("/") or ".." in path.split("/") for path in paths):
-                return "grep pathspecs must stay inside the approved repository tree"
+                return "grep pathspecs must stay inside the approved repository tree", "repository_inspection"
             if before_paths.count("HEAD") != 1:
-                return "grep may search only the checked-out HEAD tree"
+                return "grep may search only the checked-out HEAD tree", "repository_inspection"
             allowed_flags = {"-n", "-i", "-E", "-F", "-w", "-h", "--full-name"}
             i = 0
             saw_pattern = False
@@ -143,7 +219,7 @@ def validate_approved_guest_command(task_description: str, command: str) -> str 
                     i += 1
                 elif arg in {"-e", "-A", "-B", "-C"}:
                     if i + 1 >= len(before_paths):
-                        return "grep option is missing its value"
+                        return "grep option is missing its value", "repository_inspection"
                     if arg == "-e":
                         saw_pattern = True
                     i += 2
@@ -151,12 +227,290 @@ def validate_approved_guest_command(task_description: str, command: str) -> str 
                     saw_pattern = True
                     i += 1
                 else:
-                    return "grep contains an unapproved option or ambiguous argument"
+                    return "grep contains an unapproved option or ambiguous argument", "repository_inspection"
             if not saw_pattern:
-                return "grep requires one explicit search pattern"
+                return "grep requires one explicit search pattern", "repository_inspection"
+        return None, "repository_inspection"
+
+    return f"command {tokens[0]!r} is not in the approved guest-command allowlist", "unknown"
+
+
+def validate_approved_guest_command(task_description: str | "_ApprovedTaskScope", command: str) -> str | None:
+    """Validate a guest command against its immutable repository or standalone scope."""
+    error, _ = classify_approved_guest_command(task_description, command)
+    return error
+
+
+def _validate_repository_test_command(root: str, tokens: list[str], is_pytest: bool) -> str | None:
+    """Validate that test command tokens are restricted to safe flags and in-checkout paths."""
+    if is_pytest:
+        if tokens[0] == "pytest":
+            args = tokens[1:]
+        elif len(tokens) >= 3 and tokens[:2] in (["python", "-m"], ["python3", "-m"]) and tokens[2] == "pytest":
+            args = tokens[3:]
+        elif len(tokens) >= 4 and tokens[:3] in (["python", "-B", "-m"], ["python3", "-B", "-m"]) and tokens[3] == "pytest":
+            args = tokens[4:]
+        else:
+            return "unrecognized pytest command form"
+    else:
+        if len(tokens) >= 3 and tokens[:2] in (["python", "-m"], ["python3", "-m"]) and tokens[2] == "unittest":
+            args = tokens[3:]
+        elif len(tokens) >= 4 and tokens[:3] in (["python", "-B", "-m"], ["python3", "-B", "-m"]) and tokens[3] == "unittest":
+            args = tokens[4:]
+        else:
+            return "unrecognized unittest command form"
+
+    dangerous = {"--pdb", "--trace", "--capture=tee-sys", "--override-ini"}
+    for arg in args:
+        if arg in dangerous or any(arg.startswith(d) for d in ("--pdb", "--override-ini=")):
+            return f"test option {arg!r} is dangerous or interactive and is not allowed"
+
+    safe_flags = {
+        "-v", "-vv", "-q", "-s", "-x", "-f", "-c", "-b",
+        "--tb=short", "--tb=auto", "--tb=line", "--tb=native", "--tb=no",
+        "--disable-warnings", "--no-header", "--no-summary", "-rf", "-ra",
+        "--color=no", "--color=yes", "--color=auto", "--cache-clear",
+    }
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in safe_flags:
+            i += 1
+            continue
+        if arg == "-p":
+            if i + 1 >= len(args):
+                return f"option {arg!r} requires a plugin name"
+            plugin = args[i + 1]
+            if plugin not in {"no:cacheprovider", "no:stepwise", "no:warnings"}:
+                return f"test option -p {plugin!r} is not in the approved test options allowlist"
+            i += 2
+            continue
+        if arg.startswith("-p="):
+            plugin = arg.split("=", 1)[1]
+            if plugin not in {"no:cacheprovider", "no:stepwise", "no:warnings"}:
+                return f"test option {arg!r} is not in the approved test options allowlist"
+            i += 1
+            continue
+        if arg in ("-k", "-m"):
+            if i + 1 >= len(args):
+                return f"option {arg!r} requires an expression"
+            expr = args[i + 1]
+            if any(c in ";|&<>$`" for c in expr):
+                return f"option {arg!r} contains invalid characters"
+            i += 2
+            continue
+        if arg.startswith("-k=") or arg.startswith("-m="):
+            expr = arg.split("=", 1)[1]
+            if any(c in ";|&<>$`" for c in expr):
+                return f"option {arg!r} contains invalid characters"
+            i += 1
+            continue
+        if arg in ("--maxfail", "-o"):
+            if i + 1 >= len(args):
+                return f"option {arg!r} requires a value"
+            i += 2
+            continue
+        if arg.startswith("--maxfail=") or arg.startswith("-o="):
+            i += 1
+            continue
+        if arg.startswith("--rootdir="):
+            rdir = posixpath.normpath(arg.split("=", 1)[1])
+            if rdir != root and not rdir.startswith(f"{root}/"):
+                return f"--rootdir must be within the approved checkout {root}"
+            i += 1
+            continue
+        if arg == "--rootdir":
+            if i + 1 >= len(args):
+                return "--rootdir requires a path value"
+            rdir = posixpath.normpath(args[i + 1])
+            if rdir != root and not rdir.startswith(f"{root}/"):
+                return f"--rootdir must be within the approved checkout {root}"
+            i += 2
+            continue
+        if arg.startswith("-"):
+            return f"test option {arg!r} is not in the approved test options allowlist"
+
+        # It's a path or node target (e.g. tests/test_basic.py or tests/test_basic.py::TestClass::test_func)
+        path_part = arg.split("::", 1)[0]
+        if ".." in path_part.split("/"):
+            return "test target path contains prohibited parent directory traversal ('..')"
+        if re.match(r"^[A-Za-z]:", path_part):
+            return "test target path contains Windows drive letters"
+
+        if path_part.startswith("/"):
+            norm_target = posixpath.normpath(path_part)
+            if norm_target != root and not norm_target.startswith(f"{root}/"):
+                return f"test target path {arg!r} must reside inside approved checkout {root}"
+        else:
+            norm_rel = posixpath.normpath(path_part)
+            if norm_rel.startswith("../") or norm_rel == "..":
+                return "test target path attempts to escape checkout"
+
+        i += 1
+
+    return None
+
+
+def _validate_repository_package_install_command(root: str, tokens: list[str]) -> str | None:
+    """Validate that package installation is restricted to editable install of the approved checkout."""
+    if tokens[0] in ("pip", "pip3"):
+        if len(tokens) < 2 or tokens[1] != "install":
+            return "only pip install is approved for guest package management"
+        args = tokens[2:]
+    elif len(tokens) >= 4 and tokens[:2] in (["python", "-m"], ["python3", "-m"]) and tokens[2] in ("pip", "pip3"):
+        if tokens[3] != "install":
+            return "only pip install is approved for guest package management"
+        args = tokens[4:]
+    elif len(tokens) >= 5 and tokens[:3] in (["python", "-B", "-m"], ["python3", "-B", "-m"]) and tokens[3] in ("pip", "pip3"):
+        if tokens[4] != "install":
+            return "only pip install is approved for guest package management"
+        args = tokens[5:]
+    else:
+        return "unrecognized pip install command form"
+
+    safe_flags = {
+        "--no-build-isolation",
+        "--no-deps",
+        "--break-system-packages",
+        "-q",
+        "--quiet",
+        "-v",
+        "--verbose",
+        "--no-cache-dir",
+    }
+
+    saw_editable = False
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in safe_flags:
+            i += 1
+            continue
+        if arg in ("-e", "--editable"):
+            if i + 1 >= len(args):
+                return "editable install option requires a checkout path"
+            target = posixpath.normpath(args[i + 1].rstrip("/"))
+            if target not in (".", root):
+                return f"editable install target {args[i + 1]!r} must match approved checkout {root!r}"
+            saw_editable = True
+            i += 2
+            continue
+        if arg.startswith("-e=") or arg.startswith("--editable="):
+            target = posixpath.normpath(arg.split("=", 1)[1].rstrip("/"))
+            if target not in (".", root):
+                return f"editable install target {target!r} must match approved checkout {root!r}"
+            saw_editable = True
+            i += 1
+            continue
+        if arg.startswith("-"):
+            return f"pip install option {arg!r} is not in the approved options allowlist"
+
+        return f"package installation is restricted to editable install of the approved checkout; cannot install {arg!r}"
+
+    if not saw_editable:
+        return "package installation requires an editable checkout target (-e)"
+
+    return None
+
+
+def _path_is_within_guest_workspace(path: str, workspace: str) -> bool:
+    """Accept only a normalized absolute guest path strictly below the workspace."""
+    normalized = posixpath.normpath(path)
+    root = posixpath.normpath(workspace)
+    return (
+        normalized == path
+        and normalized.startswith(root.rstrip("/") + "/")
+        and ".." not in path.split("/")
+    )
+
+
+def _validate_standalone_guest_command(scope: "_ApprovedTaskScope", command: str) -> str | None:
+    """Apply a small command grammar to standalone tasks; never accept arbitrary shell."""
+    text = str(command or "").strip()
+    workspace = scope.workspace_path or ""
+    if not re.fullmatch(r"/tmp/spacev-task-[a-f0-9]{12}", workspace):
+        return "the approved standalone task has no valid isolated guest workspace"
+    if not text or len(text) > 10000 or "\x00" in text:
+        return "the standalone guest command is empty or exceeds its safe size limit"
+
+    # A single quoted heredoc is the only supported file-writing form. Quoting
+    # the delimiter prevents shell expansion in the supplied source text.
+    heredoc = re.fullmatch(
+        r"cat\s+>\s*(?P<path>/tmp/spacev-task-[a-f0-9]{12}/[A-Za-z0-9_.-]+)"
+        r"\s+<<'(?P<marker>[A-Za-z][A-Za-z0-9_]*)'\r?\n"
+        r"(?P<body>[\s\S]*?)\r?\n(?P=marker)\s*",
+        text,
+    )
+    if heredoc:
+        if not scope.allow_file_changes:
+            return "file creation was not included in the approved standalone task"
+        if not _path_is_within_guest_workspace(heredoc.group("path"), workspace):
+            return "file writes must target a direct child of the approved guest workspace"
         return None
 
-    return f"command {tokens[0]!r} is not in the approved guest-command allowlist"
+    if "\n" in text or "\r" in text:
+        return "only one bounded command or approved quoted heredoc is allowed"
+
+    try:
+        lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|<>`$")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        raw_tokens = list(lexer)
+    except ValueError:
+        return "the standalone command has invalid quoting"
+
+    # Permit only && between individually checked commands. Reject every other
+    # shell operator, expansion, pipeline, redirect, or command separator.
+    segments: list[list[str]] = [[]]
+    for token in raw_tokens:
+        if token == "&&":
+            if not segments[-1]:
+                return "empty commands around shell chaining are not allowed"
+            segments.append([])
+        elif token and all(char in ";&|<>`$" for char in token):
+            return "shell operators other than bounded && sequencing are not allowed"
+        else:
+            segments[-1].append(token)
+    if not segments[-1] or any(not segment for segment in segments):
+        return "empty commands around shell chaining are not allowed"
+
+    for tokens in segments:
+        if tokens in (["nproc"], ["uname", "-a"], ["free", "-h"], ["cat", "/etc/os-release"],
+                      ["python", "--version"], ["python3", "--version"],
+                      ["command", "-v", "python"], ["command", "-v", "python3"],
+                      ["which", "python"], ["which", "python3"]):
+            continue
+
+        if scope.allow_install and tokens == ["apk", "add", "--no-cache", "python3"]:
+            continue
+
+        if scope.allow_file_changes and tokens == ["mkdir", "-p", workspace]:
+            continue
+
+        # Script/test execution is limited to a file directly under the task
+        # workspace and is enabled only when the approved task requests it.
+        if scope.allow_test_execution and len(tokens) == 2 and tokens[0] in {"python", "python3"}:
+            if _path_is_within_guest_workspace(tokens[1], workspace):
+                continue
+        if scope.allow_test_execution and len(tokens) == 3 and tokens[0] in {"python", "python3"} and tokens[1] == "-B":
+            if _path_is_within_guest_workspace(tokens[2], workspace):
+                continue
+        if scope.allow_test_execution and (
+            (len(tokens) == 3 and tokens[:2] == ["python3", "-m"] and tokens[2] == "pytest")
+            or (len(tokens) == 4 and tokens[:3] == ["python3", "-B", "-m"] and tokens[3] == "pytest")
+        ) and scope.allow_file_changes:
+            # A bare pytest module may discover tests from the guest's
+            # current directory; require an explicit in-workspace target.
+            return "pytest must name a test file inside the approved workspace"
+        if scope.allow_test_execution and (
+            (len(tokens) == 4 and tokens[:3] == ["python3", "-m", "pytest"] and _path_is_within_guest_workspace(tokens[3], workspace))
+            or (len(tokens) == 5 and tokens[:4] == ["python3", "-B", "-m", "pytest"] and _path_is_within_guest_workspace(tokens[4], workspace))
+        ):
+            continue
+
+        return f"standalone command {tokens[0]!r} is not permitted by the approved task scope"
+    return None
 
 
 def _configured_guest_timeout(name: str, default: int) -> int:
@@ -628,6 +982,87 @@ def _celesto_readiness() -> dict[str, Any]:
 @dataclass(frozen=True)
 class _ApprovedTaskScope:
     description: str
+    task_type: str = "repository"
+    repository_url: str | None = None
+    checkout_path: str | None = None
+    workspace_path: str | None = None
+    allow_install: bool = False
+    allow_file_changes: bool = False
+    allow_test_execution: bool = False
+
+
+def _build_approved_task_scope(
+    task_description: str,
+    workspace_id: str | None = None,
+    allow_test_execution: bool | None = None,
+) -> _ApprovedTaskScope:
+    """Bind repository tasks to their checkout, otherwise bind a narrow standalone workspace."""
+    task = str(task_description or "").strip()
+
+    def action_is_approved(action_pattern: str) -> bool:
+        for match in re.finditer(action_pattern, task, re.IGNORECASE):
+            preceding = task[max(0, match.start() - 100):match.start()]
+            if not re.search(r"\b(?:do not|don't|dont|never|no)\b[^.!?;\n]{0,90}$", preceding, re.IGNORECASE):
+                return True
+        return False
+
+    repository_match = re.search(
+        r"(?:shallow[- ]clone|clone)\s+(https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\.git)\s+"
+        r"(?:(?:to|into)\s+)?(/tmp/[A-Za-z0-9_.-]+)",
+        task,
+        re.IGNORECASE,
+    )
+    if repository_match:
+        test_authorized = bool(allow_test_execution) if allow_test_execution is not None else False
+        return _ApprovedTaskScope(
+            description=task,
+            task_type="repository",
+            repository_url=repository_match.group(1).rstrip("/"),
+            checkout_path=posixpath.normpath(repository_match.group(2).rstrip(".,;:")),
+            allow_test_execution=test_authorized,
+        )
+
+    existing_workspaces = [
+        match.group(1).strip()
+        for match in re.finditer(r"(?im)^Approved guest workspace:\s*(\S+)\s*$", task)
+    ]
+    if existing_workspaces:
+        distinct = set(existing_workspaces)
+        if len(distinct) > 1:
+            raise ValueError("Task description contains multiple conflicting approved guest workspaces.")
+        existing_path = existing_workspaces[0]
+        ws_match = re.fullmatch(r"/tmp/spacev-task-([a-f0-9]{12})", existing_path)
+        if not ws_match:
+            raise ValueError(f"Existing guest workspace {existing_path!r} is not a valid isolated workspace path.")
+        existing_id = ws_match.group(1)
+        if workspace_id is not None and workspace_id != existing_id:
+            raise ValueError(
+                f"Supplied workspace ID {workspace_id!r} conflicts with existing approved workspace ID {existing_id!r}."
+            )
+        workspace_id = existing_id
+        workspace = existing_path
+    else:
+        workspace_id = workspace_id or uuid.uuid4().hex[:12]
+        if not re.fullmatch(r"[a-f0-9]{12}", workspace_id):
+            raise ValueError("Standalone task workspace IDs must contain 12 lowercase hexadecimal characters.")
+        workspace = f"/tmp/spacev-task-{workspace_id}"
+        task = f"{task}\nApproved guest workspace: {workspace}"
+
+    def action_is_approved(action_pattern: str) -> bool:
+        for match in re.finditer(action_pattern, task, re.IGNORECASE):
+            preceding = task[max(0, match.start() - 100):match.start()]
+            if not re.search(r"\b(?:do not|don't|dont|never|no)\b[^.!?;\n]{0,90}$", preceding, re.IGNORECASE):
+                return True
+        return False
+
+    return _ApprovedTaskScope(
+        description=task,
+        task_type="standalone",
+        workspace_path=workspace,
+        allow_install=action_is_approved(r"\binstall(?:ation|ing|s)?\b"),
+        allow_file_changes=action_is_approved(r"\b(?:create|write|edit|modify|save|change)\b"),
+        allow_test_execution=action_is_approved(r"\b(?:test|tests|testing|verify|run)\b"),
+    )
 
 
 @dataclass
@@ -641,6 +1076,7 @@ class _SandboxSession:
     aggregate_command_ms: float = 0.0
     expired: bool = False
     cleanup_error: str = ""
+    issue_context: dict[str, Any] = field(default_factory=dict)
 
     @property
     def task_description(self) -> str:
@@ -657,7 +1093,7 @@ class SandboxSessionManager:
     def __init__(self):
         self._lock = threading.RLock()
         self._sessions: dict[str, _SandboxSession] = {}
-        self._pending: dict[str, tuple[str, float]] = {}
+        self._pending: dict[str, tuple[_ApprovedTaskScope, float]] = {}
         self._reaper_stop = threading.Event()
         self._reaper_thread = threading.Thread(
             target=self._reaper_loop,
@@ -676,7 +1112,7 @@ class SandboxSessionManager:
 
     def _expire_locked(self) -> None:
         now = time.monotonic()
-        for approval_id, (_task, expiry) in list(self._pending.items()):
+        for approval_id, (_scope, expiry) in list(self._pending.items()):
             if now >= expiry:
                 self._pending.pop(approval_id, None)
         for session_id, session in list(self._sessions.items()):
@@ -743,8 +1179,10 @@ class SandboxSessionManager:
                     if pending is None:
                         return ""
                     task_description, _expiry = pending
+                    task_description = task_description.description
                 else:
-                    approval_id, (task_description, _expiry) = next(reversed(self._pending.items()))
+                    approval_id, (pending_scope, _expiry) = next(reversed(self._pending.items()))
+                    task_description = pending_scope.description
                     if user_prompt and not self._context_matches(user_prompt, task_description):
                         return ""
                 payload = {
@@ -864,7 +1302,13 @@ class SandboxSessionManager:
         }
         return bool(follow_up or len(prompt_terms & task_terms) >= 2)
 
-    def create(self, task_description: str, approval_id: str = "", approval_text: str = "") -> str:
+    def create(
+        self,
+        task_description: str,
+        approval_id: str = "",
+        approval_text: str = "",
+        allow_test_execution: bool | None = None,
+    ) -> str:
         task_description = str(task_description or "").strip()
         approval_id = str(approval_id or "").strip()
         if not approval_id:
@@ -892,14 +1336,39 @@ class SandboxSessionManager:
                 )
 
             if not approval_id:
+                try:
+                    approved_scope = _build_approved_task_scope(
+                        task_description,
+                        allow_test_execution=allow_test_execution,
+                    )
+                except ValueError as exc:
+                    return f"BLOCKED: {exc} No Celesto VM was started."
+                task_description = approved_scope.description
+                if len(task_description) > 800:
+                    return "BLOCKED: The scoped sandbox task exceeds the 800-character approval limit. No Celesto VM was started."
                 approval_id = uuid.uuid4().hex[:10]
                 self._pending[approval_id] = (
-                    task_description,
+                    approved_scope,
                     time.monotonic() + self.APPROVAL_TTL_SECONDS,
                 )
+                capabilities_desc = []
+                if approved_scope.task_type == "repository":
+                    capabilities_desc.extend(["clone", "repository_inspection"])
+                    if approved_scope.allow_test_execution:
+                        capabilities_desc.append("test_execution")
+                elif approved_scope.task_type == "standalone":
+                    if approved_scope.allow_install:
+                        capabilities_desc.append("install")
+                    if approved_scope.allow_file_changes:
+                        capabilities_desc.append("file_changes")
+                    if approved_scope.allow_test_execution:
+                        capabilities_desc.append("test_execution")
+
+                caps_str = ", ".join(capabilities_desc) if capabilities_desc else "none"
                 return (
                     "SPACEV_NEEDS_USER_INPUT: I propose one Celesto VM for this task:\n"
                     f"Task: {task_description}\n"
+                    f"Capabilities: [{caps_str}]\n"
                     "It will remain available for up to 15 minutes idle (1 hour maximum), then SpaceV will delete it. "
                     "Commands and phase timings will be audited. No VM has been started yet.\n"
                     f"To approve this task, reply exactly: approve sandbox task {approval_id}"
@@ -908,7 +1377,8 @@ class SandboxSessionManager:
             pending = self._pending.get(approval_id)
             if pending is None:
                 return "BLOCKED: Sandbox approval is unknown, expired, or already used. Request a fresh proposal."
-            approved_task, expiry = pending
+            approved_scope, expiry = pending
+            approved_task = approved_scope.description
             if time.monotonic() >= expiry:
                 self._pending.pop(approval_id, None)
                 return "BLOCKED: Sandbox approval expired. Request a fresh proposal."
@@ -948,7 +1418,7 @@ class SandboxSessionManager:
             session_id = f"session-{uuid.uuid4().hex[:12]}"
             self._sessions[session_id] = _SandboxSession(
                 session_id=session_id,
-                approved_task_scope=_ApprovedTaskScope(task_description),
+                approved_task_scope=approved_scope,
                 instance=instance,
                 started_at=task_started,
                 last_activity=now,
@@ -970,7 +1440,7 @@ class SandboxSessionManager:
                 return "BLOCKED: Celesto session is missing or expired. Create a new approved session."
             if session.expired or session.cleanup_error or getattr(session.instance, "state", "") == "cleanup_failed":
                 return "BLOCKED: This Celesto session is expired or has unresolved cleanup. Only close_sandbox_session is allowed."
-            policy_error = validate_approved_guest_command(session.task_description, command)
+            policy_error, command_type = classify_approved_guest_command(session.approved_task_scope, command)
             if policy_error:
                 return f"BLOCKED: Guest command is outside the approved task scope: {policy_error}. No guest command was executed."
             tool_started = time.perf_counter()
@@ -990,7 +1460,7 @@ class SandboxSessionManager:
             }
             return (
                 f"[CELESTO SESSION EXECUTION] Session: {session.session_id}; sandbox: {session.instance.name}; "
-                f"command {session.command_count}; exit code: {result.exit_code}\n"
+                f"type: {command_type}; command {session.command_count}; exit code: {result.exit_code}\n"
                 f"Phase timings (ms): {json.dumps(timing, sort_keys=True)}\n"
                 f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
             )
@@ -1033,6 +1503,154 @@ class SandboxSessionManager:
                 + (f"\nCleanup error: {session.instance.backend_error}" if session.instance.state == "cleanup_failed" else "")
             )
 
+    def attach_issue_context(self, session_id: str, issue_context: dict[str, Any]) -> bool:
+        """Attach verified GitHub issue context to an active session after provenance validation.
+
+        Enforces that:
+        1. issue_context contains non-empty issue_url and title from a validated issue intake.
+        2. issue_url matches the approved repository checkout scope for this session.
+        3. Arbitrary unverified text or mismatched issue URLs are rejected.
+        """
+        with self._lock:
+            session = self._sessions.get(str(session_id or "").strip())
+            if not session or not isinstance(issue_context, dict):
+                return False
+
+            identity = issue_context.get("identity", {}) if isinstance(issue_context.get("identity"), dict) else {}
+            content = issue_context.get("content", {}) if isinstance(issue_context.get("content"), dict) else {}
+
+            issue_url = str(
+                identity.get("issue_url")
+                or content.get("issue_url")
+                or issue_context.get("issue_url")
+                or ""
+            ).strip()
+            title = str(
+                content.get("title")
+                or issue_context.get("issue_title")
+                or issue_context.get("title")
+                or ""
+            ).strip()
+            body = str(
+                content.get("content")
+                or issue_context.get("issue_body")
+                or issue_context.get("content")
+                or ""
+            ).strip()
+
+            if not issue_url or not title:
+                return False
+
+            # Verify repository URL binding against approved session scope
+            scope = session.approved_task_scope
+            if scope and scope.task_type == "repository" and scope.repository_url:
+                scope_repo = scope.repository_url.removesuffix(".git").rstrip("/").casefold()
+                clean_issue = issue_url.casefold()
+                if scope_repo not in clean_issue:
+                    logger.warning(
+                        "Issue context rejected: issue_url %r does not match approved session repository %r",
+                        issue_url,
+                        scope.repository_url,
+                    )
+                    return False
+
+            session.issue_context = {
+                "issue_url": issue_url,
+                "issue_title": title,
+                "issue_body": body,
+                "validated": True,
+                "is_untrusted_external_data": True,
+            }
+            return True
+
+    def reproduce(
+        self,
+        session_id: str,
+        checkout_path: str = "",
+        issue_url: str = "",
+        issue_title: str = "",
+        issue_body: str = "",
+    ) -> str:
+        """Execute dynamic test discovery and symptom reproduction in an approved session."""
+        with self._lock:
+            self._expire_locked()
+            session = self._sessions.get(str(session_id or "").strip())
+            if session is None:
+                return "BLOCKED: Celesto session is missing or expired. Create a new approved session."
+            if session.expired or session.cleanup_error or getattr(session.instance, "state", "") == "cleanup_failed":
+                return "BLOCKED: This Celesto session is expired or has unresolved cleanup. Only close_sandbox_session is allowed."
+            scope = session.approved_task_scope
+            if not getattr(scope, "allow_test_execution", False):
+                return "BLOCKED: Test execution capability was not included in the approved sandbox task."
+
+            approved_checkout = getattr(scope, "destination_path", "") or getattr(scope, "checkout_path", "")
+            if not approved_checkout:
+                match = re.search(r"/tmp/[A-Za-z0-9_.-]+", session.task_description)
+                approved_checkout = match.group(0) if match else "/tmp/repo"
+
+            if checkout_path:
+                norm_checkout = posixpath.normpath(str(checkout_path).strip())
+                if ".." in checkout_path.split("/") or norm_checkout != approved_checkout:
+                    target_checkout = approved_checkout
+                else:
+                    target_checkout = norm_checkout
+            else:
+                target_checkout = approved_checkout
+
+            # 1. Authoritative issue context verification:
+            # Must originate from validated issue workflow. Unverified task descriptions or
+            # mismatched arguments cannot establish authoritative issue context.
+            ctx = getattr(session, "issue_context", None)
+            if isinstance(ctx, dict) and ctx.get("validated"):
+                attached_url = str(ctx.get("issue_url", "")).strip().rstrip("/")
+                if issue_url:
+                    arg_url = str(issue_url).strip().rstrip("/")
+                    if arg_url and arg_url != attached_url:
+                        return f"BLOCKED: Explicit issue_url ({arg_url!r}) contradicts the approved session's validated issue context ({attached_url!r})."
+            elif not isinstance(ctx, dict) or not ctx.get("validated"):
+                if issue_url and issue_title:
+                    self.attach_issue_context(
+                        session_id=session_id,
+                        issue_context={"issue_url": issue_url, "issue_title": issue_title, "issue_body": issue_body},
+                    )
+                    ctx = getattr(session, "issue_context", None)
+
+            final_url = str(ctx.get("issue_url", "")).strip() if isinstance(ctx, dict) and ctx.get("validated") else ""
+            final_title = str(ctx.get("issue_title", "")).strip() if isinstance(ctx, dict) and ctx.get("validated") else ""
+            final_body = str(ctx.get("issue_body", "")).strip() if isinstance(ctx, dict) and ctx.get("validated") else ""
+
+        from core.issue_discovery import discover_issue_targets_from_sandbox, extract_issue_signals
+        from core.issue_symptom_extractor import execute_and_extract_symptoms
+
+        # 2. Extract IssueSignals from validated issue title and body
+        signals = extract_issue_signals(title=final_title, body=final_body)
+
+        # 3. Dynamic test discovery informed by issue signals
+        discovery = discover_issue_targets_from_sandbox(
+            session_id=session_id,
+            checkout_path=target_checkout,
+            issue_title=final_title,
+            issue_body=final_body,
+        )
+
+        # 4. Safe package installation if Python project
+        if "Python" in getattr(discovery, "detected_languages", []) or any(
+            getattr(ct, "language", "") == "Python" for ct in getattr(discovery, "candidate_test_files", [])
+        ):
+            install_cmd = f"python3 -m pip install --no-build-isolation --no-deps -e {target_checkout} --break-system-packages"
+            self.run(session_id=session_id, command=install_cmd)
+
+        # 5. Safe test execution and issue-informed symptom extraction
+        report = execute_and_extract_symptoms(
+            session_id=session_id,
+            checkout_path=target_checkout,
+            discovery=discovery,
+            issue_url=final_url,
+            issue_title=final_title,
+            issue_signals=signals,
+        )
+        return json.dumps(report.to_dict(), indent=2)
+
     def close_all(self) -> None:
         self._reaper_stop.set()
         with self._lock:
@@ -1045,14 +1663,41 @@ sandbox_session_manager = SandboxSessionManager()
 atexit.register(sandbox_session_manager.close_all)
 
 
-def create_sandbox_session(task_description: str = "", approval_id: str = "", approval_text: str = "") -> str:
+def create_sandbox_session(
+    task_description: str = "",
+    approval_id: str = "",
+    approval_text: str = "",
+    allow_test_execution: bool | None = None,
+) -> str:
     """Propose, then approval-gate a reusable Celesto VM for a bounded task."""
-    return sandbox_session_manager.create(task_description, approval_id, approval_text)
+    return sandbox_session_manager.create(
+        task_description=task_description,
+        approval_id=approval_id,
+        approval_text=approval_text,
+        allow_test_execution=allow_test_execution,
+    )
 
 
 def run_sandbox_session_command(session_id: str, command: str) -> str:
     """Run one audited command in an existing approved Celesto session."""
     return sandbox_session_manager.run(session_id, command)
+
+
+def run_sandbox_session_reproduction(
+    session_id: str,
+    checkout_path: str = "",
+    issue_url: str = "",
+    issue_title: str = "",
+    issue_body: str = "",
+) -> str:
+    """Run dynamic discovery and reproduction test execution inside the approved Celesto sandbox."""
+    return sandbox_session_manager.reproduce(
+        session_id=session_id,
+        checkout_path=checkout_path,
+        issue_url=issue_url,
+        issue_title=issue_title,
+        issue_body=issue_body,
+    )
 
 
 def close_sandbox_session(session_id: str) -> str:
@@ -1337,7 +1982,7 @@ class PromptInjectionContainmentHarness:
             "command": cmd,
             "blocked": blocked,
             "exit_code": res.exit_code,
-            "host_untouched": None,
+            "host_untouched": host_untouched,
             "simulated_host_files_unchanged": host_untouched,
             "guest_contained": False,
             "execution_mode": "in_memory_simulation",
@@ -1362,7 +2007,7 @@ def generate_containment_contract_report(attack_type: str = "prompt_injection_ex
     report_data = {
         "attack": res["attack"],
         "blocked": res["blocked"],
-        "host_untouched": None,
+        "host_untouched": res["host_untouched"],
         "simulated_host_files_unchanged": res["simulated_host_files_unchanged"],
         "execution_mode": res["execution_mode"],
         "real_vm_containment_proven": False,

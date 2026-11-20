@@ -372,11 +372,20 @@ class CreateSandboxSessionInput(BaseModel):
     task_description: str = Field(default="", max_length=800, description="Required on the proposal call. On approval, the task stored for approval_id is authoritative; this field may be omitted.")
     approval_id: str = Field(default="", max_length=32)
     approval_text: str = Field(default="", max_length=80)
+    allow_test_execution: bool | None = Field(default=None, description="Request test execution capability for the proposed disposable VM.")
 
 
 class RunSandboxSessionCommandInput(BaseModel):
     session_id: str = Field(..., min_length=8, max_length=64)
     command: str = Field(..., min_length=1, max_length=10000)
+
+
+class RunSandboxSessionReproductionInput(BaseModel):
+    session_id: str = Field(..., min_length=8, max_length=64)
+    checkout_path: str = Field(default="", max_length=500)
+    issue_url: str = Field(default="", max_length=500)
+    issue_title: str = Field(default="", max_length=500)
+    issue_body: str = Field(default="", max_length=20000)
 
 
 class CloseSandboxSessionInput(BaseModel):
@@ -548,6 +557,7 @@ PYDANTIC_TOOL_MODELS = {
     "clone_public_repository": ClonePublicRepositoryInput,
     "create_sandbox_session": CreateSandboxSessionInput,
     "run_sandbox_session_command": RunSandboxSessionCommandInput,
+    "run_sandbox_session_reproduction": RunSandboxSessionReproductionInput,
     "close_sandbox_session": CloseSandboxSessionInput,
     "execute_in_vscode_terminal": ExecuteInVscodeTerminalInput,
     "read_web_page": ReadWebPageInput,
