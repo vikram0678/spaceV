@@ -970,18 +970,6 @@ class UniversalBrainClient:
                 print(f"[CLOUD-BRAIN] ⚠️ Error with {provider_name} ({e!s}). Cascading...")
                 continue
 
-        # Do not silently switch a single-endpoint configuration to local Ollama.
-        # An invalid key, model, or URL should be visible to the user.
-        if self.routing_mode == "direct" and not (
-            self.api_key.startswith("mock_") or self.api_key.startswith("gsk_mock")
-        ):
-            self.last_used_provider = "configured_endpoint_error"
-            return {
-                "role": "assistant",
-                "content": "The configured LLM endpoint did not return a usable response. Check LLM_PROVIDER, LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL, then try again.",
-                "tool_calls": [],
-            }
-
         # If all cloud providers failed or returned error:
         print("[CLOUD-BRAIN] ⚠️ All cloud providers exhausted or unavailable. Initiating local fallback...")
         try:
@@ -994,14 +982,27 @@ class UniversalBrainClient:
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
-                if res and "choices" in res and res["choices"]:
-                    choice = res["choices"][0].get("message", {})
+                if isinstance(res, dict) and res.get("choices") and isinstance(res["choices"], list):
+                    choice = res["choices"][0].get("message", {}) if isinstance(res["choices"][0], dict) else {}
                     content = choice.get("content", "") or ""
-                    tool_calls = choice.get("tool_calls", [])
-                    self.last_used_provider = "colibri_local"
-                    return {"role": "assistant", "content": content, "tool_calls": tool_calls}
+                    tool_calls = choice.get("tool_calls", []) or []
+                    if content or tool_calls:
+                        self.last_used_provider = "colibri_local"
+                        return {"role": "assistant", "content": content, "tool_calls": tool_calls}
         except Exception as e:
             print(f"[CLOUD-BRAIN] Colibri local bypass note: {e}")
+
+        # Do not silently switch a single-endpoint configuration to local Ollama.
+        # An invalid key, model, or URL should be visible to the user.
+        if self.routing_mode == "direct" and not (
+            self.api_key.startswith("mock_") or self.api_key.startswith("gsk_mock")
+        ):
+            self.last_used_provider = "configured_endpoint_error"
+            return {
+                "role": "assistant",
+                "content": "The configured LLM endpoint did not return a usable response. Check LLM_PROVIDER, LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL, then try again.",
+                "tool_calls": [],
+            }
 
         print("[CLOUD-BRAIN] ⚠️ Initiating local Ollama fallback...")
         return self._fallback_to_ollama(messages, tools, token_callback)
