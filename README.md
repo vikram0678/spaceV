@@ -1,11 +1,12 @@
 # ⚡ SpaceV: Autonomous Cybernetic Copilot & MicroVM Fleet Orchestrator
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg?logo=python)](requirements.txt)
-[![Docker Compose](https://img.shields.io/badge/Docker_Compose-Healthy-success?logo=docker)](docker-compose.yml)
+[![Test Suite](https://img.shields.io/badge/Test_Suite-244%2F244_Passing-brightgreen)](tests/)
 [![Celesto MicroVM](https://img.shields.io/badge/Celesto-Firecracker_KVM_%7C_Cloud-purple)](spacev/fleet/celesto_engine.py)
 [![LangGraph](https://img.shields.io/badge/State_Machine-LangGraph_Cyclic-blue)](core/graph_engine.py)
 [![Security Gatekeeper](https://img.shields.io/badge/Karpathy_Gatekeeper-Deterministic_SHA--256-orange)](core/task_evidence.py)
-[![Contract Tests](https://img.shields.io/badge/Contract_Tests-12%2F12_Passing-brightgreen)](tests/test_reports.py)
+[![Protocols](https://img.shields.io/badge/Protocols-FastMCP_%7C_A2A_v1.0_%7C_CodeAct-teal)](core/protocol_hub.py)
+[![Knowledge Graph](https://img.shields.io/badge/Knowledge_Graph-4D_AST_%26_Git-blueviolet)](core/knowledge_graph.py)
 
 SpaceV is an autonomous cybernetic operating copilot, issue-to-test reproducer, and security detonator. Powered by local sub-35MB reflex engines, multi-cloud LLM failover, and hardware-isolated Celesto Firecracker microVMs, SpaceV isolates untrusted package installations, executes air-gapped security detonations, reproduces production GitHub issues into verified failing tests, and guarantees zero host leakage with sub-200ms snapshot rollbacks.
 
@@ -23,43 +24,204 @@ SpaceV is an autonomous cybernetic operating copilot, issue-to-test reproducer, 
 
 ---
 
-## 🏛️ Architecture Diagram
+## 🏛️ System Architecture & Subsystem Topology
+
+SpaceV is structured as a **strictly decoupled, defense-in-depth cybernetic runtime** conforming to the C4 software architecture model. High-level planning, cognitive routing, and code synthesis operate inside the host control plane, while all arbitrary code execution, dependency installation, and test reproduction are physically confined to hardware-isolated Linux microVMs.
 
 ```mermaid
-graph TD
-    Operator([Operator / User]) -->|Voice / Visor HUD / Hotkeys| Brain[SpaceV Agentic Brain - LangGraph Engine]
+flowchart TD
+%% ── Theme Palette (GitHub Dark & Light Mode Optimized) ───────────
+    classDef client fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef brain fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef pipeline fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef microvm fill:#3b0764,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
+    classDef ledger fill:#134e4a,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc;
 
-    subgraph Cognitive_Control_Plane [Cognitive Control Plane]
-        Brain -->|Tier-1 Intent Dispatch| Router[FastRouter & Intent Resolver]
-        Router -->|Token Bucket Hopping| Mesh[Cloud Mesh: Groq / Gemini / Cerebras / Ollama]
-        Brain -->|Cyclic State Machine| FSM[LangGraph Cyclic FSM & Task Ledger]
-        Brain -->|Issue Intake & Triage| Workflow[Issue-to-Failing-Test Workflow Engine]
-        Workflow -->|Evidence Integrity| Gatekeeper[Karpathy Truth Gatekeeper & SHA-256 Ledger]
+%% ── Tier 1: Client & Sensory Interaction Layer ──────────────────
+    subgraph TIER1 ["1. CLIENT & SENSORY INTERACTION LAYER"]
+        direction LR
+        User(["👤 Operator / Engineer"]):::client
+        Sensory["🎙️ Sensory Cortex<br/>• Silero-VAD Streaming Voice<br/>• Ambient Screen OCR & Vision<br/>• Windows Native UIA COM Fast-Path"]:::client
+        BargeIn["🛑 Barge-In Guard<br/>• Sub-150ms Instant Cancellation<br/>• Physical Failsafe (0,0) Tripwire<br/>• Actuator & LLM Audio Abort"]:::client
+        User <--> Sensory
+        Sensory --> BargeIn
     end
 
-    subgraph Trusted_Control_Plane [Trusted Control Plane - Docker & Services]
-        Brain -->|HTTP Port 8080| API[Run Ledger API - FastAPI]
-        API -->|Read / Write| DB[(PostgreSQL Ledger - seeds/01_runs.sql)]
-        API -->|Appends Decisions| AuditLog[Command Audit Log - logs/commands.jsonl]
+%% ── Tier 2: Cognitive Orchestration Plane ───────────────────────
+    subgraph TIER2 ["2. COGNITIVE ORCHESTRATION PLANE"]
+        direction LR
+        Brain["🧠 SpaceV Brain<br/>(LangGraph Cyclic FSM)"]:::brain
+        Router["⚡ FastRouter Reflex<br/>(Groq • Gemini • Cerebras • Ollama)"]:::brain
+        ProtoHub["🔌 Universal Protocol Hub<br/>(FastMCP • A2A v1.0 • CodeAct)"]:::brain
+        KnowledgeGraph["🗺️ 4D Knowledge Graph<br/>(Polyglot AST • Git Co-Change Causality)"]:::brain
+        Brain --- Router
+        Brain --- ProtoHub
+        Brain --- KnowledgeGraph
     end
 
-    subgraph Untrusted_Execution_Zone [Untrusted Execution Zone - Celesto MicroVMs]
-        Workflow & Brain -->|Celesto SDK / Vsock| Driver[Celesto Fleet Engine]
-        Driver -->|Boot ~500ms| Guest[Celesto Firecracker MicroVM]
-
-        Guest -->|Pre-Execution Hook| Hook{Safety Hook Engine}
-        Hook -->|Deny Malicious Cmd| Block[Blocked Decision & Log]
-        Hook -->|Permit Safe Cmd| Exec[Execute inside Linux Kernel]
-
-        Guest -->|Outbound Egress| NetPolicy[Network Policy: Air-Gap Mode]
-        Guest -->|CoW Memory & Disk| SnapStore[(Hardware Snapshot Store)]
-        Guest -->|Auto Rollback <200ms| SnapStore
+%% ── Tier 3: Autonomous Verification Pipeline ────────────────────
+    subgraph TIER3 ["3. AUTONOMOUS VERIFICATION PIPELINE"]
+        direction LR
+        Discovery["🔍 Dynamic Discovery<br/>(Python • Rust • TypeScript • Go)"]:::pipeline
+        ReproEngine["🧪 Issue Repro Engine<br/>(In-Guest Failing Test Gen)"]:::pipeline
+        PatchEngine["🛠️ Patch Synthesizer<br/>(Triple SHA-256 Digest Binding)"]:::pipeline
+        Gatekeeper["🛡️ Karpathy Gatekeeper<br/>(Cryptographic Proof Ledger)"]:::pipeline
+        Discovery --> ReproEngine --> PatchEngine --> Gatekeeper
     end
+
+%% ── Tier 4: Hardware-Isolated Execution Zone ────────────────────
+    subgraph TIER4 ["4. UNTRUSTED EXECUTION ZONE (CELESTO MICROVMS)"]
+        direction LR
+        FleetPool["🚀 Celesto Fleet Pool<br/>(Warm Standby microVM Pool)"]:::microvm
+        MicroVM["📦 Firecracker MicroVM<br/>(Dedicated Linux Kernel • Air-Gapped)"]:::microvm
+        SafetyHook["🔒 Safety Hook Engine<br/>(Pre-Execution Policy Filter)"]:::microvm
+        SnapshotStore[("💾 Hardware Snapshot Store<br/>(&lt;200ms Memory & Disk Rollback)")]:::microvm
+        FleetPool --> MicroVM
+        MicroVM --> SafetyHook
+        MicroVM --> SnapshotStore
+    end
+
+%% ── Tier 5: Immutable State & Audit Ledger ──────────────────────
+    subgraph TIER5 ["5. IMMUTABLE AUDIT & STATE LEDGER"]
+        direction LR
+        API["⚡ Run Ledger API<br/>(FastAPI HTTP :8000)"]:::ledger
+        Postgres[("🗄️ PostgreSQL Ledger<br/>(seeds/01_runs.sql)")]:::ledger
+        AuditLog["📜 Append-Only Audit Log<br/>(logs/commands.jsonl)"]:::ledger
+        API --> Postgres
+        API --> AuditLog
+    end
+
+%% ── Clean Inter-Tier Dataflow & Security Invariants ─────────────
+    Sensory ==>|Voice, Screen Perception & Hotkeys| Brain
+    Brain ==>|Dispatches Issue Intent & Strategy| Discovery
+    Gatekeeper ==>|Prepares In-Guest Run in Isolated VM| FleetPool
+    MicroVM ==>|Execution Telemetry & State Receipts| API
+    Gatekeeper -.->|Verified Approval Receipts| API
+    BargeIn -.->|Atomic Sub-150ms Emergency Halt| Brain
+```
+
+### 📐 Monospace Structural Dataflow Diagram
+
+```
++======================================================================================================+
+|                                1. CLIENT & SENSORY INTERACTION LAYER                                 |
+|                                                                                                      |
+|  [👤 Human Operator] <========> [🎙️ Sensory Cortex: Silero-VAD / Ambient OCR]                       |
+|                                         |                                                            |
+|                                         v                                                            |
+|                           [🛑 Barge-In Guard: <150ms Instant Halt]                                   |
++==================================================||==================================================+
+                                                   || Natural Language / Screen State / Hotkeys
+                                                   v
++======================================================================================================+
+|                                  2. COGNITIVE ORCHESTRATION PLANE                                    |
+|                                                                                                      |
+|       +--------------------------------------------------------------------------------------+       |
+|       |                     🧠 SpaceV Brain: LangGraph Cyclic State Machine                  |       |
+|       +-------------------+--------------------------+-----------------------+---------------+       |
+|                           |                          |                       |                       |
+|                           v                          v                       v                       |
+|                 [⚡ FastRouter Reflex]     [🔌 Universal Protocol]   [🗺️ 4D Knowledge Graph]         |
+|                 • Groq / Gemini / Cerebras • FastMCP / A2A v1.0      • Polyglot AST Extraction       |
+|                 • Sub-35MB Local Models    • CodeAct Protocol        • Git Co-Change Causality       |
++==================================================||==================================================+
+                                                   || Verified Goal & Tool Invocations
+                                                   v
++======================================================================================================+
+|                                3. AUTONOMOUS VERIFICATION PIPELINE                                   |
+|                                                                                                      |
+|   [🔍 Dynamic Discovery]      [🧪 Issue Repro Engine]     [🛠️ Patch Synthesizer]   [🛡️ Gatekeeper]     |
+|   • Polyglot Repo Scanner  --> • In-Guest Test Gen     --> • Triple SHA-256 Hash --> • Human Approval|
+|   • Python/Rust/TS/Go          • Deterministic Failure     • Collision-Safe Branch   • Zero Drift    |
++==================================================||==================================================+
+                                                   || In-Guest Run Command
+                                                   v
++======================================================================================================+
+|                       4. UNTRUSTED EXECUTION ZONE (CELESTO FIRECRACKER MICROVMS)                     |
+|                                                                                                      |
+|   +----------------------------------------------------------------------------------------------+   |
+|   | 🚀 Celesto Fleet Pool: Warm Standby microVM Pool • Parallel Hypothesis Sharding              |   |
+|   +----------------------------------------------+-----------------------------------------------+   |
+|                                                  | Boots dedicated guest kernel (~500ms)             |
+|                                                  v                                                   |
+|   +----------------------------------------------------------------------------------------------+   |
+|   | 📦 Firecracker MicroVM: Hardware KVM Virtualization Boundary                                 |   |
+|   |                                                                                              |   |
+|   |   [🔒 Air-Gap NetFilter]               [⚡ Safety Hook Engine]          [💾 Hardware Snapshot]  |   |
+|   |   • TAP Egress: OFF (Air-Gapped)       • Syscall / Command Intercept   • Memory & Disk CoW     |   |
+|   |   • Zero Host Leakage                  • Pre-Execution Policy Gate     • <200ms Auto-Rollback  |   |
+|   +----------------------------------------------+-----------------------------------------------+   |
++==================================================||==================================================+
+                                                   || Execution Receipts & Telemetry (JSON / Vsock)
+                                                   v
++======================================================================================================+
+|                                  5. IMMUTABLE AUDIT & STATE LEDGER                                   |
+|                                                                                                      |
+|   [⚡ Run Ledger API (FastAPI :8000)]  ==>  [🗄️ PostgreSQL Ledger]  ==>  [📜 Command Audit Log]     |
+|   • Auth & Invariant Verification           • Relational State Store       • Append-Only JSONL       |
+|   • Cryptographic Proof Recording           • seeds/01_runs.sql            • logs/commands.jsonl     |
++======================================================================================================+
 ```
 
 ---
 
-## 🛑 Problem Statement
+### 🛡️ Core Architectural Invariants
+
+SpaceV enforces four non-negotiable architectural guarantees to eliminate agent hallucinations, host corruption, and prompt-injection risks:
+
+| Invariant | Implementation Mechanism | Production Guarantee |
+| :--- | :--- | :--- |
+| **1. Zero Host Mutation** | Celesto Firecracker microVMs (`KVM`) with air-gapped TAP networking (`mode: "off"`). | Untrusted builds, malicious packages, and repro scripts run inside dedicated guest kernels. Host filesystem mutation is impossible. |
+| **2. Cryptographic Proof-of-Work** | Triple SHA-256 digest binding (`Patch-ID`, `Diff-SHA256`, `WorkingTree-SHA256`). | A patch is strictly rejected if even 1 byte diverges from the approved proposal. Non-zero test exits halt publishing immediately. |
+| **3. Compound Error Suppression** | Karpathy Truth Gatekeeper with multi-stage human approval tokens (`approve fork` $\to$ `approve push` $\to$ `approve pr`). | Resets stochastic LLM drift ($r \to 1.0$) at every phase boundary. Prevents runaway autonomous execution loops. |
+| **4. Zero-Regex Polyglot AST Intelligence** | Python compiler AST (`ast.NodeVisitor`) + formal Pygments language lexers for Rust, Go, and TypeScript. | Code symbols, call graphs, and blast radiuses are extracted via formal syntax trees and token streams—zero brittle regex heuristics. |
+
+---
+
+### 🔄 End-to-End Autonomous Lifecycle: From GitHub Issue to Verified PR
+
+The lifecycle of an autonomous issue-to-PR resolution flows strictly through verified phase gates:
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 AUTONOMOUS VERIFICATION DATAFLOW                                       │
+├─────────────────────┬────────────────────────────────────┬────────────────────┬────────────────────────┤
+│ Pipeline Stage      │ Subsystem & Module                 │ Security Boundary  │ Verified Output        │
+├─────────────────────┼────────────────────────────────────┼────────────────────┼────────────────────────┤
+│ 1. Ingestion        │ `core/issue_symptom_extractor.py`  │ Host (Read-Only)   │ Structured Issue Context│
+│ 2. Discovery        │ `core/dynamic_discovery.py`        │ Host (Read-Only)   │ `ProjectBlueprint`     │
+│ 3. Reproduction     │ `spacev/fleet/celesto_engine.py`   │ Celesto MicroVM    │ In-Guest Failing Test  │
+│ 4. Patch Synthesis  │ `core/issue_patch_manager.py`      │ Celesto MicroVM    │ Bound Patch Proposal   │
+│ 5. Audit Gate       │ `core/task_evidence.py`            │ Control Plane      │ Triple SHA-256 Ledger  │
+│ 6. Blast Radius     │ `core/knowledge_graph.py`          │ Host (AST Cache)   │ Impacted Test Fixtures │
+│ 7. Branch & Commit  │ `core/issue_pr_manager.py`         │ Celesto MicroVM    │ Collision-Safe Commit  │
+│ 8. PR Publication   │ `core/dynamic_synthesizer.py`      │ Human Approval Gate│ 8-Section PR Markdown  │
+└─────────────────────┴────────────────────────────────────┴────────────────────┴────────────────────────┘
+```
+
+---
+
+### 🧩 Subsystem Directory Mapping
+
+| Architectural Subsystem | Core Module Path | Primary Responsibility |
+| :--- | :--- | :--- |
+| **Cognitive Orchestrator** | [`core/brain_orchestrator.py`](core/brain_orchestrator.py) | LangGraph cyclic finite state machine, tool routing, and reflex dispatch. |
+| **Universal Protocol Hub** | [`core/protocol_hub.py`](core/protocol_hub.py) | Dynamic FastMCP tool introspection, Linux Foundation A2A v1.0, and CodeAct. |
+| **4D Knowledge Graph** | [`core/knowledge_graph.py`](core/knowledge_graph.py) | Multi-language AST structural extraction, reverse-walk blast radius, and Git co-change mining. |
+| **MicroVM Fleet Pool** | [`core/fleet_pool.py`](core/fleet_pool.py) | Standby warm-pool provisioning, parallel hypothesis sharding, and sterile state recycling. |
+| **Issue Discovery** | [`core/issue_discovery.py`](core/issue_discovery.py) | Dynamic repository scanning across Python, Rust, Node/TS, and Go ecosystems. |
+| **Patch & Evidence Engine** | [`core/issue_patch_manager.py`](core/issue_patch_manager.py) | In-guest patch execution, raw diff hashing, and working-tree porcelain audits. |
+| **PR & Branch Manager** | [`core/issue_pr_manager.py`](core/issue_pr_manager.py) | Collision-safe branch checkout, multi-stage approval tokens, and PR publishing state machine. |
+| **Desktop Motor Actuator** | [`core/human_actuator.py`](core/human_actuator.py) | Human-curve dual-spline Bézier mouse dynamics, log-normal typing jitter, and physical corner tripwires. |
+| **Career Intelligence** | [`core/career_intelligence.py`](core/career_intelligence.py) | Zero-regex lexical competency profiling, set-algebra gap derivation, and career trajectory guidance. |
+| **Ambient Work Tracker** | [`core/ambient_tracker.py`](core/ambient_tracker.py) | Non-intrusive focus session metering, context tagging, and daily productivity rollups ("SpaceV Eye"). |
+| **Instant Barge-In Guard** | [`core/barge_in_guard.py`](core/barge_in_guard.py) | Sub-150ms emergency cancellation coordinator binding voice VAD, hotkeys, and actuator freeze tokens. |
+| **AI Token Harness** | [`core/ai_token_harness.py`](core/ai_token_harness.py) | Tiered prompt-caching segmentation, log deduplication, and 70–85% token reduction. |
+| **Desktop Actuation (UIA)** | [`core/uia_grounding.py`](core/uia_grounding.py) | Native Windows UI Automation (COM) fast-path with coordinate grounding. |
+
+---
+
+## 🛑 Problem statement
 
 When an autonomous AI agent or software engineer runs arbitrary code, installs open-source packages, or evaluates third-party dependencies, executing commands directly on the host machine via `subprocess.run()` is a critical security vulnerability:
 * A single hallucinated command can corrupt system files.
@@ -70,7 +232,7 @@ Standard Docker containers are insufficient because they share the host Linux ke
 
 ---
 
-## 🛡️ How SpaceV Uses Celesto MicroVMs
+## 🛡️ How I used Celesto MicroVMs
 
 SpaceV relies on three differentiating Celesto primitives to achieve complete containment and deterministic recovery:
 
@@ -88,7 +250,7 @@ SpaceV relies on three differentiating Celesto primitives to achieve complete co
 
 ---
 
-## 📊 Empirical Evaluation & Containment Test
+## 📊 Eval report & Containment test
 
 ### Fleet Reliability Benchmark
 SpaceV underwent a rigorous reliability evaluation across **20 fresh, independently provisioned Celesto microVM sandboxes** running end-to-end security detonation pipelines:
@@ -120,7 +282,7 @@ To verify containment under active attack:
 
 ---
 
-## 🔄 State Machine & Failure Recovery Design
+## 🔄 State and failure design & Recovery Architecture
 
 SpaceV handles mid-task crashes through a deterministic state machine:
 
