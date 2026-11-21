@@ -499,15 +499,41 @@ class UniversalBrainClient:
                         )
                 anthropic_messages.append({"role": role, "content": blocks or ""})
 
+        base_url = self.base_url.rstrip("/")
+        if base_url.endswith("/v1/messages"):
+            endpoint = base_url
+        elif base_url.endswith("/messages"):
+            endpoint = base_url
+        else:
+            if not base_url.endswith("/v1"):
+                base_url += "/v1"
+            endpoint = f"{base_url}/messages"
+
+        # Integrate SpaceV AI Token Harness Prompt Caching Specification
+        system_text = "\n\n".join(system_parts) if system_parts else ""
+        from core.ai_token_harness import ai_token_harness, CacheProvider
+        cache_spec = ai_token_harness.build_provider_cache_payload(
+            provider=CacheProvider.ANTHROPIC,
+            system_prompt=system_text,
+            messages=anthropic_messages,
+            tools=tools,
+        )
+
         payload: dict[str, Any] = {
             "model": model,
             "messages": anthropic_messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-        if system_parts:
-            payload["system"] = "\n\n".join(system_parts)
-        if tools:
+        if cache_spec.get("system"):
+            payload["system"] = cache_spec["system"]
+        elif system_text:
+            payload["system"] = system_text
+
+        if cache_spec.get("tools"):
+            payload["tools"] = cache_spec["tools"]
+            payload["tool_choice"] = {"type": "auto"}
+        elif tools:
             payload["tools"] = [
                 {
                     "name": tool.get("function", {}).get("name", ""),
@@ -518,18 +544,10 @@ class UniversalBrainClient:
             ]
             payload["tool_choice"] = {"type": "auto"}
 
-        base_url = self.base_url.rstrip("/")
-        if base_url.endswith("/v1/messages"):
-            endpoint = base_url
-        elif base_url.endswith("/messages"):
-            endpoint = base_url
-        else:
-            if not base_url.endswith("/v1"):
-                base_url += "/v1"
-            endpoint = f"{base_url}/messages"
         headers = {
             "content-type": "application/json",
             "anthropic-version": "2023-06-01",
+            "anthropic-beta": "prompt-caching-2024-07-31",
         }
         if self.api_key:
             headers["x-api-key"] = self.api_key
@@ -642,6 +660,8 @@ class UniversalBrainClient:
                     openai_tools.append({"type": "function", "function": t["function"]})
                 else:
                     openai_tools.append({"type": "function", "function": t})
+            # Deterministic tool sorting for OpenAI/Groq/Cerebras server-side prefix KV caching
+            openai_tools.sort(key=lambda t: t.get("function", {}).get("name", ""))
 
         # Transform messages to strict OpenAI/OpenRouter contract:
         sanitized_messages = self.sanitize_messages(messages)

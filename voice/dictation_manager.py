@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 try:
     import pyautogui
-except Exception:
+except (Exception, SystemExit):
     class MockPyAutoGUI:
         @staticmethod
         def hotkey(*args, **kwargs): pass
